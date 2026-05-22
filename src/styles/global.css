@@ -2,36 +2,41 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  font-family: Manrope, "Segoe UI", Tahoma, sans-serif;
-  color: #162236;
+  font-family:
+    "Segoe UI Variable Text",
+    "Aptos",
+    "Inter",
+    "Segoe UI",
+    sans-serif;
+  color: #132033;
   background:
-    radial-gradient(1200px 700px at 85% -5%, rgba(51, 102, 204, 0.10), transparent 62%),
-    linear-gradient(180deg, #eff3f9 0%, #e8eef6 100%);
-  line-height: 1.45;
+    radial-gradient(1100px 640px at 90% -10%, rgba(31, 78, 121, 0.08), transparent 60%),
+    linear-gradient(180deg, #f2f5f8 0%, #e9eef4 100%);
+  line-height: 1.5;
   font-weight: 400;
   color-scheme: light;
 
-  --navy-1: #10233f;
-  --navy-2: #1c3558;
-  --navy-3: #29466f;
-  --blue: #2f6fed;
-  --blue-strong: #1d4ed8;
-  --green: #22c55e;
-  --amber: #f59e0b;
-  --red: #ef4444;
+  --navy-1: #112033;
+  --navy-2: #1a304b;
+  --navy-3: #243d5d;
+  --blue: #24507a;
+  --blue-strong: #173a5c;
+  --green: #1f8a5b;
+  --amber: #b7791f;
+  --red: #c24141;
 
   --surface: rgba(255, 255, 255, 0.82);
   --surface-strong: #ffffff;
-  --surface-soft: #f7faff;
-  --surface-muted: #f3f7fc;
+  --surface-soft: #f7f9fb;
+  --surface-muted: #f0f4f8;
   --card: rgba(255, 255, 255, 0.92);
 
-  --border: #d9e4f1;
-  --border-soft: #e7eef7;
+  --border: #d6dde7;
+  --border-soft: #e4eaf1;
 
-  --text: #162236;
-  --text-soft: #6f7c90;
-  --text-muted: #8c98aa;
+  --text: #132033;
+  --text-soft: #66758a;
+  --text-muted: #8390a2;
   --text-on-dark: rgba(255, 255, 255, 0.92);
 
   --shadow-sm: 0 8px 24px rgba(15, 23, 42, 0.06);

@@ -1,208 +1,350 @@
-import { Link, NavLink } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
 import {
-  Blocks,
-  Factory,
-  LayoutDashboard,
-  ShieldCheck,
+  Building2,
+  ChevronDown,
+  ChevronLeft,
   FolderKanban,
+  GitBranchPlus,
+  Menu,
+  PanelLeft,
 } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
 import logoAvocarbonWide from "../../assets/logo/logo-avocarbon.png";
 
-type NavItem = {
+type SubItem = {
   name: string;
-  icon: React.ComponentType<{ className?: string }>;
   path: string;
-  highlight?: string;
 };
 
-const navItems: NavItem[] = [
-  //   {
-  //     name: "Dashboard",
-  //     icon: LayoutDashboard,
-  //     path: "/dashboard",
-  //     highlight: "Overview",
-  //   },
+type NavItem = {
+  name: string;
+  label: string;
+  icon: LucideIcon;
+  subItems: SubItem[];
+};
+
+const PRIMARY_NAV: NavItem[] = [
+  {
+    name: "Supplier Lifecycle",
+    label: "Lifecycle",
+    icon: GitBranchPlus,
+    subItems: [
+      { name: "New Supplier Master", path: "/suppliers/onboarding" },
+      { name: "Existing Group Management", path: "/suppliers/manage" },
+    ],
+  },
   {
     name: "Suppliers",
-    icon: Factory,
-    path: "/suppliers",
-    highlight: "Portfolio",
+    label: "Portfolio",
+    icon: Building2,
+    subItems: [
+      { name: "Supplier Panel", path: "/suppliers" },
+      { name: "Active Sites", path: "/suppliers/sites-active" },
+    ],
   },
-  //   {
-  //     name: "Onboarding",
-  //     icon: Workflow,
-  //     path: "/onboarding",
-  //     highlight: "Intake",
-  //   },
-  // {
-  //   name: "Evaluations",
-  //   icon: ShieldCheck,
-  //   path: "/evaluations",
-  //   highlight: "Scorecards",
-  // },
-
-  //   {
-  //     name: "Reports",
-  //     icon: BarChart2,
-  //     path: "/reports",
-  //     highlight: "Insights",
-  //   },
 ];
 
-const AppSidebar: React.FC = () => {
+function isPathActive(pathname: string, path: string) {
+  if (path === "/suppliers") return pathname === "/suppliers";
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+function SidebarButton({
+  children,
+  title,
+  onClick,
+  className = "",
+}: {
+  children: ReactNode;
+  title?: string;
+  onClick?: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={[
+        "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.06] text-white/65 transition hover:bg-white/[0.12] hover:text-white",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function AppSidebar() {
+  const location = useLocation();
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
+    {},
+  );
+
   const {
     isExpanded,
     isMobileOpen,
     isHovered,
     setIsHovered,
+    toggleSidebar,
     toggleMobileSidebar,
   } = useSidebar();
 
-  const sidebarExpanded = isExpanded || isHovered || isMobileOpen;
+  const open = isExpanded || isHovered || isMobileOpen;
+  const accentColor = "#93c5fd";
+
+  useEffect(() => {
+    const parent = PRIMARY_NAV.find((item) =>
+      item.subItems.some((subItem) =>
+        isPathActive(location.pathname, subItem.path),
+      ),
+    );
+
+    if (parent) {
+      setExpandedGroups((current) => ({ ...current, [parent.name]: true }));
+    }
+  }, [location.pathname]);
+
+  const closeMobile = () => {
+    if (isMobileOpen) toggleMobileSidebar();
+  };
 
   return (
     <>
       <button
         type="button"
         aria-label="Close navigation"
-        className={`fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm transition duration-300 lg:hidden ${
+        className={[
+          "fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-sm transition-all duration-300 lg:hidden",
           isMobileOpen
             ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0"
-        }`}
+            : "pointer-events-none opacity-0",
+        ].join(" ")}
         onClick={toggleMobileSidebar}
       />
 
+      {!isMobileOpen && (
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          aria-label="Open navigation"
+          className="fixed left-4 top-4 z-[70] inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#1b6a97]/50 bg-[#0b3a5b]/95 text-white shadow-xl backdrop-blur transition hover:bg-[#0c5381] lg:hidden"
+        >
+          <Menu size={16} />
+        </button>
+      )}
+
       <aside
-        className={`
-        fixed top-0 left-0 flex flex-col
-        mt-[60px] lg:mt-0
-        h-screen
-        bg-gradient-to-b from-[#10649b] via-[#0c5381] to-[#094065]
-        bg-gradient-to-b from-[#063452] via-[#073655] to-[#052941]
-        border-r border-[#1e4ed8]
-        transition-all duration-300 ease-in-out
-        z-[60] shadow-[2px_0_22px_0_rgba(6,25,100,0.35)]
-        ${isExpanded || isMobileOpen ? "w-[272px]" : isHovered ? "w-[272px]" : "w-[90px]"}
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0
-      `}
+        className={[
+          "fixed left-0 top-0 z-[60] flex h-screen flex-col border-r border-white/10 bg-gradient-to-b from-slate-900 via-slate-800 to-blue-900 text-white shadow-sm transition-[width,transform] duration-300 ease-in-out",
+          open ? "w-[260px]" : "w-[72px]",
+          isMobileOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:translate-x-0",
+        ].join(" ")}
         onMouseEnter={() => !isExpanded && setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-6">
-          <Link to="/" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10 backdrop-blur">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-44 opacity-45"
+          style={{
+            background: `radial-gradient(circle at top, rgba(255,255,255,0.2) 0%, transparent 45%), radial-gradient(circle at top right, ${accentColor}40 0%, transparent 66%)`,
+          }}
+        />
+
+        <div className="relative flex items-center justify-between border-b border-white/[0.12] px-3 py-4">
+          <Link
+            to="/"
+            onClick={closeMobile}
+            className="group flex min-w-0 items-center gap-2.5"
+          >
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white/[0.09] ring-1 ring-white/10 transition-transform group-hover:scale-105">
               <img
                 src={logoAvocarbonWide}
                 alt="Avocarbon"
-                className="h-7 w-7 object-contain"
+                className="h-5 w-5 object-contain"
               />
             </div>
-            {sidebarExpanded && (
+
+            {open && (
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-[0.2em] text-white/55">
-                  AVOCARBON
+                <p className="mb-0.5 text-[8.5px] font-black uppercase tracking-[0.42em] text-sky-100/60">
+                  Avocarbon
                 </p>
-                <p className="truncate text-base font-semibold text-white">
-                  Supplier Management
+                <p className="truncate text-sm font-bold tracking-[-0.025em] text-white">
+                  Supplier Mgmt
                 </p>
               </div>
             )}
           </Link>
+
+          {open && (
+            <div className="flex items-center gap-1">
+              <SidebarButton
+                onClick={toggleSidebar}
+                title={isExpanded ? "Collapse" : "Expand"}
+                className="hidden lg:inline-flex"
+              >
+                <PanelLeft size={12} />
+              </SidebarButton>
+
+              <SidebarButton
+                onClick={toggleMobileSidebar}
+                className="lg:hidden"
+              >
+                <ChevronLeft size={12} />
+              </SidebarButton>
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-5">
+        <nav className="relative flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div
-            className={`mb-4 ${sidebarExpanded ? "px-2" : "flex justify-center"}`}
+            className={
+              open
+                ? "mx-2 mb-3 flex items-center gap-2"
+                : "mx-3 my-3 h-px bg-white/[0.12]"
+            }
           >
-            {sidebarExpanded ? (
-              <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8fb6dd]">
-                Navigation
-              </span>
-            ) : (
-              <Blocks className="h-4 w-4 text-[#8fb6dd]" />
+            {open && (
+              <>
+                <span className="text-[9px] font-black uppercase tracking-[0.32em] text-sky-100/55">
+                  Workspace
+                </span>
+                <span className="h-px flex-1 bg-white/[0.12]" />
+              </>
             )}
           </div>
 
-          <nav className="space-y-1.5">
-            {navItems.map((item) => {
+          <div className="space-y-1.5">
+            {PRIMARY_NAV.map((item) => {
               const Icon = item.icon;
+              const isActive = item.subItems.some((subItem) =>
+                isPathActive(location.pathname, subItem.path),
+              );
+              const expanded = expandedGroups[item.name] ?? false;
 
               return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `group flex items-center gap-3 rounded-2xl border px-3 py-3 transition-all duration-200 ${
-                      isActive
-                        ? "border-white/30 bg-white/20 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_32px_rgba(8,15,25,0.24)]"
-                        : "border-transparent text-[#c3daf4] hover:border-white/10 hover:bg-white/8 hover:text-white"
-                    } ${sidebarExpanded ? "" : "justify-center"}`
-                  }
-                  title={!sidebarExpanded ? item.name : undefined}
-                  onClick={() => {
-                    if (isMobileOpen) {
-                      toggleMobileSidebar();
+                <div key={item.name} className="space-y-1">
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    title={!open ? item.name : undefined}
+                    onClick={() =>
+                      setExpandedGroups((current) => ({
+                        ...current,
+                        [item.name]: !expanded,
+                      }))
                     }
-                  }}
-                >
-                  {({ isActive }) => (
-                    <>
-                      <span
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-                          isActive
-                            ? "bg-white text-[#12345c]"
-                            : "bg-white/8 text-[#a8c8e8] group-hover:bg-white/12 group-hover:text-white"
-                        }`}
-                      >
-                        <Icon className="h-[18px] w-[18px]" />
-                      </span>
+                    className={[
+                      "group relative flex w-full items-center gap-2.5 rounded-[16px] border px-2.5 py-2.5 text-left transition-all duration-200",
+                      open ? "" : "justify-center",
+                      isActive || expanded
+                        ? "border-white/[0.2] bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.11))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_rgba(0,0,0,0.22)]"
+                        : "border-transparent text-white/92 hover:border-white/[0.14] hover:bg-white/[0.09] hover:text-white",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "grid shrink-0 place-items-center rounded-xl transition-all duration-200",
+                        open ? "h-8 w-8" : "h-9 w-9",
+                        isActive || expanded
+                          ? "bg-white/[0.15] text-white"
+                          : "bg-white/[0.08] text-white/90 group-hover:bg-white/[0.12] group-hover:text-white",
+                      ].join(" ")}
+                    >
+                      <Icon size={15} />
+                    </span>
 
-                      {sidebarExpanded && (
-                        <>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-semibold">
-                              {item.name}
-                            </span>
-                            <span className="block truncate text-xs text-white/55">
-                              {item.highlight}
-                            </span>
+                    {open && (
+                      <>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12.5px] font-bold tracking-[-0.01em] text-white">
+                            {item.name}
                           </span>
+                          <span className="mt-0.5 block truncate text-[10px] text-white/72">
+                            {item.label}
+                          </span>
+                        </span>
 
-                          {isActive && (
-                            <span className="h-8 w-[3px] rounded-full bg-[#f6c453]" />
-                          )}
-                        </>
-                      )}
-                    </>
+                        <ChevronDown
+                          size={12}
+                          className={[
+                            "shrink-0 text-white/72 transition-transform duration-200",
+                            expanded ? "rotate-180 text-white" : "",
+                          ].join(" ")}
+                        />
+                      </>
+                    )}
+                  </button>
+
+                  {open && expanded && (
+                    <div className="ml-[44px] space-y-1 border-l border-white/[0.12] py-1 pl-3">
+                      {item.subItems.map((subItem) => {
+                        const subActive = isPathActive(
+                          location.pathname,
+                          subItem.path,
+                        );
+
+                        return (
+                          <NavLink
+                            key={subItem.path}
+                            to={subItem.path}
+                            onClick={closeMobile}
+                            className={[
+                              "flex items-center gap-2 rounded-xl px-3 py-2 text-[11.5px] font-semibold tracking-[-0.01em] transition-all duration-150",
+                              subActive
+                                ? "bg-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                                : "text-white/86 hover:bg-white/[0.08] hover:text-white",
+                            ].join(" ")}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: subActive
+                                  ? accentColor
+                                  : "rgba(186,230,253,0.72)",
+                              }}
+                            />
+                            <span className="truncate">{subItem.name}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
                   )}
-                </NavLink>
+                </div>
               );
             })}
-          </nav>
-        </div>
-
-        <div className="border-t border-white/10 p-3">
-          <div
-            className={`rounded-[24px] border border-white/10 bg-white/8 p-4 backdrop-blur ${
-              sidebarExpanded ? "block" : "hidden"
-            }`}
-          >
-            <div className="mb-3 flex items-center gap-2 text-white">
-              <FolderKanban className="h-4 w-4 text-[#8ed6ff]" />
-              <span className="text-sm font-semibold">Operations Brief</span>
-            </div>
-            <p className="text-xs leading-5 text-[#aac6e5]">
-              Supplier panel, governance activity, and tracking performance in
-              one consolidated navigation space.
-            </p>
           </div>
+        </nav>
+
+        <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">
+          {open ? (
+            <div className="rounded-2xl border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <FolderKanban size={12} className="text-sky-100/85" />
+                  <span className="text-[11.5px] font-semibold text-white/90">
+                    Operations Brief
+                  </span>
+                </div>
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
+                  <span className="relative h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+              </div>
+
+              <p className="text-[10.5px] leading-[1.65] text-sky-50/78">
+                Supplier panel, lifecycle workspace, and relation evaluations
+                aligned in one workspace.
+              </p>
+            </div>
+          ) : (
+            <div className="py-1" />
+          )}
         </div>
       </aside>
     </>
   );
-};
-
-export default AppSidebar;
+}

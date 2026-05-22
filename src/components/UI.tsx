@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import clsx from "clsx";
 import type { SupplierClass, SupplierStatus } from "../data/mockData";
 
 type SectionCardProps = {
@@ -21,8 +20,7 @@ type KPIProps = {
 const statusClassMap: Record<SupplierStatus, string> = {
   Active:
     "border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
-  "On Hold":
-    "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100",
+  "On Hold": "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100",
   Exit: "border-slate-200 bg-slate-100 text-slate-600 ring-1 ring-slate-200",
   "Can Quote":
     "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100",
@@ -49,14 +47,18 @@ const classClassMap: Record<SupplierClass, string> = {
 
 const kpiToneMap: Record<NonNullable<KPIProps["tone"]>, string> = {
   default:
-    "from-white via-[#f8fbff] to-[#eef5ff] text-slate-900 before:from-[#0f2744]",
+    "from-white via-[#f7f9fb] to-[#eef2f6] text-slate-900 before:from-[#173a5c]",
   success:
-    "from-emerald-50 via-white to-emerald-100/70 text-emerald-950 before:from-emerald-500",
+    "from-[#f4fbf7] via-white to-[#e7f4ec] text-emerald-950 before:from-[#1f8a5b]",
   warning:
-    "from-amber-50 via-white to-amber-100/70 text-amber-950 before:from-amber-500",
+    "from-[#fcf8f0] via-white to-[#f6ebd9] text-amber-950 before:from-[#b7791f]",
   danger:
-    "from-rose-50 via-white to-rose-100/70 text-rose-950 before:from-rose-500",
+    "from-[#fdf5f5] via-white to-[#f8e3e3] text-rose-950 before:from-[#c24141]",
 };
+
+function cn(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
 
 export function SectionCard({
   title,
@@ -68,8 +70,8 @@ export function SectionCard({
 }: SectionCardProps) {
   return (
     <section
-      className={clsx(
-        "overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(246,250,255,0.94))] shadow-[0_24px_60px_rgba(15,23,42,0.08)]",
+      className={cn(
+        "overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,249,252,0.96))] shadow-[0_16px_36px_rgba(15,23,42,0.06)]",
         "dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.78),rgba(10,18,30,0.84))]",
         className,
       )}
@@ -87,7 +89,7 @@ export function SectionCard({
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className={clsx("p-5 sm:p-6", contentClassName)}>{children}</div>
+      <div className={cn("p-5 sm:p-6", contentClassName)}>{children}</div>
     </section>
   );
 }
@@ -95,8 +97,8 @@ export function SectionCard({
 export function KPI({ label, value, helper, tone = "default" }: KPIProps) {
   return (
     <div
-      className={clsx(
-        "relative overflow-hidden rounded-[26px] border border-white/80 bg-gradient-to-br p-5 shadow-[0_20px_50px_rgba(15,23,42,0.08)] before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-gradient-to-r before:to-transparent",
+      className={cn(
+        "relative overflow-hidden rounded-[22px] border border-slate-200/80 bg-gradient-to-br p-5 shadow-[0_14px_32px_rgba(15,23,42,0.06)] before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-gradient-to-r before:to-transparent",
         "dark:border-white/10 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 dark:text-white",
         kpiToneMap[tone],
       )}
@@ -117,7 +119,7 @@ export function KPI({ label, value, helper, tone = "default" }: KPIProps) {
 export function StatusBadge({ status }: { status: SupplierStatus }) {
   return (
     <span
-      className={clsx(
+      className={cn(
         "inline-flex rounded-full border px-3 py-1 text-xs font-semibold",
         statusClassMap[status],
       )}
@@ -130,7 +132,7 @@ export function StatusBadge({ status }: { status: SupplierStatus }) {
 export function ClassBadge({ value }: { value: SupplierClass }) {
   return (
     <span
-      className={clsx(
+      className={cn(
         "inline-flex rounded-full border px-3 py-1 text-xs font-semibold",
         classClassMap[value],
       )}
@@ -161,6 +163,170 @@ export function ProgressBar({
           aria-valuenow={safeValue}
         />
       </div>
+    </div>
+  );
+}
+
+type PageIntroProps = {
+  eyebrow?: string;
+  title: string;
+  description: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+};
+
+type MetricCardProps = {
+  label: string;
+  value: ReactNode;
+  helper?: string;
+};
+
+type PillTone = "neutral" | "brand" | "success" | "warning" | "danger";
+type InlineAlertTone = "info" | "warning" | "danger";
+
+export function PageIntro({
+  eyebrow,
+  title,
+  description,
+  actions,
+  children,
+}: PageIntroProps) {
+  return (
+    <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 px-6 py-8 text-white shadow-sm">
+      <div className="mx-auto flex w-full flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-3xl">
+          {eyebrow ? (
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">
+              {eyebrow}
+            </p>
+          ) : null}
+
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">{title}</h2>
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
+            {description}
+          </p>
+        </div>
+
+        {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+      </div>
+
+      {children ? (
+        <div className="relative mt-6 w-full">{children}</div>
+      ) : null}
+    </section>
+  );
+}
+
+export function MetricCard({ label, value, helper }: MetricCardProps) {
+  return (
+    <div className="rounded-[22px] border border-slate-200/80 bg-white/88 px-5 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur dark:border-white/10 dark:bg-slate-950/40">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
+      <div className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#10233f] dark:text-white">
+        {value}
+      </div>
+      {helper ? (
+        <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-300">
+          {helper}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function InlineAlert({
+  title,
+  message,
+  tone = "danger",
+  action,
+}: {
+  title: string;
+  message: ReactNode;
+  tone?: InlineAlertTone;
+  action?: ReactNode;
+}) {
+  const toneMap: Record<InlineAlertTone, string> = {
+    info: "border-blue-200 bg-blue-50 text-blue-900",
+    warning: "border-amber-200 bg-amber-50 text-amber-900",
+    danger: "border-rose-200 bg-rose-50 text-rose-900",
+  };
+
+  return (
+    <div className={`rounded-2xl border px-4 py-3 ${toneMap[tone]}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <div className="mt-1 text-sm">{message}</div>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+export function Pill({
+  text,
+  tone = "neutral",
+}: {
+  text: string;
+  tone?: PillTone;
+}) {
+  const toneMap: Record<PillTone, string> = {
+    neutral: "border-slate-200 bg-slate-50 text-slate-700",
+    brand: "border-sky-200 bg-sky-50 text-sky-800",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    danger: "border-rose-200 bg-rose-50 text-rose-700",
+  };
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+        toneMap[tone],
+      )}
+    >
+      {text}
+    </span>
+  );
+}
+
+export function KeyValueRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2.5 last:border-b-0 dark:border-white/10">
+      <span className="text-sm text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
+      <span className="text-right text-sm font-semibold text-slate-800 dark:text-slate-100">
+        {value || "-"}
+      </span>
+    </div>
+  );
+}
+
+export function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/72 px-6 py-12 text-center shadow-[0_12px_24px_rgba(15,23,42,0.03)] dark:border-white/10 dark:bg-slate-950/30">
+      <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+        {description}
+      </p>
     </div>
   );
 }

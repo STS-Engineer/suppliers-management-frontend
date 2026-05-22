@@ -1,478 +1,192 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  ChevronRight,
+  AlertCircle,
+  Archive,
+  Award,
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ClipboardCheck,
+  ExternalLink,
+  Eye,
+  Factory,
   Filter,
-  RotateCcw,
+  Layers3,
+  Plus,
+  RefreshCw,
   Search,
-  UsersRound,
-  BarChart3,
-  Star,
-  AlertTriangle,
+  Users,
+  X,
 } from "lucide-react";
 import { Pagination } from "../components/common/Pagination";
-import { SectionCard } from "../components/UI";
-import {
-  AGREEMENTS,
-  CERTIFICATIONS,
-  CONTACTS,
-  FINANCIALS,
-  GROUPS,
-  OPPORTUNITIES,
-  UNITS,
-} from "../data/supplierData";
+import { InlineAlert, KeyValueRow, PageIntro, Pill, SectionCard } from "../components/UI";
+import supplierAPI from "../services/supplierOnboardingAPI";
+import type {
+  AvocarbonSite,
+  RelationEvaluationWorkspace,
+  SitePanelBundle,
+  SupplierGroupSummary,
+  SupplierSiteRelation,
+  SupplierUnitResponse,
+} from "../types/onboarding";
 
-const tabs = [
-  "Overview",
-  "Units",
-  "Certifications",
-  "Agreements",
-  "Contacts",
-  "Opportunities",
-  "Financials",
-] as const;
-
-type TabKey = (typeof tabs)[number];
-type ViewMode = "Group Scan" | "Supplier Detail";
-type ScanSort = "score-desc" | "review-asc" | "strategic-first" | "name-asc";
-type ScanFilter = "all" | "attention" | "strategic" | "missing-cert";
-type GroupRecord = (typeof GROUPS)[number];
-const colors = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
+type RelationRecord = {
+  site: AvocarbonSite;
+  unit: SupplierUnitResponse;
+  group: SupplierGroupSummary;
+  relation: SupplierSiteRelation;
+  workspace: RelationEvaluationWorkspace | null;
+  siteName: string;
+  finalGrade: string | null;
+  currentStatus: string | null;
+  panelDecision: string | null;
+  isArchived: boolean;
+};
 
 const PAGE_SIZE = 8;
+const BRAND_DARK = "bg-[#062B49]";
+const BRAND_DARK_HOVER = "hover:bg-[#0C5381]";
 
-const normalizeSearchText = (value: unknown) =>
+const normalizeText = (value: unknown) =>
   String(value ?? "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const getSupplierSearchText = (group: GroupRecord) =>
-  [
-    group.nom,
-    group.GlobalSupplier,
-    group.groupName,
-    group.category,
-    group.Commodity,
-    group.Family,
-    group.scope,
-    group.hq,
-    group.status,
-    group.supplierClass,
-    group.strategic,
-    group.owner,
-    group.supplierLeader,
-    group.responsiblePlant,
-    group["Main Plants"],
-    group["Supplier Email"],
-  ]
-    .map(normalizeSearchText)
-    .filter(Boolean)
-    .join(" ");
+const formatDate = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
 
-const getEditDistance = (left: string, right: string) => {
-  const previous = Array.from(
-    { length: right.length + 1 },
-    (_, index) => index,
-  );
+const PANEL_DECISION_LABELS: Record<string, string> = {
+  panel_add: "Can be added to panel",
+  panel_add_exec_committee: "Needs exec committee agreement",
+  panel_reject: "Cannot be added to panel",
+};
 
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    let diagonal = previous[0];
-    previous[0] = leftIndex;
+const getPanelDecisionLabel = (value?: string | null) => {
+  if (!value) return "Pending";
+  return PANEL_DECISION_LABELS[value] || value;
+};
 
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const above = previous[rightIndex];
-      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+const getPanelDecisionTone = (
+  value?: string | null,
+): "slate" | "green" | "amber" | "red" => {
+  if (value === "panel_add") return "green";
+  if (value === "panel_add_exec_committee") return "amber";
+  if (value === "panel_reject") return "red";
+  return "slate";
+};
 
-      previous[rightIndex] = Math.min(
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + 1,
-        diagonal + cost,
-      );
-      diagonal = above;
-    }
+const getStatusTone = (
+  value?: string | null,
+): "slate" | "green" | "amber" | "red" => {
+  const normalized = normalizeText(value);
+  if (!normalized) return "slate";
+  if (normalized.includes("not be awarded")) return "amber";
+  if (normalized.includes("hold")) return "red";
+  if (normalized.includes("can quote and be awarded")) return "green";
+  if (normalized.includes("awarded")) return "green";
+  return "slate";
+};
+
+const getGradeTone = (
+  value?: string | null,
+): "slate" | "green" | "amber" | "red" | "purple" => {
+  const normalized = normalizeText(value);
+  if (!normalized) return "slate";
+  if (
+    normalized.startsWith("a1") ||
+    normalized.startsWith("b1") ||
+    normalized.startsWith("a2") ||
+    normalized.startsWith("b2")
+  ) {
+    return "green";
   }
-
-  return previous[right.length];
-};
-
-const isCloseSearchToken = (token: string, candidate: string) => {
-  if (candidate.includes(token) || token.includes(candidate)) return true;
-  if (token.length < 4 || candidate.length < 4) return false;
-
-  const maxDistance = token.length > 7 ? 2 : 1;
-  return getEditDistance(token, candidate) <= maxDistance;
-};
-
-const supplierMatchesSearch = (group: GroupRecord, keyword: string) => {
-  const normalizedKeyword = normalizeSearchText(keyword);
-  if (!normalizedKeyword) return true;
-
-  const tokens = normalizedKeyword.split(/\s+/).filter(Boolean);
-  const searchableText = getSupplierSearchText(group);
-
-  return tokens.every((token) => searchableText.includes(token));
-};
-
-type BadgeTone =
-  | "blue"
-  | "green"
-  | "gold"
-  | "slate"
-  | "orange"
-  | "red"
-  | "gray"
-  | "yellow"
-  | "pink"
-  | "purple";
-
-function Badge({ text, tone = "slate" }: { text: string; tone?: BadgeTone }) {
-  const toneMap: Record<BadgeTone, string> = {
-    blue: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200",
-    green:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200",
-    gold: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200",
-    slate:
-      "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-white/10 dark:text-slate-200",
-    orange:
-      "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-200",
-    red: "border-red-200 bg-red-50 text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200",
-    gray: "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-300",
-    yellow:
-      "border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-400/30 dark:bg-yellow-400/10 dark:text-yellow-200",
-    pink: "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-400/30 dark:bg-pink-400/10 dark:text-pink-200",
-    purple:
-      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-200",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${toneMap[tone]}`}
-    >
-      {text}
-    </span>
-  );
-}
-
-const getStatusKey = (value: unknown) =>
-  normalizeSearchText(value).replace(/\s+/g, " ").trim();
-
-const asBadgeValue = (value: ReactNode) => String(value || "-");
-
-const getFinancialHealthTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (key === "green") return "green";
-  if (key === "to monitor") return "orange";
-  if (key === "at risk") return "red";
-  if (key === "requested") return "gray";
-
-  return "slate";
-};
-
-const getGeoCoverageTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (key === "100 cov" || key === "100 coverage" || key.includes("100"))
-    return "green";
   if (
-    key === "50 or" ||
-    key === "50 cov" ||
-    key === "50 coverage" ||
-    key.includes("50")
-  )
-    return "orange";
-  if (key === "1 plant cov" || key === "1 plant coverage") return "pink";
-  if (key === "none") return "red";
-  if (key === "requested") return "gray";
-
-  return "slate";
-};
-
-const getSqmaTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (key === "signed") return "green";
-  if (key === "rejected") return "red";
-  if (key === "signed m res") return "orange";
-  if (key === "signed m res not sent") return "yellow";
-  if (key === "requested") return "gray";
-
-  return "slate";
-};
-
-const getDeliveryStatusTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
+    normalized.startsWith("a3") ||
+    normalized.startsWith("b3") ||
+    normalized.startsWith("c1") ||
+    normalized.startsWith("c2") ||
+    normalized.startsWith("c3")
+  ) {
+    return "amber";
+  }
   if (
-    [
-      "active",
-      "approved",
-      "validated",
-      "ok",
-      "yes",
-      "open",
-      "available",
-    ].includes(key)
-  )
-    return "green";
-  if (["inactive", "blocked", "rejected", "ko", "no", "closed"].includes(key))
+    normalized.startsWith("a4") ||
+    normalized.startsWith("b4") ||
+    normalized.startsWith("c4") ||
+    normalized.startsWith("d")
+  ) {
     return "red";
-  if (
-    [
-      "pending",
-      "in progress",
-      "under review",
-      "to monitor",
-      "watch",
-      "warning",
-    ].includes(key)
-  )
-    return "orange";
-  if (
-    ["requested", "not started", "draft", "n a", "na", "none", ""].includes(key)
-  )
-    return "gray";
-
-  return "blue";
+  }
+  return "purple";
 };
 
-const getCertificationTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
+function Badge({
+  text,
+  tone = "slate",
+}: {
+  text: string;
+  tone?: "slate" | "blue" | "green" | "amber" | "red" | "purple";
+}) {
+  const toneMap = {
+    slate: "neutral",
+    blue: "brand",
+    green: "success",
+    amber: "warning",
+    red: "danger",
+    purple: "brand",
+  } as const;
 
-  if (["yes", "certified", "valid", "available", "signed"].includes(key))
-    return "green";
-  if (["no", "missing", "expired", "rejected"].includes(key) || key === "-")
-    return "red";
-  if (["requested", "pending", "in progress"].includes(key)) return "gray";
-  if (["to renew", "to monitor"].includes(key)) return "orange";
-
-  return "slate";
-};
-
-const getCoverageTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (key.includes("100") || key === "full" || key === "yes") return "green";
-  if (key.includes("50") || key.includes("partial") || key.includes("medium"))
-    return "orange";
-  if (key.includes("1 plant") || key.includes("single")) return "pink";
-  if (key === "none" || key === "no" || key === "-") return "red";
-  if (key === "requested" || key === "pending") return "gray";
-
-  return "slate";
-};
-
-const getStrategicTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (["strategic", "yes", "high", "monopolistic"].includes(key))
-    return "purple";
-  if (["medium", "potential"].includes(key)) return "orange";
-  if (["no", "none", "-"].includes(key)) return "gray";
-
-  return "gold";
-};
-
-const getPanelTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (key.includes("sb1") || key.includes("preferred") || key.includes("panel"))
-    return "green";
-  if (key.includes("sb2") || key.includes("backup")) return "blue";
-  if (key.includes("blocked") || key.includes("excluded")) return "red";
-  if (key.includes("candidate") || key.includes("potential")) return "orange";
-
-  return "slate";
-};
-
-const getAgreementTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (["yes", "signed", "active", "valid", "lta"].includes(key)) return "green";
-  if (["no", "rejected", "expired", "missing"].includes(key) || key === "-")
-    return "red";
-  if (["requested", "draft", "pending"].includes(key)) return "gray";
-  if (["to monitor", "negotiation", "in progress", "partial"].includes(key))
-    return "orange";
-
-  return "gold";
-};
-
-const getOpportunityTone = (value: unknown): BadgeTone => {
-  const key = getStatusKey(value);
-
-  if (
-    [
-      "validated",
-      "approved",
-      "won",
-      "active",
-      "completed",
-      "accepted",
-    ].includes(key)
-  )
-    return "green";
-  if (["rejected", "lost", "cancelled", "blocked"].includes(key)) return "red";
-  if (
-    ["in progress", "ongoing", "to monitor", "review", "under review"].includes(
-      key,
-    )
-  )
-    return "orange";
-  if (["requested", "pending", "draft", "not started"].includes(key))
-    return "gray";
-
-  return "blue";
-};
-
-function StatusBadge({ value, tone }: { value: ReactNode; tone: BadgeTone }) {
-  return <Badge text={asBadgeValue(value)} tone={tone} />;
+  return <Pill text={text} tone={toneMap[tone]} />;
 }
 
-function FinancialHealthBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getFinancialHealthTone(value)} />;
+function Field({ label, value }: { label: string; value: ReactNode }) {
+  return <KeyValueRow label={label} value={value} />;
 }
-
-function GeoCoverageBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getGeoCoverageTone(value)} />;
-}
-
-function SqmaBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getSqmaTone(value)} />;
-}
-
-function DeliveryStatusBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getDeliveryStatusTone(value)} />;
-}
-
-function CertificationBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getCertificationTone(value)} />;
-}
-
-function CoverageBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getCoverageTone(value)} />;
-}
-
-function StrategicBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getStrategicTone(value)} />;
-}
-
-function PanelBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getPanelTone(value)} />;
-}
-
-function AgreementBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getAgreementTone(value)} />;
-}
-
-function OpportunityBadge({ value }: { value: ReactNode }) {
-  return <StatusBadge value={value} tone={getOpportunityTone(value)} />;
-}
-
-type StatTone = "default" | "success" | "warning" | "danger" | "info";
 
 function StatCard({
   label,
   value,
   helper,
-  tone = "default",
   icon,
+  tone = "blue",
 }: {
   label: string;
   value: ReactNode;
-  helper?: string;
-  tone?: StatTone;
-  icon?: ReactNode;
+  helper: string;
+  icon: ReactNode;
+  tone?: "blue" | "green" | "purple" | "amber" | "red";
 }) {
-  const toneMap: Record<
-    StatTone,
-    {
-      shell: string;
-      icon: string;
-      glow: string;
-    }
-  > = {
-    default: {
-      shell:
-        "border-sky-100 bg-[linear-gradient(135deg,#ffffff_0%,#edf5ff_100%)] dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(10,18,30,0.9))]",
-      icon: "bg-sky-50 text-sky-600 ring-sky-100 dark:bg-sky-400/10 dark:text-sky-200 dark:ring-sky-400/20",
-      glow: "bg-sky-400/12",
-    },
-    success: {
-      shell:
-        "border-emerald-100 bg-[linear-gradient(135deg,#ffffff_0%,#ecfdf5_100%)] dark:border-emerald-400/20 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(6,78,59,0.22))]",
-      icon: "bg-emerald-50 text-emerald-600 ring-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-200 dark:ring-emerald-400/20",
-      glow: "bg-emerald-400/14",
-    },
-    warning: {
-      shell:
-        "border-amber-100 bg-[linear-gradient(135deg,#ffffff_0%,#fffbeb_100%)] dark:border-amber-400/20 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(120,53,15,0.22))]",
-      icon: "bg-amber-50 text-amber-600 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-200 dark:ring-amber-400/20",
-      glow: "bg-amber-400/14",
-    },
-    danger: {
-      shell:
-        "border-rose-100 bg-[linear-gradient(135deg,#ffffff_0%,#fff1f2_100%)] dark:border-rose-400/20 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(127,29,29,0.22))]",
-      icon: "bg-rose-50 text-rose-600 ring-rose-100 dark:bg-rose-400/10 dark:text-rose-200 dark:ring-rose-400/20",
-      glow: "bg-rose-400/14",
-    },
-    info: {
-      shell:
-        "border-blue-100 bg-[linear-gradient(135deg,#ffffff_0%,#eff6ff_100%)] dark:border-blue-400/20 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(30,64,175,0.2))]",
-      icon: "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-400/10 dark:text-blue-200 dark:ring-blue-400/20",
-      glow: "bg-blue-400/14",
-    },
+  const iconStyles = {
+    blue: "bg-blue-50 text-blue-700 ring-blue-100",
+    green: "bg-emerald-50 text-emerald-600 ring-emerald-100",
+    purple: "bg-violet-50 text-violet-600 ring-violet-100",
+    amber: "bg-orange-50 text-orange-600 ring-orange-100",
+    red: "bg-rose-50 text-rose-600 ring-rose-100",
   };
 
-  const styles = toneMap[tone];
-
   return (
-    <div
-      className={`group relative overflow-hidden rounded-[28px] border p-5 shadow-[0_20px_44px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(15,23,42,0.11)] ${styles.shell}`}
-    >
+    <div className="group rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
       <div
-        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full blur-2xl ${styles.glow}`}
-      />
-
-      <div className="relative flex items-start justify-between gap-4">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            {label}
-          </div>
-          <div className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-[#10233f] dark:text-white">
-            {value}
-          </div>
-        </div>
-
-        {icon ? (
-          <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${styles.icon}`}
-          >
-            {icon}
-          </div>
-        ) : null}
+        className={`grid h-10 w-10 place-items-center rounded-2xl ring-1 ${iconStyles[tone]}`}
+      >
+        {icon}
       </div>
-
-      {helper ? (
-        <div className="relative mt-3 text-sm leading-5 text-slate-500 dark:text-slate-300">
-          {helper}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 py-3 last:border-b-0 dark:border-white/10">
-      <span className="text-sm text-slate-500 dark:text-slate-400">
-        {label}
-      </span>
-      <span className="text-right text-sm font-semibold text-[#10233f] dark:text-white">
-        {value || "-"}
-      </span>
+      <div className="mt-4 text-sm font-medium text-slate-500">{label}</div>
+      <div className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+        {value}
+      </div>
+      <div className="mt-1 text-xs text-slate-400">{helper}</div>
     </div>
   );
 }
@@ -485,29 +199,27 @@ function DataTable({
   rows: ReactNode[][];
 }) {
   return (
-    <div className="overflow-hidden rounded-[24px] border border-slate-200/80 dark:border-white/10">
+    <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200/80 text-sm dark:divide-white/10">
-          <thead className="bg-slate-50/90 dark:bg-slate-900/70">
-            <tr className="text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              {headers.map((header) => (
-                <th key={header} className="px-5 py-4 font-semibold">
-                  {header}
+        <table className="min-w-full divide-y divide-slate-100 text-sm">
+          <thead className="bg-slate-50/90">
+            <tr className="text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              {headers.map((h) => (
+                <th key={h} className="px-5 py-4">
+                  {h}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200/70 bg-white/90 dark:divide-white/10 dark:bg-slate-950/40">
+
+          <tbody className="divide-y divide-slate-100 bg-white">
             {rows.length > 0 ? (
-              rows.map((row, rowIndex) => (
-                <tr
-                  key={rowIndex}
-                  className="hover:bg-sky-50/50 dark:hover:bg-white/5"
-                >
-                  {row.map((cell, cellIndex) => (
+              rows.map((row, ri) => (
+                <tr key={ri} className="transition hover:bg-slate-50">
+                  {row.map((cell, ci) => (
                     <td
-                      key={`${rowIndex}-${cellIndex}`}
-                      className="px-5 py-4 align-top text-slate-600 dark:text-slate-300"
+                      key={`${ri}-${ci}`}
+                      className="px-5 py-4 align-top text-slate-600"
                     >
                       {cell}
                     </td>
@@ -518,9 +230,9 @@ function DataTable({
               <tr>
                 <td
                   colSpan={headers.length}
-                  className="px-5 py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+                  className="px-5 py-12 text-center text-sm text-slate-400"
                 >
-                  No data available in this section.
+                  No data available.
                 </td>
               </tr>
             )}
@@ -531,846 +243,1289 @@ function DataTable({
   );
 }
 
-const formatDate = (value: string) => {
-  if (!value || value === "-") return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-};
+function SiteCard({
+  bundle,
+  isSelected,
+  onSelect,
+}: {
+  bundle: SitePanelBundle;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const archivedCount = bundle.relations.filter((entry) => {
+    const normalizedStatus = normalizeText(entry.relation.supplier_status);
+    return (
+      entry.relation.panel_decision === "panel_reject" ||
+      entry.relation.inactivated_at != null ||
+      normalizedStatus.includes("hold")
+    );
+  }).length;
 
-function renderOverviewTab(group: GroupRecord) {
-  const metrics = [
-    { label: "Last Eval Score", value: group.score ?? "-" },
-    { label: "Last known Eval", value: group.lastEval },
-    {
-      label: "Financial Health",
-      value: <FinancialHealthBadge value={group.financialHealth} />,
-    },
-    { label: "Req Date AP", value: group.nextReview },
+  const panelReadyCount = bundle.relations.filter(
+    (entry) =>
+      entry.relation.panel_decision === "panel_add" ||
+      entry.relation.panel_decision === "panel_add_exec_committee",
+  ).length;
+
+  const latestEvaluation = bundle.relations
+    .map((entry) => entry.relation.last_evaluation_date)
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .pop();
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group relative w-full overflow-hidden rounded-[1.75rem] border p-5 text-left transition-all duration-300 ${
+        isSelected
+          ? "border-[#062B49] bg-[#062B49] text-white shadow-[0_24px_70px_rgba(6,43,73,0.35)]"
+          : "border-slate-200 bg-white text-slate-900 shadow-sm hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)]"
+      }`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.24),transparent_35%)] opacity-0 transition group-hover:opacity-100" />
+
+      <div className="relative flex items-start justify-between gap-4">
+        <div>
+          <div
+            className={`text-xs font-semibold uppercase tracking-[0.22em] ${
+              isSelected ? "text-blue-100" : "text-slate-400"
+            }`}
+          >
+            Avocarbon Site
+          </div>
+
+          <div className="mt-2 text-xl font-bold tracking-tight">
+            {bundle.site.site_name || "Unnamed site"}
+          </div>
+
+          <div
+            className={`mt-1 text-sm ${
+              isSelected ? "text-blue-100/80" : "text-slate-500"
+            }`}
+          >
+            {[bundle.site.city, bundle.site.country]
+              .filter(Boolean)
+              .join(", ") || "Location not set"}
+          </div>
+        </div>
+
+        <div
+          className={`rounded-2xl px-3 py-2 text-right ${
+            isSelected ? "bg-white/10" : "bg-slate-50"
+          }`}
+        >
+          <div
+            className={
+              isSelected ? "text-xs text-blue-100/80" : "text-xs text-slate-400"
+            }
+          >
+            Relations
+          </div>
+          <div className="text-xl font-bold">{bundle.relation_count}</div>
+        </div>
+      </div>
+
+      <div className="relative mt-4 flex flex-wrap gap-2">
+        <Badge text={`${panelReadyCount} panel-ready`} tone="green" />
+        <Badge text={`${archivedCount} archived`} tone="red" />
+        <Badge text={`Groups ${bundle.group_count}`} tone="slate" />
+        <Badge
+          text={`Last eval ${formatDate(latestEvaluation)}`}
+          tone="amber"
+        />
+      </div>
+    </button>
+  );
+}
+
+function RelationDetailModal({
+  record,
+  onClose,
+  onOpenEvaluation,
+}: {
+  record: RelationRecord;
+  onClose: () => void;
+  onOpenEvaluation: (relationId: number) => void;
+}) {
+  const workspace = record.workspace;
+
+  const criteriaEntries = Object.entries(
+    workspace?.class_criteria_details || {},
+  ).filter(
+    ([, detail]) =>
+      detail &&
+      Object.values(detail).some(
+        (v) => v !== null && v !== undefined && v !== "",
+      ),
+  );
+
+  const operationalRows = [
+    ["Management System", workspace?.management_system],
+    ["Customer Communication", workspace?.customer_communication],
+    ["Development Design", workspace?.development_design],
+    ["Production Manufacturing", workspace?.production_manufacturing],
+    ["Quality Audits", workspace?.quality_audits],
+    ["Suppliers / Subcontractors", workspace?.suppliers_subcontractors],
+    ["Deliveries", workspace?.deliveries],
+    ["Environment / Ethics Rules", workspace?.environment_ethic_rules],
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <StatCard
-            key={metric.label}
-            label={metric.label}
-            value={metric.value}
-          />
-        ))}
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-xl">
+      <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-[0_30px_100px_rgba(6,43,73,0.45)]">
+        <div className="relative overflow-hidden border-b border-white/10 bg-[#062B49] px-8 py-7 text-white">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.42),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.18),transparent_42%)]" />
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <SectionCard
-          title="Supplier profile"
-          subtitle="Core classification and positioning"
-          className="shadow-none"
-        >
-          <Field label="Supplier" value={group.nom} />
-          <Field label="Global Supplier" value={group.GlobalSupplier} />
-          <Field label="Group" value={group.groupName} />
-          <Field label="Commodity" value={group.Commodity} />
-          <Field label="Family" value={group.Family} />
-          <Field label="Scope" value={group.scope} />
-          <Field label="Area" value={group.hq} />
-          <Field
-            label="Del. Status"
-            value={<DeliveryStatusBadge value={group.status} />}
-          />
-          <Field label="Cat. Pur." value={group.supplierClass} />
-          <Field
-            label="Strategic"
-            value={<StrategicBadge value={group.strategic} />}
-          />
-          <Field label="Main Plants" value={group["Main Plants"]} />
-        </SectionCard>
+          <div className="relative flex items-start justify-between gap-6">
+            <div>
+              <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
+                Relation Intelligence
+              </span>
 
-        <SectionCard
-          title="Ownership & timeline"
-          subtitle="Responsibility and review context"
-          className="shadow-none"
-        >
-          <Field label="Commodity Resp" value={group.owner} />
-          <Field label="Supplier Leader" value={group.supplierLeader} />
-          <Field label="Plant" value={group.responsiblePlant} />
-          <Field label="Created" value={formatDate(group.createdAt)} />
-          <Field label="Updated" value={formatDate(group.updatedAt)} />
-          <Field label="Last Known E. Period" value={group.lastKnownPeriod} />
-          <Field label="SQMA" value={<SqmaBadge value={group.sqma} />} />
-          <Field
-            label="Competitiveness"
-            value={<OpportunityBadge value={group.competitiveness} />}
-          />
-          <Field
-            label="Family Cover."
-            value={<CoverageBadge value={group.familyCoverage} />}
-          />
-          <Field
-            label="Geo . Cover"
-            value={<GeoCoverageBadge value={group.geoCoverage} />}
-          />
-          <Field label="Supplier Email" value={group["Supplier Email"]} />
-        </SectionCard>
+              <h3 className="mt-4 text-3xl font-bold tracking-tight">
+                {record.relation.relation_code ||
+                  `REL-${String(record.relation.id_relation).padStart(6, "0")}`}
+                <span className="mx-3 text-blue-200/50">/</span>
+                {record.siteName}
+              </h3>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100/80">
+                Consolidated supplier relation status, evaluation metrics,
+                operational maturity, decision trail and supporting evidence.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-white/10 bg-white/10 p-2.5 text-blue-100 backdrop-blur transition hover:bg-white/20 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="relative mt-6 flex flex-wrap gap-2">
+            <Badge
+              text={
+                record.unit.unit_code ||
+                `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`
+              }
+              tone="blue"
+            />
+            <Badge text={record.siteName} tone="slate" />
+            <Badge
+              text={record.finalGrade || "Pending grade"}
+              tone={getGradeTone(record.finalGrade)}
+            />
+            <Badge
+              text={record.currentStatus || "Pending status"}
+              tone={getStatusTone(record.currentStatus)}
+            />
+            <Badge
+              text={getPanelDecisionLabel(record.panelDecision)}
+              tone={getPanelDecisionTone(record.panelDecision)}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-slate-100 px-8 py-7">
+          <div className="mb-6 grid gap-4 md:grid-cols-4">
+            <StatCard
+              label="Final Grade"
+              value={record.finalGrade || "-"}
+              helper="Latest consolidated grade"
+              icon={<Award className="h-4 w-4" />}
+              tone="blue"
+            />
+            <StatCard
+              label="Class Score"
+              value={
+                workspace?.class_score != null
+                  ? Number(workspace.class_score).toFixed(1)
+                  : "-"
+              }
+              helper="Class evaluation score"
+              icon={<Layers3 className="h-4 w-4" />}
+              tone="purple"
+            />
+            <StatCard
+              label="Operational Score"
+              value={
+                workspace?.operational_score != null
+                  ? Number(workspace.operational_score).toFixed(1)
+                  : "-"
+              }
+              helper="Operational maturity"
+              icon={<ClipboardCheck className="h-4 w-4" />}
+              tone="green"
+            />
+            <StatCard
+              label="Impact Score"
+              value={workspace?.impact_score ?? "-"}
+              helper="Business impact signal"
+              icon={<AlertCircle className="h-4 w-4" />}
+              tone="amber"
+            />
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <SectionCard
+              title="Supplier Overview"
+              subtitle="Current relation profile"
+            >
+              <Field label="Group" value={record.group.nom || "-"} />
+              <Field
+                label="Group Code"
+                value={
+                  record.group.group_code ||
+                  `GRP-${String(record.group.id_group).padStart(6, "0")}`
+                }
+              />
+              <Field
+                label="Group Categories"
+                value={record.group.supplier_type || "-"}
+              />
+              <Field
+                label="Unit Code"
+                value={
+                  record.unit.unit_code ||
+                  `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`
+                }
+              />
+              <Field
+                label="Relation Code"
+                value={
+                  record.relation.relation_code ||
+                  `REL-${String(record.relation.id_relation).padStart(6, "0")}`
+                }
+              />
+              <Field
+                label="Supplier Scope"
+                value={
+                  record.relation.supplier_scope ||
+                  record.group.supplier_scope ||
+                  "-"
+                }
+              />
+              <Field
+                label="Supplier Owner"
+                value={
+                  record.relation.supplier_owner ||
+                  record.group.supplier_owner ||
+                  "-"
+                }
+              />
+              <Field
+                label="Current Status"
+                value={record.currentStatus || "-"}
+              />
+              <Field
+                label="Panel Decision"
+                value={getPanelDecisionLabel(record.panelDecision)}
+              />
+              <Field
+                label="Last Evaluation"
+                value={formatDate(
+                  workspace?.evaluation_date ||
+                    record.relation.last_evaluation_date,
+                )}
+              />
+            </SectionCard>
+
+            <SectionCard
+              title="Evaluation Insights"
+              subtitle="Latest scoring and comments"
+            >
+              <Field
+                label="Class / Operational"
+                value={`${workspace?.class_value ?? record.relation.class_value ?? "-"} / ${workspace?.operational_grade ?? record.relation.operational_grade ?? "-"}`}
+              />
+              <Field
+                label="Strategic Mention"
+                value={
+                  workspace?.strategic_mention ||
+                  record.relation.strategic_mention ||
+                  "-"
+                }
+              />
+              <Field
+                label="Comments"
+                value={
+                  workspace?.comments ||
+                  record.relation.evaluation_comments ||
+                  "-"
+                }
+              />
+            </SectionCard>
+          </div>
+
+          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5">
+              <h4 className="text-lg font-bold tracking-tight text-slate-950">
+                Operational Self-Assessment
+              </h4>
+              <p className="mt-1 text-sm text-slate-500">
+                Operational maturity declared across core supplier processes.
+              </p>
+            </div>
+
+            <DataTable
+              headers={["Criterion", "Value"]}
+              rows={operationalRows.map(([label, value]) => [
+                label,
+                value != null ? String(value) : "-",
+              ])}
+            />
+          </div>
+
+          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5">
+              <h4 className="text-lg font-bold tracking-tight text-slate-950">
+                Criteria Evidence
+              </h4>
+              <p className="mt-1 text-sm text-slate-500">
+                Documents, validity windows, comments and score justification.
+              </p>
+            </div>
+
+            <DataTable
+              headers={[
+                "Criterion",
+                "Score",
+                "Document",
+                "Validity",
+                "Comments",
+              ]}
+              rows={criteriaEntries.map(([criterionKey, detail]) => [
+                criterionKey.replace(/_/g, " "),
+                detail.score != null ? String(detail.score) : "-",
+                detail.document_url ? (
+                  <a
+                    href={detail.document_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#062B49] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0C5381]"
+                  >
+                    Open <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  detail.document_name || detail.evidence_file_name || "-"
+                ),
+                [
+                  formatDate(detail.validity_start_date),
+                  formatDate(detail.validity_end_date),
+                ]
+                  .filter((v) => v !== "-")
+                  .join(" → ") || "-",
+                detail.comments || "-",
+              ])}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-200 bg-white px-8 py-5">
+          <p className="text-xs text-slate-400">
+            Supplier relation record · Updated evaluation workspace
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Close
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onOpenEvaluation(record.relation.id_relation)}
+              className={`inline-flex items-center gap-2 rounded-2xl ${BRAND_DARK} px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-950/20 transition ${BRAND_DARK_HOVER}`}
+            >
+              Open full evaluation <ExternalLink className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function renderUnitsTab(group: GroupRecord) {
-  const rows = UNITS.filter((unit) => unit.groupId === group.id).map((unit) => [
-    <span className="font-semibold text-[#0f2744] dark:text-white">
-      {unit.name}
-    </span>,
-    unit.city,
-    <Badge text={String(unit.country)} tone="slate" />,
-    unit.branchType,
-    unit.productType,
-    unit.productCategory,
-    <DeliveryStatusBadge value={unit.status} />,
-    <CertificationBadge value={unit.isoCertified ? "Yes" : "No"} />,
-    <Badge text={String(unit.transitDays ?? "-")} tone="slate" />,
-  ]);
+const buildRelationRecords = (bundle: SitePanelBundle): RelationRecord[] =>
+  bundle.relations.map((entry) => {
+    const currentStatus = entry.relation.supplier_status || null;
+    const panelDecision = entry.relation.panel_decision || null;
+    const normalizedStatus = normalizeText(currentStatus);
+    const isArchived =
+      panelDecision === "panel_reject" ||
+      entry.relation.inactivated_at != null ||
+      normalizedStatus.includes("hold");
 
-  return (
-    <DataTable
-      headers={[
-        "Plant",
-        "Place Inco",
-        "Area",
-        "Main Plants / Type",
-        "Product Lines",
-        "Commodity",
-        "Del. Status",
-        "Cert",
-        "Transit Days",
-      ]}
-      rows={rows}
-    />
-  );
-}
+    return {
+      site: bundle.site,
+      unit: entry.unit,
+      group: entry.group,
+      relation: entry.relation,
+      workspace: null,
+      siteName: bundle.site.site_name || `Site ${bundle.site.id_site}`,
+      finalGrade: entry.relation.final_grade || null,
+      currentStatus,
+      panelDecision,
+      isArchived,
+    };
+  });
 
-function renderCertificationsTab(group: GroupRecord) {
-  const rows = CERTIFICATIONS.filter((cert) => cert.groupId === group.id).map(
-    (cert) => [
-      <span className="font-semibold text-[#0f2744] dark:text-white">
-        {cert.name}
-      </span>,
-      <Badge text={String(cert.certType)} tone="gold" />,
-      cert.scope,
-      <DeliveryStatusBadge value={cert.status} />,
-      cert.startDate,
-    ],
-  );
+const getSiteOverview = (bundle: SitePanelBundle) => {
+  const relationRecords = buildRelationRecords(bundle);
 
-  return (
-    <DataTable
-      headers={["Cert", "Type", "Family", "Status", "Start Date"]}
-      rows={rows}
-    />
-  );
-}
+  const latestEvaluation = relationRecords
+    .map((r) => r.relation.last_evaluation_date)
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .pop();
 
-function renderAgreementsTab(group: GroupRecord) {
-  const rows = AGREEMENTS.filter(
-    (agreement) => agreement.groupId === group.id,
-  ).map((agreement) => [
-    <Badge text={String(agreement.type)} tone="slate" />,
-    <span className="font-semibold text-[#0f2744] dark:text-white">
-      {agreement.paymentTerms}
-    </span>,
-    <AgreementBadge value={agreement.lta} />,
-    <AgreementBadge value={agreement.consignmentMode} />,
-    agreement.description,
-  ]);
+  const panelReady = relationRecords.filter(
+    (r) =>
+      r.panelDecision === "panel_add" ||
+      r.panelDecision === "panel_add_exec_committee",
+  ).length;
 
-  return (
-    <DataTable
-      headers={["Type", "TOP", "LTA", "Consignement", "Details"]}
-      rows={rows}
-    />
-  );
-}
+  const archivedCount = relationRecords.filter((r) => r.isArchived).length;
 
-function renderContactsTab(group: GroupRecord) {
-  const rows = CONTACTS.filter((contact) => contact.groupId === group.id).map(
-    (contact) => [
-      <span className="font-semibold text-[#0f2744] dark:text-white">
-        {contact.fullName}
-      </span>,
-      <Badge text={String(contact.roleName)} tone="slate" />,
-      contact.owner,
-      <span className="text-[#0f2744] dark:text-sky-300">{contact.email}</span>,
-      <Badge text={String(contact.language).toUpperCase()} tone="blue" />,
-    ],
-  );
+  return {
+    relationRecords,
+    latestEvaluation,
+    panelReady,
+    archivedCount,
+  };
+};
 
-  return (
-    <DataTable
-      headers={[
-        "Supplier Leader",
-        "Role",
-        "Commodity Resp",
-        "Supplier Email",
-        "Language",
-      ]}
-      rows={rows}
-    />
-  );
-}
+const renderGroupsSummary = (bundle: SitePanelBundle) => {
+  const groups = new Map<
+    number,
+    {
+      group: SupplierGroupSummary;
+      units: Set<number>;
+      categories: Set<string>;
+    }
+  >();
 
-function renderOpportunitiesTab(group: GroupRecord) {
-  const rows = OPPORTUNITIES.filter(
-    (opportunity) => opportunity.groupId === group.id,
-  ).map((opportunity) => [
-    <span className="font-semibold text-[#0f2744] dark:text-white">
-      {opportunity.name}
-    </span>,
-    <OpportunityBadge value={opportunity.status} />,
-    <OpportunityBadge value={opportunity.phaseStatus} />,
-    <OpportunityBadge value={opportunity.validationDecision} />,
-    opportunity.assumptionsSummary,
-    opportunity.comments,
-  ]);
+  for (const entry of bundle.relations) {
+    const existing = groups.get(entry.group.id_group) || {
+      group: entry.group,
+      units: new Set<number>(),
+      categories: new Set<string>(),
+    };
 
-  return (
-    <DataTable
-      headers={[
-        "Supplier",
-        "Del. Status",
-        "Last known Eval",
-        "Competitiveness",
-        "SQMA / Family Cover. / Geo . Cover",
-        "Financial Health",
-      ]}
-      rows={rows}
-    />
-  );
-}
-
-function renderFinancialsTab(group: GroupRecord) {
-  const rows = FINANCIALS.filter((line) => line.groupId === group.id).map(
-    (line) => [
-      <span className="font-semibold text-[#0f2744] dark:text-white">
-        {line.name}
-      </span>,
-      <AgreementBadge value={line.top} />,
-      <Badge text={String(line.budgetValue)} tone="slate" />,
-      <Badge text={String(line.realApDays ?? "-")} tone="blue" />,
-      <span className="font-semibold text-[#0f2744] dark:text-white">
-        {line.forecastEOY}
-      </span>,
-      <FinancialHealthBadge value={line.comments} />,
-    ],
-  );
-
-  return (
-    <DataTable
-      headers={[
-        "Supplier",
-        "TOP",
-        "Transit Days",
-        "Real AP days (Val)",
-        "Last Eval Score",
-        "Financial Health",
-      ]}
-      rows={rows}
-    />
-  );
-}
-
-function renderActiveTab(tab: TabKey, group: GroupRecord) {
-  switch (tab) {
-    case "Overview":
-      return renderOverviewTab(group);
-    case "Units":
-      return renderUnitsTab(group);
-    case "Certifications":
-      return renderCertificationsTab(group);
-    case "Agreements":
-      return renderAgreementsTab(group);
-    case "Contacts":
-      return renderContactsTab(group);
-    case "Opportunities":
-      return renderOpportunitiesTab(group);
-    case "Financials":
-      return renderFinancialsTab(group);
-    default:
-      return null;
+    existing.units.add(entry.unit.id_supplier_unit);
+    entry.group_categories.forEach((c) => existing.categories.add(c));
+    groups.set(entry.group.id_group, existing);
   }
-}
+
+  const rows = Array.from(groups.values()).map((item) => [
+    <span className="font-bold text-[#062B49]">{item.group.nom}</span>,
+    item.group.supplier_owner || "-",
+    item.group.supplier_scope || "-",
+    Array.from(item.categories).join(", ") || "-",
+    item.units.size,
+  ]);
+
+  return (
+    <DataTable
+      headers={["Group", "Owner", "Scope", "Categories", "Units"]}
+      rows={rows}
+    />
+  );
+};
+
+const renderRelationsTable = (
+  bundle: SitePanelBundle,
+  onViewRelation: (record: RelationRecord) => void,
+  onOpenEvaluation: (relationId: number) => void,
+) => {
+  const relationRecords = buildRelationRecords(bundle);
+
+  return (
+    <DataTable
+      headers={[
+        "Unit",
+        "Group",
+        "Grade",
+        "Class",
+        "Status",
+        "Panel",
+        "Updated",
+        "Actions",
+      ]}
+      rows={relationRecords.map((record) => [
+        <div>
+          <div className="font-bold text-[#062B49]">
+            {record.unit.unit_code ||
+              `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`}
+          </div>
+          <div className="mt-0.5 text-xs text-slate-400">
+            {(record.group.group_code ||
+              `GRP-${String(record.group.id_group).padStart(6, "0")}`) +
+              " • " +
+              (record.group.supplier_type || "Uncategorized")}
+          </div>
+        </div>,
+        record.group.nom || "-",
+        record.finalGrade ? (
+          <Badge
+            text={record.finalGrade}
+            tone={getGradeTone(record.finalGrade)}
+          />
+        ) : (
+          <Badge text="Pending" tone="amber" />
+        ),
+        record.relation.class_value != null
+          ? String(record.relation.class_value)
+          : "-",
+        <Badge
+          text={record.currentStatus || "Pending"}
+          tone={getStatusTone(record.currentStatus)}
+        />,
+        <Badge
+          text={getPanelDecisionLabel(record.panelDecision)}
+          tone={getPanelDecisionTone(record.panelDecision)}
+        />,
+        formatDate(record.relation.last_evaluation_date),
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => onViewRelation(record)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0C5381]"
+          >
+            <Eye className="h-3.5 w-3.5" /> Details
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenEvaluation(record.relation.id_relation)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#062B49] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#0C5381]"
+          >
+            <ExternalLink className="h-3.5 w-3.5" /> Open
+          </button>
+        </div>,
+      ])}
+    />
+  );
+};
 
 export default function SuppliersPage() {
+  const navigate = useNavigate();
+  const [showFilters, setShowFilters] = useState(true);
+  const [siteBundles, setSiteBundles] = useState<SitePanelBundle[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+
   const [search, setSearch] = useState("");
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState("all");
-  const [selectedId, setSelectedId] = useState<number>(GROUPS[0]?.id ?? 0);
-  const [activeTab, setActiveTab] = useState<TabKey>("Overview");
-  const [viewMode, setViewMode] = useState<ViewMode>("Group Scan");
-  const [scanSort, setScanSort] = useState<ScanSort>("score-desc");
-  const [scanFilter, setScanFilter] = useState<ScanFilter>("all");
-  const [directoryPage, setDirectoryPage] = useState(1);
-  const [scanPage, setScanPage] = useState(1);
-  const groupOptions = useMemo(
-    () => [
-      "all",
-      ...Array.from(
-        new Set(GROUPS.map((group) => group.groupName || "Ungrouped")),
-      ),
-    ],
-    [],
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [filterGrade, setFilterGrade] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterPanelDecision, setFilterPanelDecision] = useState("");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterPurchaseManager, setFilterPurchaseManager] = useState("");
+  const [filterPlantManager, setFilterPlantManager] = useState("");
+  const [groupBy, setGroupBy] = useState("none");
+
+  const [page, setPage] = useState(1);
+  const [totalSites, setTotalSites] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedRelationRecord, setSelectedRelationRecord] =
+    useState<RelationRecord | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await supplierAPI.listSitePanel({
+          skip: (page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
+          site_name: search || undefined,
+          supplier_owner: filterOwner || undefined,
+          class_grade: filterGrade || undefined,
+          status: filterStatus || undefined,
+          panel_decision: filterPanelDecision || undefined,
+          category: filterCategory || undefined,
+          evaluation_start: filterStartDate || undefined,
+          evaluation_end: filterEndDate || undefined,
+          purchase_manager: filterPurchaseManager || undefined,
+          plant_manager: filterPlantManager || undefined,
+        });
+
+        if (cancelled) return;
+
+        const items = response.data?.items || [];
+
+        setSiteBundles(items);
+        setTotalSites(response.data?.total || items.length);
+
+        if (items.length > 0) {
+          setSelectedSiteId((current) => {
+            if (current && items.some((b) => b.site.id_site === current)) {
+              return current;
+            }
+            return items[0].site.id_site;
+          });
+        } else {
+          setSelectedSiteId(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load sites");
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    refreshTick,
+    page,
+    search,
+    filterOwner,
+    filterCategory,
+    filterGrade,
+    filterStatus,
+    filterPanelDecision,
+    filterStartDate,
+    filterEndDate,
+    filterPurchaseManager,
+    filterPlantManager,
+  ]);
+
+  const allCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          siteBundles.flatMap((bundle) =>
+            bundle.relations.flatMap((entry) => entry.group_categories),
+          ),
+        ),
+      ).sort(),
+    [siteBundles],
   );
 
-  const filteredDirectory = useMemo(() => {
-    return GROUPS.filter((group) => {
-      const matchesSearch = supplierMatchesSearch(group, search);
+  const gradeOptions = [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "D",
+  ];
 
-      const matchesGroup =
-        selectedGroupFilter === "all"
-          ? true
-          : (group.groupName || "Ungrouped") === selectedGroupFilter;
+  const statusOptions = [
+    "Can Quote and Be Awarded",
+    "Can Quote but Not be Awarded",
+    "New business on Hold",
+  ];
 
-      return matchesSearch && matchesGroup;
-    });
-  }, [search, selectedGroupFilter]);
+  const panelDecisionOptions = [
+    "panel_add",
+    "panel_add_exec_committee",
+    "panel_reject",
+  ];
 
-  const searchOnlyMatches = useMemo(() => {
-    return GROUPS.filter((group) => supplierMatchesSearch(group, search));
-  }, [search]);
+  const groupedSites = useMemo(() => {
+    if (groupBy === "country") {
+      const buckets: Record<string, SitePanelBundle[]> = {};
 
-  const groupOnlyMatches = useMemo(() => {
-    if (selectedGroupFilter === "all") return GROUPS;
-    return GROUPS.filter(
-      (group) => (group.groupName || "Ungrouped") === selectedGroupFilter,
-    );
-  }, [selectedGroupFilter]);
+      for (const bundle of siteBundles) {
+        const key = bundle.site.country || "Unspecified";
+        buckets[key] = buckets[key] || [];
+        buckets[key].push(bundle);
+      }
 
-  const suggestedSuppliers = useMemo(() => {
-    if (!search.trim() || filteredDirectory.length > 0) return [];
+      return Object.entries(buckets).sort((a, b) => a[0].localeCompare(b[0]));
+    }
 
-    const normalizedKeyword = normalizeSearchText(search);
-    const tokens = normalizedKeyword.split(/\s+/).filter(Boolean);
+    return [["All Sites", siteBundles]] as [string, SitePanelBundle[]][];
+  }, [siteBundles, groupBy]);
 
-    return GROUPS.map((group) => {
-      const searchableWords = getSupplierSearchText(group)
-        .split(/\s+/)
-        .filter(Boolean);
-      const score = tokens.reduce((total, token) => {
-        const exactMatch = searchableWords.some((word) => word.includes(token));
-        if (exactMatch) return total + 3;
+  const totalPages = Math.max(1, Math.ceil(totalSites / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
 
-        const closeMatch = searchableWords.some((word) =>
-          isCloseSearchToken(token, word),
-        );
-        return total + Number(closeMatch);
-      }, 0);
+  const selectedBundle =
+    siteBundles.find((bundle) => bundle.site.id_site === selectedSiteId) ||
+    null;
 
-      return { group, score };
-    })
-      .filter(({ score }) => score > 0)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 3)
-      .map(({ group }) => group);
-  }, [filteredDirectory.length, search]);
+  const selectedOverview = selectedBundle
+    ? getSiteOverview(selectedBundle)
+    : null;
 
-  const resetSupplierSearch = () => {
-    setSearch("");
-    setSelectedGroupFilter("all");
-    setDirectoryPage(1);
+  const openRelationEvaluation = (relationId: number) => {
+    navigate(`/supplier-relations/${relationId}/evaluation`);
   };
 
-  const selected =
-    GROUPS.find((group) => group.id === selectedId) ?? GROUPS[0] ?? null;
+  const openRelationDetail = async (record: RelationRecord) => {
+    try {
+      const response = await supplierAPI.getRelationEvaluationWorkspace(
+        record.relation.id_relation,
+      );
 
-  const selectedGroupSuppliers = useMemo(() => {
-    if (!selected) return [];
-    return GROUPS.filter((group) => group.groupName === selected.groupName);
-  }, [selected]);
-
-  const scanResults = useMemo(() => {
-    const filteredSuppliers = selectedGroupSuppliers.filter((supplier) => {
-      if (scanFilter === "attention") {
-        return (
-          supplier.status !== "Active" ||
-          supplier.cert === "-" ||
-          supplier.nextReview === "-" ||
-          typeof supplier.score !== "number" ||
-          supplier.score < 85
-        );
-      }
-      if (scanFilter === "strategic") {
-        return (
-          String(supplier.strategic).toLowerCase() !== "-" &&
-          String(supplier.strategic).toLowerCase() !== "none"
-        );
-      }
-      if (scanFilter === "missing-cert") {
-        return supplier.cert === "-";
-      }
-      return true;
-    });
-
-    return [...filteredSuppliers].sort((left, right) => {
-      if (scanSort === "score-desc") {
-        return (right.score ?? -1) - (left.score ?? -1);
-      }
-      if (scanSort === "review-asc") {
-        return String(left.nextReview).localeCompare(String(right.nextReview));
-      }
-      if (scanSort === "strategic-first") {
-        return (
-          Number(Boolean(right.monopolistic || right.strategic !== "-")) -
-          Number(Boolean(left.monopolistic || left.strategic !== "-"))
-        );
-      }
-      return String(left.nom).localeCompare(String(right.nom));
-    });
-  }, [scanFilter, scanSort, selectedGroupSuppliers]);
-
-  const directoryTotalPages = Math.max(
-    1,
-    Math.ceil(filteredDirectory.length / PAGE_SIZE),
-  );
-  const paginatedDirectory = filteredDirectory.slice(
-    (directoryPage - 1) * PAGE_SIZE,
-    directoryPage * PAGE_SIZE,
-  );
-
-  const scanTotalPages = Math.max(1, Math.ceil(scanResults.length / PAGE_SIZE));
-  const paginatedScan = scanResults.slice(
-    (scanPage - 1) * PAGE_SIZE,
-    scanPage * PAGE_SIZE,
-  );
-
-  useEffect(() => {
-    setDirectoryPage(1);
-  }, [search, selectedGroupFilter]);
-
-  useEffect(() => {
-    if (filteredDirectory.length === 0) {
-      return;
+      setSelectedRelationRecord({
+        ...record,
+        workspace: response.data as RelationEvaluationWorkspace,
+      });
+    } catch (e) {
+      setSelectedRelationRecord(record);
     }
-
-    const hasSelectedInFilteredDirectory = filteredDirectory.some(
-      (group) => group.id === selectedId,
-    );
-
-    if (!hasSelectedInFilteredDirectory && viewMode === "Group Scan") {
-      setSelectedId(filteredDirectory[0].id);
-      setActiveTab("Overview");
-    }
-  }, [filteredDirectory, selectedId, viewMode]);
+  };
 
   useEffect(() => {
-    setScanPage(1);
-  }, [scanFilter, scanSort, selected?.groupName]);
-
-  useEffect(() => {
-    if (directoryPage > directoryTotalPages) {
-      setDirectoryPage(directoryTotalPages);
-    }
-  }, [directoryPage, directoryTotalPages]);
-
-  if (!selected) {
-    return (
-      <div className="rounded-[28px] border border-slate-200 bg-white/90 p-12 text-center text-slate-500 shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-300">
-        No supplier data available.
-      </div>
-    );
-  }
-
-  const attentionCount = selectedGroupSuppliers.filter(
-    (supplier) =>
-      supplier.status !== "Active" ||
-      supplier.cert === "-" ||
-      supplier.nextReview === "-" ||
-      typeof supplier.score !== "number" ||
-      supplier.score < 85,
-  ).length;
-  const strategicCount = selectedGroupSuppliers.filter(
-    (supplier) =>
-      String(supplier.strategic).toLowerCase() !== "-" &&
-      String(supplier.strategic).toLowerCase() !== "none",
-  ).length;
-  const averageScoreBase = selectedGroupSuppliers.filter(
-    (supplier) => typeof supplier.score === "number",
-  );
-  const averageScore =
-    averageScoreBase.length > 0
-      ? Math.round(
-          averageScoreBase.reduce(
-            (sum, supplier) => sum + (supplier.score ?? 0),
-            0,
-          ) / averageScoreBase.length,
-        )
-      : "-";
+    if (currentPage !== page) setPage(currentPage);
+  }, [currentPage, page]);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <aside className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,#0f2744_0%,#14365f_55%,#1c4a7d_100%)] p-5 text-white shadow-[0_28px_60px_rgba(15,39,68,0.28)]">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/70">
-            Supplier Panel SB1
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-            Browse by group
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-sky-100/75">
-            Search suppliers, narrow by group, and jump into either a full
-            detail panel or a broader group scan.
-          </p>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-100/50" />
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search supplier, group, category"
-              className="h-12 w-full rounded-2xl border border-white/10 bg-white/10 pl-11 pr-4 text-sm text-white outline-none placeholder:text-sky-100/45 focus:border-sky-300/45"
-            />
-          </label>
-
-          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-            <Filter className="h-4 w-4 text-sky-100/60" />
-            <select
-              value={selectedGroupFilter}
-              onChange={(event) => setSelectedGroupFilter(event.target.value)}
-              className="w-full bg-transparent text-sm text-white outline-none"
-            >
-              {groupOptions.map((group) => (
-                <option key={group} value={group} className="text-slate-900">
-                  {group === "all" ? "All groups" : group}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between text-sm text-sky-100/75">
-          <span>{filteredDirectory.length} supplier(s)</span>
-          <span>
-            {selectedGroupFilter === "all" ? "All groups" : selectedGroupFilter}
-          </span>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {paginatedDirectory.length > 0 ? (
-            paginatedDirectory.map((supplier) => {
-              const isSelected = supplier.id === selected.id;
-
-              return (
-                <button
-                  key={supplier.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(supplier.id);
-                    setViewMode("Supplier Detail");
-                    setActiveTab("Overview");
-                  }}
-                  className={`w-full rounded-[24px] border p-4 text-left transition ${
-                    isSelected
-                      ? "border-sky-300/60 bg-white/18 shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
-                      : "border-white/10 bg-white/6 hover:border-white/20 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-white">
-                        {supplier.nom}
-                      </div>
-                      <div className="mt-1 text-xs text-sky-100/70">
-                        {supplier.groupName} • {supplier.category}
-                      </div>
-                    </div>
-                    <ChevronRight className="mt-0.5 h-4 w-4 text-sky-100/55" />
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <DeliveryStatusBadge value={supplier.status} />
-                    <PanelBadge value={supplier.panel} />
-                  </div>
-                </button>
-              );
-            })
-          ) : (
-            <div className="rounded-[24px] border border-white/10 bg-white/8 p-4 text-sm text-sky-100/80">
-              <div className="font-semibold text-white">No suppliers found</div>
-              <p className="mt-2 leading-6">
-                Try a supplier name, group, plant, commodity, owner, email, or
-                clear the current filters.
-              </p>
-
-              <div className="mt-3 space-y-2 text-xs text-sky-100/70">
-                {search.trim() &&
-                searchOnlyMatches.length > 0 &&
-                selectedGroupFilter !== "all" ? (
-                  <p>
-                    {searchOnlyMatches.length} match(es) found outside
-                    {` ${selectedGroupFilter}`}. Select “All groups” to view
-                    them.
-                  </p>
-                ) : null}
-                {selectedGroupFilter !== "all" &&
-                groupOnlyMatches.length > 0 ? (
-                  <p>
-                    {groupOnlyMatches.length} supplier(s) exist in this group.
-                  </p>
-                ) : null}
-              </div>
-
-              {suggestedSuppliers.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100/55">
-                    Did you mean
-                  </div>
-                  {suggestedSuppliers.map((supplier) => (
-                    <button
-                      key={`suggestion-${supplier.id}`}
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(supplier.id);
-                        setSelectedGroupFilter("all");
-                        setViewMode("Supplier Detail");
-                        setActiveTab("Overview");
-                      }}
-                      className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-left font-semibold text-white transition hover:border-sky-200/40 hover:bg-white/15"
-                    >
-                      <span>{supplier.nom}</span>
-                      <ChevronRight className="h-4 w-4 text-sky-100/55" />
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={resetSupplierSearch}
-                className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-[#0f2744] shadow-[0_14px_24px_rgba(255,255,255,0.12)] transition hover:bg-sky-50"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Reset search
-              </button>
-            </div>
-          )}
-        </div>
-
-        {filteredDirectory.length > 0 ? (
-          <div className="mt-5">
-            <Pagination
-              page={directoryPage}
-              totalPages={directoryTotalPages}
-              totalItems={filteredDirectory.length}
-              pageSize={PAGE_SIZE}
-              onPageChange={setDirectoryPage}
-              compact
-            />
-          </div>
-        ) : null}
-      </aside>
-
-      <main className="space-y-6">
-        <section className="overflow-hidden rounded-[32px] border border-white/70 bg-[linear-gradient(135deg,#0f2744_0%,#15406e_55%,#2f6fed_100%)] p-6 text-white shadow-[0_28px_60px_rgba(15,39,68,0.24)]">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              {/* <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-100/65">
-                Supplier Workspace
-              </p> */}
-              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-4xl">
-                {selected.nom}
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-sky-100/80">
-                {selected.GlobalSupplier}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-4 xl:items-end">
-              <div className="inline-flex rounded-2xl bg-white/12 p-1.5">
-                {(["Group Scan", "Supplier Detail"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setViewMode(mode)}
-                    className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                      viewMode === mode
-                        ? "bg-white text-[#0f2744] shadow-[0_14px_24px_rgba(255,255,255,0.16)]"
-                        : "text-white/80 hover:text-white"
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge text={selected.groupName} tone="slate" />
-                <Badge text={`Class ${selected.supplierClass}`} tone="gold" />
-                <DeliveryStatusBadge value={selected.status} />
-                <PanelBadge value={selected.panel} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {viewMode === "Group Scan" ? (
-          <SectionCard
-            title="Portfolio scan"
-            subtitle="Use filters and sorting to sweep the supplier family before opening details."
-            contentClassName="space-y-5"
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label="Suppliers In Group"
-                value={selectedGroupSuppliers.length}
-                helper="Visible in the selected supplier family"
-                tone="info"
-                icon={<UsersRound className="h-5 w-5" />}
-              />
-              <StatCard
-                label="Avg Last Eval Score"
-                value={averageScore}
-                helper="Mean score for evaluated suppliers"
-                tone="success"
-                icon={<BarChart3 className="h-5 w-5" />}
-              />
-              <StatCard
-                label="Strategic Suppliers"
-                value={strategicCount}
-                helper="Flagged as strategic or monitored"
-                tone="warning"
-                icon={<Star className="h-5 w-5" />}
-              />
-              <StatCard
-                label="Need Attention"
-                value={attentionCount}
-                helper="Low score, missing data, or inactive"
-                tone="danger"
-                icon={<AlertTriangle className="h-5 w-5" />}
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Sort
-                </span>
-                <select
-                  value={scanSort}
-                  onChange={(event) =>
-                    setScanSort(event.target.value as ScanSort)
-                  }
-                  className="w-full bg-transparent outline-none"
-                >
-                  <option value="score-desc">Highest score first</option>
-                  <option value="review-asc">Nearest review first</option>
-                  <option value="strategic-first">Strategic first</option>
-                  <option value="name-asc">Name A-Z</option>
-                </select>
-              </label>
-
-              <label className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Filter
-                </span>
-                <select
-                  value={scanFilter}
-                  onChange={(event) =>
-                    setScanFilter(event.target.value as ScanFilter)
-                  }
-                  className="w-full bg-transparent outline-none"
-                >
-                  <option value="all">All suppliers</option>
-                  <option value="attention">Need attention</option>
-                  <option value="strategic">Strategic only</option>
-                  <option value="missing-cert">Missing cert only</option>
-                </select>
-              </label>
-            </div>
-
-            <DataTable
-              headers={[
-                "Supplier",
-                "Plant",
-                "Del. Status",
-                "Last known Eval",
-                "Last Eval Score",
-                "Strategic",
-                "Cert",
-                "Req Date AP",
-              ]}
-              rows={paginatedScan.map((supplier) => [
-                <button
-                  key={`open-${supplier.id}`}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(supplier.id);
-                    setViewMode("Supplier Detail");
-                    setActiveTab("Overview");
-                  }}
-                  className="font-semibold text-[#0f2744] transition hover:text-[#2f6fed] dark:text-white dark:hover:text-sky-300"
-                >
-                  {supplier.nom}
-                </button>,
-                supplier.responsiblePlant,
-                <DeliveryStatusBadge value={supplier.status} />,
-                <Badge text={String(supplier.lastEval)} tone="slate" />,
-                <span className="font-semibold text-[#10233f] dark:text-white">
-                  {supplier.score ?? "-"}
-                </span>,
-                <StrategicBadge value={supplier.strategic} />,
-                <CertificationBadge value={supplier.cert} />,
-                <Badge
-                  text={String(supplier.nextReview)}
-                  tone={supplier.nextReview === "-" ? "gray" : "blue"}
-                />,
-              ])}
-            />
-
-            <Pagination
-              page={scanPage}
-              totalPages={scanTotalPages}
-              totalItems={scanResults.length}
-              pageSize={PAGE_SIZE}
-              onPageChange={setScanPage}
-            />
-          </SectionCard>
-        ) : (
-          <SectionCard
-            title="Supplier detail"
-            subtitle={`${selected.groupName} supplier record with related operational sections.`}
-            contentClassName="space-y-5"
-          >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={`whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
-                      activeTab === tab
-                        ? "bg-[#0f2744] text-white shadow-[0_16px_28px_rgba(15,39,68,0.22)]"
-                        : "border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:text-[#0f2744] dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {renderActiveTab(activeTab, selected)}
+    <div className="mx-auto flex max-w-[1700px] flex-col gap-7 px-2">
+      <PageIntro
+        eyebrow="Panel"
+        title="Avocarbon Sites"
+        description="Site-first view of suppliers, relations, and class evaluations."
+        actions={
+          <>
             <button
               type="button"
-              onClick={() => setViewMode("Group Scan")}
-              className="whitespace-nowrap rounded-2xl bg-[#0f2744] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_28px_rgba(15,39,68,0.22)] transition hover:bg-[#15406e] dark:bg-sky-500 dark:text-[#0f2744] dark:hover:bg-sky-400"
+              onClick={() => navigate("/suppliers/onboarding")}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
             >
-              Back to group suppliers
+              <Plus className="h-4 w-4" /> Create Supplier Master
             </button>
-          </SectionCard>
-        )}
+
+            <button
+              type="button"
+              onClick={() => navigate("/suppliers/manage")}
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
+            >
+              Group Management
+            </button>
+          </>
+        }
+      />
+
+      <main className="mx-auto w-full max-w-[1600px]">
+        <div className="mb-6 rounded-[2rem] border border-slate-200/80 bg-white/90 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[240px] flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Site Name
+              </label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search sites by name"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Supplier Owner
+              </label>
+              <div className="relative">
+                <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={filterOwner}
+                  onChange={(e) => {
+                    setFilterOwner(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Owner email or name"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="w-48">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Category
+              </label>
+              <div className="relative">
+                <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={filterCategory}
+                  onChange={(e) => {
+                    setFilterCategory(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">All categories</option>
+                  {allCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            <div className="w-40">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Class Grade
+              </label>
+              <div className="relative">
+                <Award className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={filterGrade}
+                  onChange={(e) => {
+                    setFilterGrade(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">All grades</option>
+                  {gradeOptions.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            <div className="w-56">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Status
+              </label>
+              <div className="relative">
+                <AlertCircle className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={filterStatus}
+                  onChange={(e) => {
+                    setFilterStatus(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">All statuses</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            <div className="w-56">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Panel Decision
+              </label>
+              <div className="relative">
+                <ClipboardCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={filterPanelDecision}
+                  onChange={(e) => {
+                    setFilterPanelDecision(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">All decisions</option>
+                  {panelDecisionOptions.map((decision) => (
+                    <option key={decision} value={decision}>
+                      {getPanelDecisionLabel(decision)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            <div className="w-44">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                From
+              </label>
+              <div className="relative">
+                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => {
+                    setFilterStartDate(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="w-44">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                To
+              </label>
+              <div className="relative">
+                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => {
+                    setFilterEndDate(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Purchase Manager
+              </label>
+              <div className="relative">
+                <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={filterPurchaseManager}
+                  onChange={(e) => {
+                    setFilterPurchaseManager(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Role or contact name"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Plant Manager
+              </label>
+              <div className="relative">
+                <Factory className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={filterPlantManager}
+                  onChange={(e) => {
+                    setFilterPlantManager(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Role or contact name"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+
+            <div className="w-44">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Group By
+              </label>
+              <div className="relative">
+                <Layers3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value)}
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="none">None</option>
+                  <option value="country">Country</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            {(search ||
+              filterOwner ||
+              filterCategory ||
+              filterGrade ||
+              filterStatus ||
+              filterPanelDecision ||
+              filterStartDate ||
+              filterEndDate ||
+              filterPurchaseManager ||
+              filterPlantManager) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setFilterCategory("");
+                  setFilterOwner("");
+                  setFilterGrade("");
+                  setFilterStatus("");
+                  setFilterPanelDecision("");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
+                  setFilterPurchaseManager("");
+                  setFilterPlantManager("");
+                  setPage(1);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                <X className="h-4 w-4" /> Reset
+              </button>
+            )}
+
+            <div className="ml-auto text-sm font-medium text-slate-400">
+              {totalSites} site{totalSites !== 1 ? "s" : ""}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-7 xl:grid-cols-[440px_minmax(0,1fr)]">
+          <aside className="space-y-6">
+            {error && (
+              <InlineAlert
+                title="We couldn't load the site workspace"
+                message={error}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setRefreshTick((value) => value + 1)}
+                    className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
+                  >
+                    Retry
+                  </button>
+                }
+              />
+            )}
+
+            {isLoading ? (
+              <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
+                <RefreshCw className="mx-auto mb-2 h-5 w-5 animate-spin" />
+                Loading sites…
+              </div>
+            ) : siteBundles.length === 0 ? (
+              <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
+                No sites match your filters.
+              </div>
+            ) : (
+              groupedSites.map(([label, bundles]) => (
+                <section key={label} className="space-y-3">
+                  {groupBy !== "none" && (
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                      <span>{label}</span>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                  )}
+
+                  {bundles.map((bundle) => (
+                    <SiteCard
+                      key={bundle.site.id_site}
+                      bundle={bundle}
+                      isSelected={bundle.site.id_site === selectedSiteId}
+                      onSelect={() => setSelectedSiteId(bundle.site.id_site)}
+                    />
+                  ))}
+                </section>
+              ))
+            )}
+
+            {totalSites > PAGE_SIZE && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalItems={totalSites}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                compact
+              />
+            )}
+          </aside>
+
+          <section className="space-y-5">
+            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white px-6 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+              <div className="absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_45%)]" />
+
+              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                    Selected Site
+                  </p>
+                  <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+                    {selectedBundle?.site.site_name || "Select a site"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {selectedBundle
+                      ? `Site ${selectedBundle.site.id_site} · ${
+                          [
+                            selectedBundle.site.city,
+                            selectedBundle.site.country,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") || "Location pending"
+                        }`
+                      : "Click any site on the left to inspect details"}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setRefreshTick((value) => value + 1)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:text-[#0C5381]"
+                >
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
+              </div>
+            </div>
+
+            {!selectedBundle || !selectedOverview ? (
+              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white px-4 py-16 text-center text-sm text-slate-400">
+                Select a site from the left panel to see detailed information
+                here.
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <StatCard
+                    label="Relations"
+                    value={selectedBundle.relation_count}
+                    helper="Active site relationships"
+                    icon={<Layers3 className="h-4 w-4" />}
+                    tone="blue"
+                  />
+                  <StatCard
+                    label="Groups"
+                    value={selectedBundle.group_count}
+                    helper="Supplier groups linked"
+                    icon={<Building2 className="h-4 w-4" />}
+                    tone="purple"
+                  />
+                  <StatCard
+                    label="Panel Ready"
+                    value={selectedOverview.panelReady}
+                    helper="Can be added to panel"
+                    icon={<ClipboardCheck className="h-4 w-4" />}
+                    tone="green"
+                  />
+                  <StatCard
+                    label="On Hold / Archived"
+                    value={selectedOverview.archivedCount}
+                    helper="Rejected or on hold"
+                    icon={<Archive className="h-4 w-4" />}
+                    tone="red"
+                  />
+                </div>
+
+                {/* <div className="grid gap-5 xl:grid-cols-2">
+                  <SectionCard
+                    title="Site Profile"
+                    subtitle="Avocarbon site information"
+                  >
+                    <Field
+                      label="Site Name"
+                      value={selectedBundle.site.site_name || "-"}
+                    />
+                    <Field
+                      label="City"
+                      value={selectedBundle.site.city || "-"}
+                    />
+                    <Field
+                      label="Country"
+                      value={selectedBundle.site.country || "-"}
+                    />
+                    <Field
+                      label="Address"
+                      value={selectedBundle.site.address_line || "-"}
+                    />
+                    <Field
+                      label="Last Evaluation"
+                      value={formatDate(selectedOverview.latestEvaluation)}
+                    />
+                  </SectionCard>
+
+                  <SectionCard
+                    title="Coverage Snapshot"
+                    subtitle="Supplier relationship coverage"
+                  >
+                    <Field
+                      label="Relations"
+                      value={selectedBundle.relation_count}
+                    />
+                    <Field label="Groups" value={selectedBundle.group_count} />
+                    <Field
+                      label="Panel Ready"
+                      value={selectedOverview.panelReady}
+                    />
+                    <Field
+                      label="Archived"
+                      value={selectedOverview.archivedCount}
+                    />
+                  </SectionCard>
+                </div> */}
+
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                        Relations
+                      </p>
+                      <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
+                        Supplier relations table
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Units, groups, grade, panel decision and latest
+                        evaluation status for this site.
+                      </p>
+                    </div>
+                  </div>
+
+                  {renderRelationsTable(
+                    selectedBundle,
+                    openRelationDetail,
+                    openRelationEvaluation,
+                  )}
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                      Groups
+                    </p>
+                    <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
+                      Supplier group summary
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Group ownership, scope and categories linked to the
+                      selected site.
+                    </p>
+                  </div>
+
+                  {renderGroupsSummary(selectedBundle)}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       </main>
+
+      {selectedRelationRecord && (
+        <RelationDetailModal
+          record={selectedRelationRecord}
+          onClose={() => setSelectedRelationRecord(null)}
+          onOpenEvaluation={openRelationEvaluation}
+        />
+      )}
     </div>
   );
 }
