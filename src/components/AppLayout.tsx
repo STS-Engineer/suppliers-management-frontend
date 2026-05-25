@@ -42,6 +42,12 @@ const routeMeta: Record<string, RouteMeta> = {
     summary:
       "Find an existing supplier group, add units, and continue assignment.",
   },
+  // "/access-management": {
+  //   eyebrow: "Security",
+  //   title: "Access Management",
+  //   summary:
+  //     "Provision application identities, manage account status, and maintain password access.",
+  // },
   "/data-collection": {
     eyebrow: "Data",
     title: "Data Collection Center",

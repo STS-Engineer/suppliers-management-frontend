@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
+  KeyRound,
   Building2,
   ChevronDown,
   ChevronLeft,
@@ -44,6 +45,12 @@ const PRIMARY_NAV: NavItem[] = [
       { name: "Active Sites", path: "/suppliers/sites-active" },
     ],
   },
+  // {
+  //   name: "Access Management",
+  //   label: "Security",
+  //   icon: KeyRound,
+  //   subItems: [{ name: "Access Identities", path: "/access-management" }],
+  // },
 ];
 
 function isPathActive(pathname: string, path: string) {
@@ -94,9 +101,10 @@ export default function AppSidebar() {
 
   const open = isExpanded || isHovered || isMobileOpen;
   const accentColor = "#93c5fd";
+  const visibleNav = PRIMARY_NAV;
 
   useEffect(() => {
-    const parent = PRIMARY_NAV.find((item) =>
+    const parent = visibleNav.find((item) =>
       item.subItems.some((subItem) =>
         isPathActive(location.pathname, subItem.path),
       ),
@@ -105,7 +113,7 @@ export default function AppSidebar() {
     if (parent) {
       setExpandedGroups((current) => ({ ...current, [parent.name]: true }));
     }
-  }, [location.pathname]);
+  }, [location.pathname, visibleNav]);
 
   const closeMobile = () => {
     if (isMobileOpen) toggleMobileSidebar();
@@ -218,7 +226,7 @@ export default function AppSidebar() {
           </div>
 
           <div className="space-y-1.5">
-            {PRIMARY_NAV.map((item) => {
+            {visibleNav.map((item) => {
               const Icon = item.icon;
               const isActive = item.subItems.some((subItem) =>
                 isPathActive(location.pathname, subItem.path),
