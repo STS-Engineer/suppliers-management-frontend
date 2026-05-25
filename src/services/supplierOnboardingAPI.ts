@@ -10,7 +10,13 @@ import {
   SupplierGroupSummary,
 } from "../types/onboarding";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
+const API_URL =
+  rawApiUrl ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1"
+    : "http://localhost:8000/api/v1");
+const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 type ApiErrorPayload = {
   message?: string;
@@ -33,6 +39,26 @@ export class SupplierApiError extends Error {
   }
 }
 
+export type AuthenticatedAppUser = {
+  email: string;
+  full_name: string;
+  access_profile: string;
+};
+
+export type AccessIdentityRecord = {
+  id_identity: number;
+  email: string;
+  full_name: string;
+  access_profile: string;
+  auth_source: string;
+  external_subject?: string | null;
+  external_directory?: string | null;
+  is_active: boolean;
+  last_login_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 class SupplierOnboardingAPI {
   private baseUrl: string;
 
@@ -41,7 +67,7 @@ class SupplierOnboardingAPI {
   }
 
   private getAuthHeaders() {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     const headers: any = {
       "Content-Type": "application/json",
     };
@@ -55,7 +81,7 @@ class SupplierOnboardingAPI {
   }
 
   private getAuthHeadersWithoutContentType() {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     const headers: any = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -116,6 +142,167 @@ class SupplierOnboardingAPI {
     if (statusCode === 422) return "Some submitted data is invalid. Please review the form and try again.";
     if (statusCode >= 500) return "The server could not complete this request right now. Please try again.";
     return fallbackMessage;
+  }
+
+  setAuthToken(token: string | null) {
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+      return;
+    }
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  }
+
+  getStoredAuthToken() {
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  }
+
+  async signIn(email: string, password: string): Promise<{
+    status: string;
+      data: {
+        access_token: string;
+        token_type: string;
+        expires_in_seconds: number;
+      user: AuthenticatedAppUser;
+    };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/signin`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ email, password }),
+      },
+      "Failed to sign in.",
+    );
+  }
+
+  async getCurrentUser(): Promise<{
+    status: string;
+    data: AuthenticatedAppUser;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/me`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load your session.",
+    );
+  }
+
+  async listAccessIdentities(): Promise<{
+    status: string;
+    data: {
+      items: AccessIdentityRecord[];
+      count: number;
+    };
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/access-identities`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load access identities.",
+    );
+  }
+
+  async createAccessIdentity(data: {
+    email: string;
+    full_name: string;
+    access_profile: string;
+    password: string;
+    auth_source?: string;
+    external_subject?: string;
+    external_directory?: string;
+    is_active?: boolean;
+  }): Promise<{
+    status: string;
+    data: AccessIdentityRecord;
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/access-identities`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to create the access identity.",
+    );
+  }
+
+  async updateAccessIdentity(
+    identityId: number,
+    data: {
+      full_name?: string;
+      access_profile?: string;
+      auth_source?: string;
+      external_subject?: string | null;
+      external_directory?: string | null;
+      is_active?: boolean;
+    },
+  ): Promise<{
+    status: string;
+    data: AccessIdentityRecord;
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/access-identities/${identityId}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update the access identity.",
+    );
+  }
+
+  async changePassword(data: {
+    current_password: string;
+    new_password: string;
+  }): Promise<{
+    status: string;
+    data: {
+      email: string;
+      changed_at: string;
+    };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/change-password`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update your password.",
+    );
+  }
+
+  async resetAccessIdentityPassword(
+    identityId: number,
+    data: {
+      new_password: string;
+    },
+  ): Promise<{
+    status: string;
+    data: {
+      email: string;
+      changed_at: string;
+    };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/access-identities/${identityId}/reset-password`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to reset the password.",
+    );
   }
 
   async createSupplierOnboarding(
