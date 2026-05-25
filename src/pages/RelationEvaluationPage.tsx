@@ -26,6 +26,59 @@ const TABS = [
 
 type EvaluationTab = (typeof TABS)[number]["id"];
 
+const CLASS_SECTION_FIELDS: Array<{
+  key: keyof EvaluationDetailsFormData;
+  label: string;
+}> = [
+  { key: "top", label: "Terms of Payments (TOP)" },
+  { key: "lta", label: "Long Term Agreement" },
+  { key: "prod", label: "Productivity" },
+  { key: "quality_certification", label: "Quality Certification" },
+  { key: "prod_lia_ins", label: "Product Liability Insurance" },
+  { key: "competitiveness", label: "Competitiveness" },
+  { key: "sqma", label: "SQMA" },
+  { key: "family_coverage", label: "Family Coverage" },
+  { key: "geo_coverage", label: "Geographic Coverage" },
+  { key: "cons_or_wd", label: "Consistency / WD" },
+  { key: "financial_health", label: "Financial Health" },
+];
+
+const OPERATIONAL_SECTION_FIELDS: Array<{
+  key: keyof EvaluationDetailsFormData;
+  label: string;
+}> = [
+  { key: "management_system", label: "Management System" },
+  { key: "customer_communication", label: "Customer Communication" },
+  { key: "development_design", label: "Development / Design" },
+  { key: "production_manufacturing", label: "Production / Manufacturing" },
+  { key: "quality_audits", label: "Quality and Audits" },
+  { key: "suppliers_subcontractors", label: "Suppliers and Sub-Contractors" },
+  { key: "deliveries", label: "Deliveries" },
+  { key: "environment_ethic_rules", label: "Environment and Ethic Rules" },
+];
+
+const IMPACT_SECTION_FIELDS: Array<{
+  key: keyof EvaluationDetailsFormData;
+  label: string;
+}> = [
+  { key: "impact_question_1", label: "Impact Question 1" },
+  { key: "impact_question_2", label: "Impact Question 2" },
+  { key: "impact_question_3", label: "Impact Question 3" },
+  { key: "impact_question_4", label: "Impact Question 4" },
+  { key: "impact_question_5", label: "Impact Question 5" },
+  { key: "impact_question_6", label: "Impact Question 6" },
+];
+
+const isProvided = (value: unknown) => {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return value !== undefined && value !== null;
+};
+
+const clampScore = (value: number) => Math.max(0, Math.min(100, value));
+
 export default function RelationEvaluationPage() {
   const { relationId } = useParams<{ relationId: string }>();
   const navigate = useNavigate();
@@ -45,6 +98,9 @@ export default function RelationEvaluationPage() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<keyof EvaluationDetailsFormData, string>>
+  >({});
 
   const relationIdValue = Number(relationId);
 
@@ -169,6 +225,7 @@ export default function RelationEvaluationPage() {
         impact_question_5: workspace.impact_question_5 ?? "",
         impact_question_6: workspace.impact_question_6 ?? "",
       });
+      setFieldErrors({});
     } catch (err) {
       setError(
         err instanceof Error
@@ -195,7 +252,23 @@ export default function RelationEvaluationPage() {
   }, [relation]);
 
   const setField = (field: keyof EvaluationDetailsFormData, value: any) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    let nextValue = value;
+
+    if (
+      OPERATIONAL_SECTION_FIELDS.some((entry) => entry.key === field) &&
+      typeof value === "number" &&
+      !Number.isNaN(value)
+    ) {
+      nextValue = clampScore(value);
+    }
+
+    setForm((prev) => ({ ...prev, [field]: nextValue }));
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
   const normalizeStrategicMention = (value?: string) => {
     const allowed = ["directed", "monopolistic", "none", "strategic"];
@@ -254,8 +327,67 @@ export default function RelationEvaluationPage() {
     source_type: "self_assessment",
   });
 
+  const validateInitialEvaluation = () => {
+    const nextErrors: Partial<Record<keyof EvaluationDetailsFormData, string>> =
+      {};
+    const partialSections: string[] = [];
+
+    const validatePartialSection = (
+      title: string,
+      fields: Array<{ key: keyof EvaluationDetailsFormData; label: string }>,
+    ) => {
+      const filled = fields.filter(({ key }) => isProvided(form[key]));
+      if (filled.length === 0 || filled.length === fields.length) {
+        return;
+      }
+
+      partialSections.push(title);
+      fields.forEach(({ key, label }) => {
+        if (!isProvided(form[key])) {
+          nextErrors[key] = `${label} is required to complete the ${title.toLowerCase()} section.`;
+        }
+      });
+    };
+
+    validatePartialSection("Class", CLASS_SECTION_FIELDS);
+    validatePartialSection("Operational", OPERATIONAL_SECTION_FIELDS);
+    validatePartialSection("Impact", IMPACT_SECTION_FIELDS);
+
+    OPERATIONAL_SECTION_FIELDS.forEach(({ key, label }) => {
+      const value = form[key];
+      if (typeof value !== "number" || Number.isNaN(value)) {
+        return;
+      }
+
+      if (value < 0 || value > 100) {
+        nextErrors[key] = `${label} must be between 0 and 100.`;
+      }
+    });
+
+    setFieldErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length === 0) {
+      return null;
+    }
+
+    const sectionSummary =
+      partialSections.length > 0
+        ? ` Complete the missing values in: ${partialSections.join(", ")}.`
+        : "";
+
+    return `The initial evaluation cannot be saved yet.${sectionSummary}`;
+  };
+
   const saveSection = async (section: EvaluationTab) => {
     if (!relation) return;
+
+    if (!relation.last_evaluation_date) {
+      const validationMessage = validateInitialEvaluation();
+      if (validationMessage) {
+        setError(validationMessage);
+        return;
+      }
+    }
 
     setSavingSection(section);
     setError(null);
@@ -429,7 +561,7 @@ export default function RelationEvaluationPage() {
               data={form}
               onChange={setField}
               relationId={relation.id_relation}
-              errors={{}}
+              errors={fieldErrors}
               mode="class"
               showHeader={false}
             />
@@ -453,7 +585,7 @@ export default function RelationEvaluationPage() {
               data={form}
               onChange={setField}
               relationId={relation.id_relation}
-              errors={{}}
+              errors={fieldErrors}
               mode="operational"
               showHeader={false}
             />
@@ -477,7 +609,7 @@ export default function RelationEvaluationPage() {
               data={form}
               onChange={setField}
               relationId={relation.id_relation}
-              errors={{}}
+              errors={fieldErrors}
               mode="impact-decision"
               showHeader={false}
             />

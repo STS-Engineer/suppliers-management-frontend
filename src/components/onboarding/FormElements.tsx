@@ -17,6 +17,10 @@ interface FormInputProps {
   disabled?: boolean;
   readOnly?: boolean;
   helperText?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }
 
 export const FormInput: React.FC<FormInputProps> = ({
@@ -31,6 +35,10 @@ export const FormInput: React.FC<FormInputProps> = ({
   disabled = false,
   readOnly = false,
   helperText,
+  min,
+  max,
+  step,
+  inputMode,
 }) => {
   return (
     <div className="form-group">
@@ -47,6 +55,10 @@ export const FormInput: React.FC<FormInputProps> = ({
         placeholder={placeholder}
         disabled={disabled}
         readOnly={readOnly}
+        min={min}
+        max={max}
+        step={step}
+        inputMode={inputMode}
         className={`form-input ${error ? "border-red-500" : "border-gray-300"}`}
       />
       {error && <p className="form-error">{error}</p>}

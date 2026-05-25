@@ -14,6 +14,7 @@ export default function UserDropdown() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const triggerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -51,16 +52,23 @@ export default function UserDropdown() {
     };
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (
-        triggerRef.current &&
-        event.target instanceof Node &&
-        !triggerRef.current.contains(event.target)
-      ) {
-        setOpen(false);
-        setShowPasswordForm(false);
-        setPasswordError(null);
-        setPasswordMessage(null);
+      if (!(event.target instanceof Node)) {
+        return;
       }
+
+      const clickedTrigger =
+        triggerRef.current && triggerRef.current.contains(event.target);
+      const clickedPanel =
+        panelRef.current && panelRef.current.contains(event.target);
+
+      if (clickedTrigger || clickedPanel) {
+        return;
+      }
+
+      setOpen(false);
+      setShowPasswordForm(false);
+      setPasswordError(null);
+      setPasswordMessage(null);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
@@ -109,6 +117,7 @@ export default function UserDropdown() {
 
   const dropdownPanel = open ? (
     <div
+      ref={panelRef}
       className="fixed z-[9999] w-72 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_24px_50px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-slate-900"
       style={{
         top: `${menuPosition.top}px`,
