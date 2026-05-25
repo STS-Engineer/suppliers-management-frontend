@@ -20,7 +20,13 @@ import {
   X,
 } from "lucide-react";
 import { Pagination } from "../components/common/Pagination";
-import { InlineAlert, KeyValueRow, PageIntro, Pill, SectionCard } from "../components/UI";
+import {
+  InlineAlert,
+  KeyValueRow,
+  PageIntro,
+  Pill,
+  SectionCard,
+} from "../components/UI";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import type {
   AvocarbonSite,
@@ -379,9 +385,9 @@ function RelationDetailModal({
 
           <div className="relative flex items-start justify-between gap-6">
             <div>
-              <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
+              {/* <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
                 Relation Intelligence
-              </span>
+              </span> */}
 
               <h3 className="mt-4 text-3xl font-bold tracking-tight">
                 {record.relation.relation_code ||

@@ -13,7 +13,13 @@ import {
   X,
 } from "lucide-react";
 import { Pagination } from "../components/common/Pagination";
-import { InlineAlert, KeyValueRow, PageIntro, Pill, SectionCard } from "../components/UI";
+import {
+  InlineAlert,
+  KeyValueRow,
+  PageIntro,
+  Pill,
+  SectionCard,
+} from "../components/UI";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import type {
   AvocarbonSite,
@@ -186,9 +192,9 @@ function RelationDetailModal({
 
           <div className="relative flex items-start justify-between gap-6">
             <div>
-              <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
+              {/* <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
                 Relation Intelligence
-              </span>
+              </span> */}
 
               <h3 className="mt-4 text-3xl font-bold tracking-tight">
                 {record.site.site_name || "Unnamed site"}
@@ -197,10 +203,10 @@ function RelationDetailModal({
                   `REL-${String(record.relation.id_relation).padStart(6, "0")}`}
               </h3>
 
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              {/* <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
                 Premium supplier relation view with site profile, current
                 decision status, latest scoring, and operational classification.
-              </p>
+              </p> */}
             </div>
 
             <button
@@ -370,9 +376,7 @@ function RelationDetailModal({
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 bg-white/95 px-8 py-5 backdrop-blur-xl">
-          <p className="text-xs text-slate-400">
-            Supplier relation record · Active site intelligence
-          </p>
+          <p className="text-xs text-slate-400">Supplier relation record </p>
 
           <button
             type="button"
@@ -492,7 +496,14 @@ export default function ActiveSitesPage() {
     return () => {
       cancelled = true;
     };
-  }, [search, filterGrade, filterStatus, filterCategory, activeMenu, reloadTick]);
+  }, [
+    search,
+    filterGrade,
+    filterStatus,
+    filterCategory,
+    activeMenu,
+    reloadTick,
+  ]);
 
   const relationRows = useMemo(() => {
     return siteBundles.flatMap((bundle) =>
