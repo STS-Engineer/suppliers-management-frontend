@@ -6,7 +6,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { SupplierManagement } from "../components/onboarding/SupplierManagement";
-import { EmptyState, MetricCard, PageIntro, SectionCard } from "../components/UI";
+import {
+  EmptyState,
+  MetricCard,
+  PageIntro,
+  SectionCard,
+} from "../components/UI";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { SupplierGroupSummary } from "../types/onboarding";
 
@@ -126,18 +131,18 @@ export const SupplierManagementPage = () => {
           <MetricCard
             label="Visible Groups"
             value={filteredGroups.length}
-            helper="Filtered results ready for lifecycle actions"
+            helper="Filtered results"
           />
           <MetricCard
-            label="Loaded Portfolio"
+            label="Total Groups"
             value={groups.length}
-            helper="Supplier groups available from the backend"
+            helper="Total groups in the system"
           />
-          <MetricCard
+          {/* <MetricCard
             label="Workflow"
             value="Existing Group"
             helper="Use this entrypoint for unit and site assignment"
-          />
+          /> */}
         </div>
       </PageIntro>
 

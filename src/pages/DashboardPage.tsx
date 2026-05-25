@@ -27,7 +27,7 @@ import {
   trendData,
 } from "../data/mockData";
 
-const colors = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
+const colors = ["#1f8a5b", "#24507a", "#b7791f", "#c24141"];
 const PAGE_SIZE = 4;
 
 export function DashboardPage() {
@@ -89,30 +89,30 @@ export function DashboardPage() {
           <div className="h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
-                <CartesianGrid stroke="#dbe5f0" strokeDasharray="4 4" />
-                <XAxis dataKey="month" stroke="#7b8ba1" />
-                <YAxis domain={[50, 100]} stroke="#7b8ba1" />
+                <CartesianGrid stroke="#d6dee8" strokeDasharray="4 4" />
+                <XAxis dataKey="month" stroke="#6c7b8f" />
+                <YAxis domain={[50, 100]} stroke="#6c7b8f" />
                 <Tooltip />
                 <Line
                   type="monotone"
                   dataKey="quality"
-                  stroke="#22c55e"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
+                  stroke="#1f8a5b"
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="logistics"
-                  stroke="#3b82f6"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
+                  stroke="#24507a"
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="service"
-                  stroke="#f59e0b"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
+                  stroke="#b7791f"
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -127,9 +127,9 @@ export function DashboardPage() {
             <div className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={classDistribution}>
-                  <CartesianGrid stroke="#dbe5f0" vertical={false} />
-                  <XAxis dataKey="name" stroke="#7b8ba1" />
-                  <YAxis stroke="#7b8ba1" />
+                  <CartesianGrid stroke="#d6dee8" vertical={false} />
+                  <XAxis dataKey="name" stroke="#6c7b8f" />
+                  <YAxis stroke="#6c7b8f" />
                   <Tooltip />
                   <Bar dataKey="value" radius={[12, 12, 0, 0]}>
                     {classDistribution.map((entry, index) => (
@@ -146,18 +146,18 @@ export function DashboardPage() {
             subtitle="Immediate actions required this week"
           >
             <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-2xl border border-rose-100 bg-rose-50/70 px-4 py-3 text-sm text-rose-900">
-                <ShieldAlert className="h-4 w-4 text-rose-500" />
+              <div className="flex items-center gap-3 rounded-2xl border border-rose-200/70 bg-rose-50/55 px-4 py-3 text-sm text-rose-900 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-100">
+                <ShieldAlert className="h-4 w-4 text-rose-600 dark:text-rose-300" />
                 {dashboardMetrics.strategicCOrD} strategic suppliers are currently
                 Class C/D
               </div>
-              <div className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-sm text-amber-900">
-                <Clock3 className="h-4 w-4 text-amber-500" />
+              <div className="flex items-center gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/55 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+                <Clock3 className="h-4 w-4 text-amber-600 dark:text-amber-300" />
                 {dashboardMetrics.actionPlansOverdue} action plans are overdue or
                 escalated to VP
               </div>
-              <div className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
-                <AlertTriangle className="h-4 w-4 text-sky-500" />
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-sm text-slate-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+                <AlertTriangle className="h-4 w-4 text-slate-600 dark:text-slate-300" />
                 {dashboardMetrics.overridesPending} supplier override requests are
                 pending VP decision
               </div>
@@ -170,15 +170,15 @@ export function DashboardPage() {
         title="Supplier spotlight"
         subtitle="Quick operational snapshot of key suppliers this week"
         action={
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-slate-900/70">
-            <Filter className="h-4 w-4 text-slate-400" />
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/90 bg-white px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-900/70">
+            <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
             <select
               value={selectedGroup}
               onChange={(event) => {
                 setSelectedGroup(event.target.value);
                 setPage(1);
               }}
-              className="bg-transparent text-sm font-medium text-slate-600 outline-none dark:text-slate-200"
+              className="bg-transparent text-sm font-medium text-slate-700 outline-none dark:text-slate-200"
             >
               {groups.map((group) => (
                 <option key={group} value={group}>
@@ -193,7 +193,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200/80 text-sm dark:divide-white/10">
               <thead className="bg-slate-50/90 dark:bg-slate-900/70">
-                <tr className="text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                   <th className="px-5 py-4 font-semibold">Supplier</th>
                   <th className="px-5 py-4 font-semibold">Owner</th>
                   <th className="px-5 py-4 font-semibold">Group</th>
@@ -205,14 +205,14 @@ export function DashboardPage() {
                 {paginatedSuppliers.map((supplier) => (
                   <tr
                     key={supplier.id}
-                    className="transition hover:bg-sky-50/50 dark:hover:bg-white/5"
+                    className="transition hover:bg-slate-50 dark:hover:bg-white/5"
                   >
                     <td className="px-5 py-4">
                       <div className="font-semibold text-[#10233f] dark:text-white">
                         {supplier.name}
                       </div>
                       <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {supplier.country} • {supplier.category}
+                        {supplier.country} - {supplier.category}
                       </div>
                     </td>
                     <td className="px-5 py-4 text-slate-600 dark:text-slate-300">

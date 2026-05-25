@@ -49,13 +49,13 @@ const AppHeader: React.FC = () => {
     "Manage supplier operations, governance, and reporting from a unified workspace.";
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[linear-gradient(135deg,#0f2744_0%,#14365f_55%,#1c4a7d_100%)] px-4 py-4 shadow-[0_18px_40px_rgba(15,39,68,0.22)] backdrop-blur-xl sm:px-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
+    <header className="sticky top-0 z-50 h-auto w-full border-b border-white/10 bg-[linear-gradient(135deg,#0f2744_0%,#14365f_55%,#1c4a7d_100%)] shadow-[0_18px_40px_rgba(15,39,68,0.22)] backdrop-blur-xl">
+      <div className="mx-auto flex min-h-[100px] max-w-7xl items-center justify-between gap-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-start gap-5">
           <button
             onClick={handleToggle}
             aria-label="Toggle Sidebar"
-            className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/14"
+            className="mt-2 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/14"
           >
             {isMobileOpen ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -79,10 +79,10 @@ const AppHeader: React.FC = () => {
           </button>
 
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-white sm:text-3xl">
+            <h1 className="text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">
               {pageTitle}
             </h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-sky-100/75">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-sky-100/80 line-clamp-2">
               {pageSummary}
             </p>
           </div>
@@ -101,9 +101,9 @@ const AppHeader: React.FC = () => {
         <button
           onClick={toggleApplicationMenu}
           aria-label="Open quick actions"
-          className="flex h-11 w-11 items-center justify-center self-end rounded-2xl border border-white/15 bg-white/10 text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] lg:hidden"
+          className="flex h-12 w-12 items-center justify-center self-start rounded-2xl border border-white/15 bg-white/10 text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] lg:hidden"
         >
-          <MoreHorizontal size={18} />
+          <MoreHorizontal size={20} />
         </button>
       </div>
     </header>
