@@ -423,6 +423,57 @@ const getScoreTone = (score?: number) => {
   return "rose";
 };
 
+const getCriterionEvidenceLabels = (evidence: {
+  file?: boolean;
+  validity?: boolean;
+  signature?: boolean;
+  update?: boolean;
+  amount?: boolean;
+}) => {
+  const labels: string[] = [];
+  if (evidence.file) labels.push("Document");
+  if (evidence.validity) labels.push("Validity");
+  if (evidence.signature) labels.push("Signature");
+  if (evidence.update) labels.push("Update");
+  if (evidence.amount) labels.push("Amount");
+  return labels;
+};
+
+const getCriterionStatus = ({
+  selectedValue,
+  detail,
+  evidence,
+}: {
+  selectedValue?: string;
+  detail: ClassCriterionDetailFormData;
+  evidence: {
+    file?: boolean;
+    validity?: boolean;
+    signature?: boolean;
+    update?: boolean;
+    amount?: boolean;
+  };
+}) => {
+  if (!selectedValue?.trim()) {
+    return {
+      label: "Selection pending",
+      tone: "slate",
+    } as const;
+  }
+
+  if (evidence.file && !detail.document_url && !detail.document_name) {
+    return {
+      label: "Evidence missing",
+      tone: "amber",
+    } as const;
+  }
+
+  return {
+    label: "Ready for review",
+    tone: "emerald",
+  } as const;
+};
+
 const ScoreBadge = ({ score }: { score?: number }) => {
   const tone = getScoreTone(score);
 
@@ -438,6 +489,29 @@ const ScoreBadge = ({ score }: { score?: number }) => {
       className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}
     >
       {score ?? "No score"}
+    </span>
+  );
+};
+
+const InfoChip = ({
+  label,
+  tone = "slate",
+}: {
+  label: string;
+  tone?: "slate" | "amber" | "emerald" | "blue";
+}) => {
+  const classes = {
+    slate: "border-slate-200 bg-slate-50 text-slate-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+  }[tone];
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${classes}`}
+    >
+      {label}
     </span>
   );
 };
@@ -1022,6 +1096,14 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
               const selectedScore = selectedValue
                 ? SCORE_BY_VALUE[selectedValue]
                 : undefined;
+              const evidenceLabels = getCriterionEvidenceLabels(
+                criterion.evidence,
+              );
+              const status = getCriterionStatus({
+                selectedValue,
+                detail,
+                evidence: criterion.evidence,
+              });
 
               const financialEndDate =
                 criterion.detailKey === "financial_health"
@@ -1034,28 +1116,75 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
               return (
                 <div
                   key={criterion.detailKey}
-                  className="group relative overflow-hidden rounded-[28px] border border-amber-200/70 bg-white/90 p-5 shadow-[0_18px_45px_rgba(148,91,17,0.08)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(148,91,17,0.14)]"
+                  className="group relative overflow-hidden rounded-[30px] border border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,251,235,0.92))] p-5 shadow-[0_18px_45px_rgba(148,91,17,0.08)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_28px_70px_rgba(148,91,17,0.14)]"
                 >
                   <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-300" />
+                  <div className="pointer-events-none absolute right-0 top-0 h-28 w-40 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,0.20),transparent_62%)]" />
 
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div className="flex gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-amber-50 text-sm font-bold text-amber-700 ring-1 ring-amber-100">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#fff7ed,#fef3c7)] text-sm font-bold text-amber-700 ring-1 ring-amber-100 shadow-sm">
                         {index + 1}
                       </div>
 
                       <div>
-                        <h4 className="text-sm font-semibold tracking-wide text-slate-950">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <InfoChip
+                            label={status.label}
+                            tone={
+                              status.tone === "emerald"
+                                ? "emerald"
+                                : status.tone === "amber"
+                                  ? "amber"
+                                  : "slate"
+                            }
+                          />
+                          {evidenceLabels.length > 0 ? (
+                            <InfoChip
+                              label={`${evidenceLabels.length} evidence item${evidenceLabels.length === 1 ? "" : "s"}`}
+                              tone="blue"
+                            />
+                          ) : null}
+                        </div>
+                        <h4 className="text-base font-semibold tracking-[-0.02em] text-slate-950">
                           {criterion.label}
                         </h4>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Select the business rule and attach evidence when
-                          required.
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Capture the commercial rule, supporting proof, and
+                          lifecycle dates used for governance review.
                         </p>
                       </div>
                     </div>
 
                     <ScoreBadge score={selectedScore} />
+                  </div>
+
+                  <div className="mb-5 rounded-[24px] border border-amber-100/80 bg-white/80 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                          Review Footprint
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {evidenceLabels.length > 0 ? (
+                            evidenceLabels.map((label) => (
+                              <InfoChip key={label} label={label} tone="amber" />
+                            ))
+                          ) : (
+                            <InfoChip label="Business rule only" tone="slate" />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Score Resolution
+                        </p>
+                        <p className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-slate-950">
+                          {selectedScore ?? "-"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1086,14 +1215,14 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                     {criterion.evidence.file && (
                       <div className="form-group md:col-span-2">
                         <label className="form-label">Evidence Document</label>
-                        <div className="rounded-[22px] border border-dashed border-amber-300 bg-amber-50/60 p-4">
+                        <div className="rounded-[24px] border border-dashed border-amber-300 bg-[linear-gradient(135deg,rgba(255,251,235,0.95),rgba(255,255,255,0.88))] p-4 shadow-sm">
                           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div className="flex gap-3">
-                              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-amber-700 shadow-sm">
+                              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-amber-700 shadow-[0_12px_24px_rgba(148,91,17,0.10)] ring-1 ring-amber-100">
                                 <FileUp className="h-5 w-5" />
                               </div>
 
-                              <div>
+                              <div className="min-w-0">
                                 <div className="text-sm font-semibold text-slate-950">
                                   {detail.document_name ||
                                     "No supporting file uploaded"}
@@ -1104,6 +1233,27 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                                     ? "PDF, Word, Excel, or image. Stored in Azure blob storage."
                                     : "Document upload becomes available once the supplier relation exists."}
                                 </div>
+                                {detail.document_mime_type || detail.document_size ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {detail.document_mime_type ? (
+                                      <InfoChip
+                                        label={detail.document_mime_type}
+                                        tone="slate"
+                                      />
+                                    ) : null}
+                                    {detail.document_size ? (
+                                      <InfoChip
+                                        label={`${Math.max(
+                                          1,
+                                          Math.round(
+                                            Number(detail.document_size) / 1024,
+                                          ),
+                                        )} KB`}
+                                        tone="slate"
+                                      />
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
 
@@ -1113,14 +1263,14 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                                   href={detail.document_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm hover:bg-amber-100"
+                                  className="inline-flex items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
                                 >
                                   Open Uploaded Document
                                 </a>
                               )}
 
                               <label
-                                className={`inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm ${
+                                className={`inline-flex items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition ${
                                   relationId
                                     ? "cursor-pointer hover:bg-amber-100"
                                     : "cursor-not-allowed opacity-70"
@@ -1154,7 +1304,7 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                                   onClick={() =>
                                     deleteCriterionDocument(criterion.detailKey)
                                   }
-                                  className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50 disabled:opacity-60"
+                                  className="inline-flex items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50 disabled:opacity-60"
                                 >
                                   Delete File
                                 </button>
@@ -1280,7 +1430,7 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                     )}
                   </div>
 
-                  <div className="mt-5">
+                  <div className="mt-5 rounded-[24px] border border-slate-200/80 bg-white/80 p-4 shadow-sm">
                     <FormTextarea
                       label="Criterion Comment / Reason"
                       name={`${criterion.detailKey}_comments`}

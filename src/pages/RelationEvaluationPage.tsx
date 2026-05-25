@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { EvaluationDetailsForm } from "../components/onboarding/EvaluationDetailsForm";
-import { InlineAlert } from "../components/UI";
+import { InlineAlert, MetricCard, PageIntro, Pill } from "../components/UI";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import {
   AvocarbonSite,
@@ -251,6 +251,18 @@ export default function RelationEvaluationPage() {
     return "Initial evaluation pending";
   }, [relation]);
 
+  const relationCodeLabel =
+    relation?.relation_code ||
+    (relation
+      ? `REL-${String(relation.id_relation).padStart(6, "0")}`
+      : "");
+
+  const unitLabel =
+    relation?.unit_code ||
+    (relation
+      ? `UNT-${String(relation.id_supplier_unit).padStart(6, "0")}`
+      : "");
+
   const setField = (field: keyof EvaluationDetailsFormData, value: any) => {
     let nextValue = value;
 
@@ -454,64 +466,65 @@ export default function RelationEvaluationPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.24),transparent_35%),linear-gradient(135deg,#081525,#0f2744_45%,#153b63)] px-6 py-6 text-white shadow-[0_28px_70px_rgba(8,21,37,0.28)]">
-        <div className="pointer-events-none absolute -right-16 top-0 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 left-0 h-44 w-44 rounded-full bg-amber-300/10 blur-3xl" />
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-200">
-              Relation Evaluation
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight">
-              {relation.relation_code ||
-                `REL-${String(relation.id_relation).padStart(6, "0")}`}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
-              Update the scorecard for this supplier relation at{" "}
-              <span className="font-semibold text-white">{siteName}</span>. You
-              can move between tabs and save each section independently.
-            </p>
-            <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium text-slate-100 backdrop-blur-sm">
-              Premium evaluation workspace with evidence tracking and
-              section-level saves
-            </div>
-          </div>
+    <div className="mx-auto flex w-full max-w-[1700px] flex-col gap-6 px-2">
+      <PageIntro
+        eyebrow="Scorecard Workspace"
+        title="Relation Evaluation"
+        description={`Review and update the qualification scorecard for supplier unit ${unitLabel} at ${siteName}. Save each section independently while keeping the final grade and supplier status in view.`}
+        actions={
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+            className="inline-flex items-center rounded-2xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
           >
             Back to Management
           </button>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
-            label="Relation Code"
-            value={
-              relation.relation_code ||
-              `REL-${String(relation.id_relation).padStart(6, "0")}`
-            }
+            label="Relation"
+            value={relationCodeLabel}
+            helper="Current relation record"
           />
           <MetricCard
-            label="Unit"
-            value={
-              relation.unit_code ||
-              `UNT-${String(relation.id_supplier_unit).padStart(6, "0")}`
-            }
+            label="Supplier Unit"
+            value={unitLabel}
+            helper="Unit linked to this scorecard"
           />
-          <MetricCard label="Plant" value={siteName} />
           <MetricCard
-            label="Current Grade"
+            label="Site"
+            value={siteName}
+            helper="Assigned Avocarbon plant"
+          />
+          <MetricCard
+            label="Final Grade"
             value={relation.final_grade || "Pending"}
+            helper="Latest combined evaluation"
           />
           <MetricCard
             label="Supplier Status"
-            value={effectiveSupplierStatus || relationStateLabel}
+            value={effectiveSupplierStatus || "Pending"}
+            helper={relationStateLabel}
           />
         </div>
-      </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Pill text={`Evaluation date: ${form.evaluation_date || "-"}`} tone="brand" />
+          <Pill
+            text={`Cycle: ${form.cycle_type || "Criteria Change Review"}`}
+            tone="neutral"
+          />
+          <Pill
+            text={
+              relation.next_evaluation_date
+                ? `Next review: ${new Date(relation.next_evaluation_date).toLocaleDateString("en-GB")}`
+                : "Next review not scheduled"
+            }
+            tone="warning"
+          />
+        </div>
+      </PageIntro>
 
       {error && (
         <InlineAlert
@@ -730,15 +743,6 @@ export default function RelationEvaluationPage() {
     </div>
   );
 }
-
-const MetricCard = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-sm">
-    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-300">
-      {label}
-    </span>
-    <span className="mt-2 block text-lg font-semibold text-white">{value}</span>
-  </div>
-);
 
 const StatusCard = ({
   label,

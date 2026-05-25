@@ -2,13 +2,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  KeyRound,
   Building2,
   ChevronDown,
   ChevronLeft,
   FolderKanban,
   GitBranchPlus,
-  Menu,
   PanelLeft,
 } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
@@ -132,17 +130,6 @@ export default function AppSidebar() {
         ].join(" ")}
         onClick={toggleMobileSidebar}
       />
-
-      {!isMobileOpen && (
-        <button
-          type="button"
-          onClick={toggleMobileSidebar}
-          aria-label="Open navigation"
-          className="fixed left-4 top-4 z-[70] inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#1b6a97]/50 bg-[#0b3a5b]/95 text-white shadow-xl backdrop-blur transition hover:bg-[#0c5381] lg:hidden"
-        >
-          <Menu size={16} />
-        </button>
-      )}
 
       <aside
         className={[
