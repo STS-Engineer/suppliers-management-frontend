@@ -12,20 +12,11 @@ import {
 
 const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
 
-const normalizeApiUrl = (url?: string) => {
-  if (!url) return url;
-  if (typeof window === "undefined") return url;
-  if (window.location.protocol === "https:" && url.startsWith("http://")) {
-    return url.replace(/^http:\/\//, "https://");
-  }
-  return url;
-};
 
 const API_URL =
-  normalizeApiUrl(rawApiUrl) ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1"
-    : "http://localhost:8000/api/v1");
+  import.meta.env.VITE_API_URL?.trim() ||
+  "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1";
+  
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 type ApiErrorPayload = {
