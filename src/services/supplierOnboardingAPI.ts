@@ -10,12 +10,10 @@ import {
   SupplierGroupSummary,
 } from "../types/onboarding";
 
-const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
 const API_URL =
-  rawApiUrl ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1"
-    : "http://localhost:8000/api/v1");
+  import.meta.env.VITE_API_URL?.trim() ||
+  "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1";
+  
 const AUTH_TOKEN_STORAGE_KEY = "auth_token";
 
 type ApiErrorPayload = {

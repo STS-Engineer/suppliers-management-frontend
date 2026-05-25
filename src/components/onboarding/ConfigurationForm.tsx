@@ -83,10 +83,7 @@ export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
             name="site_id"
             value={siteId}
             onChange={(e) =>
-              onChange(
-                "site_id",
-                e.target.value ? Number(e.target.value) : "",
-              )
+              onChange("site_id", e.target.value ? Number(e.target.value) : "")
             }
             options={sites.map((site) => ({
               value: site.id_site,
@@ -113,10 +110,10 @@ export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
                 value: "local",
                 label: "Local - One AVOCarbon site or local region",
               },
-              {
-                value: "regional",
-                label: "Regional - Several sites in one region",
-              },
+              // {
+              //   value: "regional",
+              //   label: "Regional - Several sites in one region",
+              // },
               {
                 value: "global",
                 label: "Global - Several countries or regions",
