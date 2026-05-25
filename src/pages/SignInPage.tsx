@@ -63,23 +63,28 @@ export default function SignInPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-[24px] border border-white/12 bg-white/10 p-4 backdrop-blur">
                 <ShieldCheck className="h-5 w-5 text-sky-200" />
-                <p className="mt-3 text-sm font-semibold">Secure session access</p>
+                <p className="mt-3 text-sm font-semibold">
+                  Secure session access
+                </p>
                 <p className="mt-1 text-xs leading-6 text-slate-200/80">
-                  Protected supplier workflows with authenticated enterprise sessions.
+                  Protected supplier workflows with authenticated enterprise
+                  sessions.
                 </p>
               </div>
               <div className="rounded-[24px] border border-white/12 bg-white/10 p-4 backdrop-blur">
                 <LockKeyhole className="h-5 w-5 text-emerald-200" />
                 <p className="mt-3 text-sm font-semibold">Protected data</p>
                 <p className="mt-1 text-xs leading-6 text-slate-200/80">
-                  Supplier intelligence and evaluations stay inside authenticated sessions.
+                  Supplier intelligence and evaluations stay inside
+                  authenticated sessions.
                 </p>
               </div>
               <div className="rounded-[24px] border border-white/12 bg-white/10 p-4 backdrop-blur">
                 <ArrowRight className="h-5 w-5 text-amber-200" />
                 <p className="mt-3 text-sm font-semibold">Fast handoff</p>
                 <p className="mt-1 text-xs leading-6 text-slate-200/80">
-                  Move from onboarding to active site review without leaving the workspace.
+                  Move from onboarding to active site review without leaving the
+                  workspace.
                 </p>
               </div>
             </div>
@@ -95,9 +100,9 @@ export default function SignInPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-[-0.04em] text-[#10233f]">
                 Access Supplier Management
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              {/* <p className="mt-2 text-sm leading-6 text-slate-500">
                 Use your enterprise credentials to open the supplier lifecycle workspace.
-              </p>
+              </p> */}
             </div>
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
@@ -151,14 +156,21 @@ export default function SignInPage() {
                 Starter Accounts
               </p>
               <div className="mt-3 space-y-2 text-sm text-slate-600">
+                {/* <p>
+                  Purchasing manager:{" "}
+                  <span className="font-semibold">
+                    purchasing.manager@avocarbon.local
+                  </span>
+                </p> */}
                 <p>
-                  Purchasing manager: <span className="font-semibold">purchasing.manager@avocarbon.local</span>
+                  Supplier owner:{" "}
+                  <span className="font-semibold">
+                    supplier.owner@avocarbon.com
+                  </span>
                 </p>
                 <p>
-                  Supplier owner: <span className="font-semibold">supplier.owner@avocarbon.local</span>
-                </p>
-                <p>
-                  Temporary password: <span className="font-semibold">ChangeMe123!</span>
+                  Temporary password:{" "}
+                  <span className="font-semibold">ChangeMe123!</span>
                 </p>
               </div>
             </div>
