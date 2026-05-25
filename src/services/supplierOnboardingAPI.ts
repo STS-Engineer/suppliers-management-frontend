@@ -10,9 +10,6 @@ import {
   SupplierGroupSummary,
 } from "../types/onboarding";
 
-const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
-
-
 const API_URL =
   import.meta.env.VITE_API_URL?.trim() ||
   "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1";
