@@ -37,6 +37,126 @@ export class SupplierApiError extends Error {
   }
 }
 
+function humanizeApiMessage(message: string, statusCode: number) {
+  const trimmed = message.trim();
+
+  const notFoundMatchers: Array<[RegExp, string]> = [
+    [/^Site with ID \d+ not found$/i, "The selected site could not be found."],
+    [
+      /^Avocarbon site with ID \d+ not found$/i,
+      "The selected Avocarbon site could not be found.",
+    ],
+    [
+      /^Supplier relation with ID \d+ not found$/i,
+      "The selected supplier relation could not be found.",
+    ],
+    [
+      /^Supplier group with ID \d+ not found$/i,
+      "The selected supplier group could not be found.",
+    ],
+    [
+      /^Supplier unit with ID \d+ not found$/i,
+      "The selected supplier unit could not be found.",
+    ],
+  ];
+
+  for (const [pattern, replacement] of notFoundMatchers) {
+    if (pattern.test(trimmed)) {
+      return replacement;
+    }
+  }
+
+  const unitAlreadyLinkedMatch = trimmed.match(
+    /^Unit\s+\d+\s+is already linked to site\s+\d+$/i,
+  );
+  if (unitAlreadyLinkedMatch) {
+    return "This supplier unit is already linked to the selected site.";
+  }
+
+  const unitNotLinkedMatch = trimmed.match(
+    /^Unit\s+\d+\s+is not linked to site\s+\d+$/i,
+  );
+  if (unitNotLinkedMatch) {
+    return "This supplier unit is not linked to the selected site.";
+  }
+
+  if (/^Supplier group with name '.+' already exists$/i.test(trimmed)) {
+    return "A supplier group with this name already exists.";
+  }
+
+  if (/^Supplier unit with code '.+' already exists$/i.test(trimmed)) {
+    return "A supplier unit with this supplier code already exists.";
+  }
+
+  if (
+    /^An access identity already exists for this email\.$/i.test(trimmed)
+  ) {
+    return "An account already exists for this email address.";
+  }
+
+  if (/already exists/i.test(trimmed) && statusCode === 409) {
+    return "This record already exists. Please review the existing data before creating another one.";
+  }
+
+  if (
+    /^A global supplier owner email is required before creating this relation$/i.test(
+      trimmed,
+    )
+  ) {
+    return "Enter the global supplier owner email before creating this relation.";
+  }
+
+  if (
+    /^Supplier owner email is required for local or regional site assignments$/i.test(
+      trimmed,
+    )
+  ) {
+    return "Enter a supplier owner email before assigning this unit to the selected site.";
+  }
+
+  if (/^No primary contact found for supplier$/i.test(trimmed)) {
+    return "Add a primary contact before continuing.";
+  }
+
+  if (/^Unsupported criteria type '.+'$/i.test(trimmed)) {
+    return "The selected evaluation criterion is not supported.";
+  }
+
+  if (
+    /^Criteria document deletion is not available because id_document is missing from pld_class_criteria_detail\.$/i.test(
+      trimmed,
+    )
+  ) {
+    return "This document cannot be deleted yet because the evaluation document link is missing in the database.";
+  }
+
+  if (/^Uploaded file is empty\.$/i.test(trimmed)) {
+    return "The selected file is empty. Please choose another file.";
+  }
+
+  if (/^File too large \(.+Max allowed: .+\.$/i.test(trimmed)) {
+    return trimmed.replace(/^File too large/i, "The selected file is too large");
+  }
+
+  if (/^File type '.+' is not allowed\./i.test(trimmed)) {
+    return trimmed.replace(/^File type/i, "This file type");
+  }
+
+  if (/^Invalid or expired token$/i.test(trimmed)) {
+    return "Your session has expired. Please sign in again.";
+  }
+
+  if (/^Not authenticated$/i.test(trimmed)) {
+    return "Please sign in to continue.";
+  }
+
+  if (/^Invalid email or password\.$/i.test(trimmed)) {
+    return "The email or password you entered is incorrect.";
+  }
+
+  return trimmed;
+}
+
 export type AuthenticatedAppUser = {
   email: string;
   full_name: string;
@@ -129,7 +249,12 @@ class SupplierOnboardingAPI {
     const errorCode = data.error_code || nestedDetail?.error_code;
     const details = data.details ?? nestedDetail?.details;
 
-    return new SupplierApiError(message, statusCode, errorCode, details);
+    return new SupplierApiError(
+      humanizeApiMessage(message, statusCode),
+      statusCode,
+      errorCode,
+      details,
+    );
   }
 
   private getFriendlyFallbackMessage(statusCode: number, fallbackMessage: string) {

@@ -385,6 +385,15 @@ const clampScore = (value?: number) => {
   return Math.max(0, Math.min(100, value));
 };
 
+const normalizeScoreInput = (rawValue: string) => {
+  if (!rawValue.trim()) return undefined;
+
+  const numericValue = Number(rawValue);
+  if (Number.isNaN(numericValue)) return undefined;
+
+  return clampScore(numericValue);
+};
+
 const parseStrategicMention = (value?: string) => {
   if (!value || !value.trim()) return ["none"];
 
@@ -1358,13 +1367,15 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                     type="number"
                     value={value ?? ""}
                     onChange={(e) =>
-                      onChange(
-                        field.key,
-                        e.target.value ? Number(e.target.value) : undefined,
-                      )
+                      onChange(field.key, normalizeScoreInput(e.target.value))
                     }
                     placeholder="0 - 100"
                     error={errors[String(field.key)]}
+                    min={0}
+                    max={100}
+                    step={1}
+                    inputMode="numeric"
+                    helperText="Enter a score from 0 to 100."
                   />
 
                   <div className="mt-3 h-2 rounded-full bg-slate-100">
