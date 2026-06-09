@@ -7,6 +7,7 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
+  ChevronUp,
   ClipboardCheck,
   ExternalLink,
   Eye,
@@ -32,6 +33,7 @@ import type {
   AvocarbonSite,
   RelationEvaluationWorkspace,
   SitePanelBundle,
+  SupplierDevelopmentPlan,
   SupplierGroupSummary,
   SupplierSiteRelation,
   SupplierUnitResponse,
@@ -160,39 +162,30 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
   return <KeyValueRow label={label} value={value} />;
 }
 
-function StatCard({
-  label,
-  value,
-  helper,
+function StatPill({
   icon,
-  tone = "blue",
+  value,
+  label,
+  tone = "slate",
 }: {
-  label: string;
-  value: ReactNode;
-  helper: string;
   icon: ReactNode;
-  tone?: "blue" | "green" | "purple" | "amber" | "red";
+  value: ReactNode;
+  label: string;
+  tone?: "slate" | "green" | "amber" | "red" | "blue";
 }) {
-  const iconStyles = {
-    blue: "bg-blue-50 text-blue-700 ring-blue-100",
-    green: "bg-emerald-50 text-emerald-600 ring-emerald-100",
-    purple: "bg-violet-50 text-violet-600 ring-violet-100",
-    amber: "bg-orange-50 text-orange-600 ring-orange-100",
-    red: "bg-rose-50 text-rose-600 ring-rose-100",
-  };
+  const toneClass = {
+    slate: "text-slate-600",
+    green: "text-emerald-600",
+    amber: "text-amber-600",
+    red: "text-rose-600",
+    blue: "text-blue-600",
+  }[tone];
 
   return (
-    <div className="group rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
-      <div
-        className={`grid h-10 w-10 place-items-center rounded-2xl ring-1 ${iconStyles[tone]}`}
-      >
-        {icon}
-      </div>
-      <div className="mt-4 text-sm font-medium text-slate-500">{label}</div>
-      <div className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-        {value}
-      </div>
-      <div className="mt-1 text-xs text-slate-400">{helper}</div>
+    <div className="flex items-center gap-1.5">
+      <span className={`${toneClass} opacity-70`}>{icon}</span>
+      <span className={`text-sm font-bold ${toneClass}`}>{value}</span>
+      <span className="text-xs text-slate-400">{label}</span>
     </div>
   );
 }
@@ -258,88 +251,34 @@ function SiteCard({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const archivedCount = bundle.relations.filter((entry) => {
-    const normalizedStatus = normalizeText(entry.relation.supplier_status);
-    return (
-      entry.relation.panel_decision === "panel_reject" ||
-      entry.relation.inactivated_at != null ||
-      normalizedStatus.includes("hold")
-    );
-  }).length;
-
-  const panelReadyCount = bundle.relations.filter(
-    (entry) =>
-      entry.relation.panel_decision === "panel_add" ||
-      entry.relation.panel_decision === "panel_add_exec_committee",
-  ).length;
-
-  const latestEvaluation = bundle.relations
-    .map((entry) => entry.relation.last_evaluation_date)
-    .filter(Boolean)
-    .sort((a, b) => String(a).localeCompare(String(b)))
-    .pop();
+  const location = [bundle.site.city, bundle.site.country].filter(Boolean).join(", ");
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`group relative w-full overflow-hidden rounded-[1.75rem] border p-5 text-left transition-all duration-300 ${
+      className={`group w-full rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 ${
         isSelected
-          ? "border-[#062B49] bg-[#062B49] text-white shadow-[0_24px_70px_rgba(6,43,73,0.35)]"
-          : "border-slate-200 bg-white text-slate-900 shadow-sm hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_18px_45px_rgba(15,23,42,0.12)]"
+          ? "border-[#062B49] bg-[#062B49] text-white shadow-lg"
+          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
       }`}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.24),transparent_35%)] opacity-0 transition group-hover:opacity-100" />
-
-      <div className="relative flex items-start justify-between gap-4">
-        <div>
-          <div
-            className={`text-xs font-semibold uppercase tracking-[0.22em] ${
-              isSelected ? "text-blue-100" : "text-slate-400"
-            }`}
-          >
-            Avocarbon Site
-          </div>
-
-          <div className="mt-2 text-xl font-bold tracking-tight">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className={`truncate font-semibold ${isSelected ? "text-white" : "text-slate-900"}`}>
             {bundle.site.site_name || "Unnamed site"}
           </div>
-
-          <div
-            className={`mt-1 text-sm ${
-              isSelected ? "text-blue-100/80" : "text-slate-500"
-            }`}
-          >
-            {[bundle.site.city, bundle.site.country]
-              .filter(Boolean)
-              .join(", ") || "Location not set"}
-          </div>
+          {location && (
+            <div className={`mt-0.5 truncate text-xs ${isSelected ? "text-blue-200" : "text-slate-400"}`}>
+              {location}
+            </div>
+          )}
         </div>
-
-        <div
-          className={`rounded-2xl px-3 py-2 text-right ${
-            isSelected ? "bg-white/10" : "bg-slate-50"
-          }`}
-        >
-          <div
-            className={
-              isSelected ? "text-xs text-blue-100/80" : "text-xs text-slate-400"
-            }
-          >
-            Relations
-          </div>
-          <div className="text-xl font-bold">{bundle.relation_count}</div>
-        </div>
-      </div>
-
-      <div className="relative mt-4 flex flex-wrap gap-2">
-        <Badge text={`${panelReadyCount} panel-ready`} tone="green" />
-        <Badge text={`${archivedCount} archived`} tone="red" />
-        <Badge text={`Groups ${bundle.group_count}`} tone="slate" />
-        <Badge
-          text={`Last eval ${formatDate(latestEvaluation)}`}
-          tone="amber"
-        />
+        <span className={`flex-shrink-0 rounded-lg px-2.5 py-1 text-sm font-bold ${
+          isSelected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
+        }`}>
+          {bundle.relation_count}
+        </span>
       </div>
     </button>
   );
@@ -376,6 +315,8 @@ function RelationDetailModal({
     ["Deliveries", workspace?.deliveries],
     ["Environment / Ethics Rules", workspace?.environment_ethic_rules],
   ];
+  const developmentPlans = (workspace?.development_plans ||
+    []) as SupplierDevelopmentPlan[];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-xl">
@@ -435,42 +376,33 @@ function RelationDetailModal({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-slate-100 px-8 py-7">
-          <div className="mb-6 grid gap-4 md:grid-cols-4">
-            <StatCard
-              label="Final Grade"
-              value={record.finalGrade || "-"}
-              helper="Latest consolidated grade"
-              icon={<Award className="h-4 w-4" />}
+        <div className="flex-1 overflow-y-auto bg-slate-50 px-8 py-7">
+          <div className="mb-5 flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm">
+            <StatPill
+              icon={<Award className="h-3.5 w-3.5" />}
+              value={record.finalGrade || "—"}
+              label="grade"
               tone="blue"
             />
-            <StatCard
-              label="Class Score"
-              value={
-                workspace?.class_score != null
-                  ? Number(workspace.class_score).toFixed(1)
-                  : "-"
-              }
-              helper="Class evaluation score"
-              icon={<Layers3 className="h-4 w-4" />}
-              tone="purple"
+            <span className="h-4 w-px bg-slate-200" />
+            <StatPill
+              icon={<Layers3 className="h-3.5 w-3.5" />}
+              value={workspace?.class_score != null ? Number(workspace.class_score).toFixed(1) : "—"}
+              label="class score"
+              tone="slate"
             />
-            <StatCard
-              label="Operational Score"
-              value={
-                workspace?.operational_score != null
-                  ? Number(workspace.operational_score).toFixed(1)
-                  : "-"
-              }
-              helper="Operational maturity"
-              icon={<ClipboardCheck className="h-4 w-4" />}
+            <span className="h-4 w-px bg-slate-200" />
+            <StatPill
+              icon={<ClipboardCheck className="h-3.5 w-3.5" />}
+              value={workspace?.operational_score != null ? Number(workspace.operational_score).toFixed(1) : "—"}
+              label="operational score"
               tone="green"
             />
-            <StatCard
-              label="Impact Score"
-              value={workspace?.impact_score ?? "-"}
-              helper="Business impact signal"
-              icon={<AlertCircle className="h-4 w-4" />}
+            <span className="h-4 w-px bg-slate-200" />
+            <StatPill
+              icon={<AlertCircle className="h-3.5 w-3.5" />}
+              value={workspace?.impact_score ?? "—"}
+              label="impact score"
               tone="amber"
             />
           </div>
@@ -628,6 +560,49 @@ function RelationDetailModal({
               ])}
             />
           </div>
+
+          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5">
+              <h4 className="text-lg font-bold tracking-tight text-slate-950">
+                Development Plan History
+              </h4>
+              <p className="mt-1 text-sm text-slate-500">
+                Manual tracking of the supplier development plan, due dates,
+                file references and hold release history.
+              </p>
+            </div>
+
+            <DataTable
+              headers={[
+                "Plan",
+                "Status",
+                "Issue / Due",
+                "Submitted / Reviewed",
+                "Hold / Escalation",
+                "File",
+              ]}
+              rows={developmentPlans.map((plan) => [
+                plan.plan_title || `Plan #${plan.id_development_plan}`,
+                plan.plan_status || "-",
+                `${formatDate(plan.issue_date)} / ${formatDate(plan.due_date)}`,
+                `${formatDate(plan.submission_date)} / ${formatDate(plan.review_date)}`,
+                `${plan.business_hold_active ? "On hold" : "Released"}${plan.escalated ? " · Escalated" : ""}${plan.is_overdue ? " · Overdue" : ""}`,
+                plan.file_url ? (
+                  <a
+                    href={plan.file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#062B49] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0C5381]"
+                  >
+                    {plan.file_name || "Open file"}{" "}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  plan.file_name || "-"
+                ),
+              ])}
+            />
+          </div>
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 bg-white px-8 py-5">
@@ -707,121 +682,162 @@ const getSiteOverview = (bundle: SitePanelBundle) => {
   };
 };
 
-const renderGroupsSummary = (bundle: SitePanelBundle) => {
-  const groups = new Map<
-    number,
-    {
-      group: SupplierGroupSummary;
-      units: Set<number>;
-      categories: Set<string>;
-    }
-  >();
 
-  for (const entry of bundle.relations) {
-    const existing = groups.get(entry.group.id_group) || {
-      group: entry.group,
-      units: new Set<number>(),
-      categories: new Set<string>(),
-    };
+function RelationsTable({
+  bundle,
+  onViewRelation,
+  onOpenEvaluation,
+}: {
+  bundle: SitePanelBundle;
+  onViewRelation: (record: RelationRecord) => void;
+  onOpenEvaluation: (relationId: number) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const records = buildRelationRecords(bundle);
 
-    existing.units.add(entry.unit.id_supplier_unit);
-    entry.group_categories.forEach((c) => existing.categories.add(c));
-    groups.set(entry.group.id_group, existing);
+  if (records.length === 0) {
+    return (
+      <div className="px-5 py-10 text-center text-sm text-slate-400">
+        No relations for this site.
+      </div>
+    );
   }
 
-  const rows = Array.from(groups.values()).map((item) => [
-    <span className="font-bold text-[#062B49]">{item.group.nom}</span>,
-    item.group.supplier_owner || "-",
-    item.group.supplier_scope || "-",
-    Array.from(item.categories).join(", ") || "-",
-    item.units.size,
-  ]);
-
   return (
-    <DataTable
-      headers={["Group", "Owner", "Scope", "Categories", "Units"]}
-      rows={rows}
-    />
-  );
-};
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-left">
+            <th className="w-8 px-3 py-3" />
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Supplier</th>
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Category</th>
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Grade</th>
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Status</th>
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Panel</th>
+            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Last eval</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record) => {
+            const isExpanded = expandedId === record.relation.id_relation;
+            const gradeTone = getGradeTone(record.finalGrade);
+            const gradeTileClass = {
+              green: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+              amber: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+              red: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+              slate: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+              purple: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
+            }[gradeTone];
 
-const renderRelationsTable = (
-  bundle: SitePanelBundle,
-  onViewRelation: (record: RelationRecord) => void,
-  onOpenEvaluation: (relationId: number) => void,
-) => {
-  const relationRecords = buildRelationRecords(bundle);
+            return (
+              <>
+                <tr
+                  key={record.relation.id_relation}
+                  onClick={() => setExpandedId(isExpanded ? null : record.relation.id_relation)}
+                  className={`cursor-pointer border-b transition-colors duration-100 ${isExpanded ? "border-slate-200 bg-slate-50" : "border-slate-50 hover:bg-slate-50/70"}`}
+                >
+                  {/* Expand chevron */}
+                  <td className="px-3 py-3.5 text-slate-400">
+                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180 text-slate-600" : ""}`} />
+                  </td>
 
-  return (
-    <DataTable
-      headers={[
-        "Unit",
-        "Group",
-        "Grade",
-        "Class",
-        "Status",
-        "Panel",
-        "Updated",
-        "Actions",
-      ]}
-      rows={relationRecords.map((record) => [
-        <div>
-          <div className="font-bold text-[#062B49]">
-            {record.unit.unit_code ||
-              `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`}
-          </div>
-          <div className="mt-0.5 text-xs text-slate-400">
-            {(record.group.group_code ||
-              `GRP-${String(record.group.id_group).padStart(6, "0")}`) +
-              " • " +
-              (record.group.supplier_type || "Uncategorized")}
-          </div>
-        </div>,
-        record.group.nom || "-",
-        record.finalGrade ? (
-          <Badge
-            text={record.finalGrade}
-            tone={getGradeTone(record.finalGrade)}
-          />
-        ) : (
-          <Badge text="Pending" tone="amber" />
-        ),
-        record.relation.class_value != null
-          ? String(record.relation.class_value)
-          : "-",
-        <Badge
-          text={record.currentStatus || "Pending"}
-          tone={getStatusTone(record.currentStatus)}
-        />,
-        <Badge
-          text={getPanelDecisionLabel(record.panelDecision)}
-          tone={getPanelDecisionTone(record.panelDecision)}
-        />,
-        formatDate(record.relation.last_evaluation_date),
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => onViewRelation(record)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0C5381]"
-          >
-            <Eye className="h-3.5 w-3.5" /> Details
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenEvaluation(record.relation.id_relation)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#062B49] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#0C5381]"
-          >
-            <ExternalLink className="h-3.5 w-3.5" /> Open
-          </button>
-        </div>,
-      ])}
-    />
+                  {/* Supplier */}
+                  <td className="px-4 py-3.5">
+                    <div className="font-semibold text-slate-900">{record.group.nom || "—"}</div>
+                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">
+                      {record.unit.unit_code || `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`}
+                    </div>
+                  </td>
+
+                  {/* Category */}
+                  <td className="px-4 py-3.5">
+                    {record.group.supplier_type ? (
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                        {record.group.supplier_type}
+                      </span>
+                    ) : <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Grade */}
+                  <td className="px-4 py-3.5">
+                    <span className={`inline-flex h-8 w-10 items-center justify-center rounded-lg text-sm font-extrabold ${gradeTileClass}`}>
+                      {record.finalGrade || "—"}
+                    </span>
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-4 py-3.5">
+                    <Badge text={record.currentStatus || "Pending"} tone={getStatusTone(record.currentStatus)} />
+                  </td>
+
+                  {/* Panel */}
+                  <td className="px-4 py-3.5">
+                    <Badge text={getPanelDecisionLabel(record.panelDecision)} tone={getPanelDecisionTone(record.panelDecision)} />
+                  </td>
+
+                  {/* Last eval */}
+                  <td className="px-4 py-3.5 text-xs text-slate-400">
+                    {formatDate(record.relation.last_evaluation_date)}
+                  </td>
+                </tr>
+
+                {/* ── Expanded detail row ── */}
+                {isExpanded && (
+                  <tr key={`${record.relation.id_relation}-detail`} className="border-b border-slate-100 bg-slate-50">
+                    <td />
+                    <td colSpan={6} className="px-4 pb-5 pt-3">
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Group</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-800">{record.group.nom || "—"}</p>
+                          <p className="text-xs text-slate-400">{record.group.group_code || `GRP-${String(record.group.id_group).padStart(6,"0")}`}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Owner · Scope</p>
+                          <p className="mt-1 text-sm text-slate-700">{record.group.supplier_owner || "—"}</p>
+                          <p className="text-xs text-slate-400">{record.group.supplier_scope || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Class · Operational</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-800">
+                            {record.relation.class_value != null ? String(record.relation.class_value) : "—"}
+                            <span className="mx-1.5 text-slate-300">/</span>
+                            {record.relation.operational_grade || "—"}
+                          </p>
+                          <p className="text-xs text-slate-400">Strategic: {record.relation.strategic_mention || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Relation code</p>
+                          <p className="mt-1 font-mono text-sm text-slate-700">
+                            {record.relation.relation_code || `REL-${String(record.relation.id_relation).padStart(6,"0")}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); onViewRelation(record); }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
+                          <Eye className="h-3.5 w-3.5" /> Full details
+                        </button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); onOpenEvaluation(record.relation.id_relation); }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#062B49] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0C5381]">
+                          <ExternalLink className="h-3.5 w-3.5" /> Open evaluation
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
-};
+}
 
 export default function SuppliersPage() {
   const navigate = useNavigate();
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [siteBundles, setSiteBundles] = useState<SitePanelBundle[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
 
@@ -1008,9 +1024,9 @@ export default function SuppliersPage() {
   return (
     <div className="mx-auto flex max-w-[1700px] flex-col gap-7 px-2">
       <PageIntro
-        eyebrow="Panel"
-        title="Avocarbon Sites"
-        description="Site-first view of suppliers, relations, and class evaluations."
+        eyebrow="Portfolio"
+        title="Active Sites"
+        description="Site-by-site view of all active supplier relations, evaluations and panel status."
         actions={
           <>
             <button
@@ -1033,493 +1049,221 @@ export default function SuppliersPage() {
       />
 
       <main className="mx-auto w-full max-w-[1600px]">
-        <div className="mb-6 rounded-[2rem] border border-slate-200/80 bg-white/90 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+        {/* ── Filter bar ── */}
+        <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* Primary row — always visible */}
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[240px] flex-1">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Site Name
-              </label>
+            <div className="min-w-[220px] flex-[2]">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Site name</label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Search sites by name"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-
-            <div className="min-w-[220px] flex-1">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Supplier Owner
-              </label>
-              <div className="relative">
-                <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={filterOwner}
-                  onChange={(e) => {
-                    setFilterOwner(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Owner email or name"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
+                <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search by site name"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
               </div>
             </div>
 
             <div className="w-48">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Category
-              </label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Category</label>
               <div className="relative">
                 <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={filterCategory}
-                  onChange={(e) => {
-                    setFilterCategory(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                >
+                <select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100">
                   <option value="">All categories</option>
-                  {allCategories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
+                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
 
-            <div className="w-40">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Class Grade
-              </label>
+            <div className="w-36">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Grade</label>
               <div className="relative">
                 <Award className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={filterGrade}
-                  onChange={(e) => {
-                    setFilterGrade(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                >
+                <select value={filterGrade} onChange={(e) => { setFilterGrade(e.target.value); setPage(1); }}
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100">
                   <option value="">All grades</option>
-                  {gradeOptions.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
+                  {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
 
-            <div className="w-56">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Status
-              </label>
-              <div className="relative">
-                <AlertCircle className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={filterStatus}
-                  onChange={(e) => {
-                    setFilterStatus(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="">All statuses</option>
-                  {statusOptions.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            <div className="w-56">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Panel Decision
-              </label>
-              <div className="relative">
-                <ClipboardCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={filterPanelDecision}
-                  onChange={(e) => {
-                    setFilterPanelDecision(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="">All decisions</option>
-                  {panelDecisionOptions.map((decision) => (
-                    <option key={decision} value={decision}>
-                      {getPanelDecisionLabel(decision)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            <div className="w-44">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                From
-              </label>
-              <div className="relative">
-                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={filterStartDate}
-                  onChange={(e) => {
-                    setFilterStartDate(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-
-            <div className="w-44">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                To
-              </label>
-              <div className="relative">
-                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={filterEndDate}
-                  onChange={(e) => {
-                    setFilterEndDate(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-
-            <div className="min-w-[220px] flex-1">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Purchase Manager
-              </label>
+            <div className="min-w-[180px] flex-1">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Owner</label>
               <div className="relative">
                 <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={filterPurchaseManager}
-                  onChange={(e) => {
-                    setFilterPurchaseManager(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Role or contact name"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
+                <input value={filterOwner} onChange={(e) => { setFilterOwner(e.target.value); setPage(1); }} placeholder="Owner name or email"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
               </div>
             </div>
 
-            <div className="min-w-[220px] flex-1">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Plant Manager
-              </label>
-              <div className="relative">
-                <Factory className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={filterPlantManager}
-                  onChange={(e) => {
-                    setFilterPlantManager(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Role or contact name"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                />
-              </div>
-            </div>
+            <button type="button" onClick={() => setShowFilters((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700">
+              {showFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showFilters ? "Less" : "More filters"}
+            </button>
 
-            <div className="w-44">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
-                Group By
-              </label>
-              <div className="relative">
-                <Layers3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  value={groupBy}
-                  onChange={(e) => setGroupBy(e.target.value)}
-                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="none">None</option>
-                  <option value="country">Country</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            {(search ||
-              filterOwner ||
-              filterCategory ||
-              filterGrade ||
-              filterStatus ||
-              filterPanelDecision ||
-              filterStartDate ||
-              filterEndDate ||
-              filterPurchaseManager ||
-              filterPlantManager) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setFilterCategory("");
-                  setFilterOwner("");
-                  setFilterGrade("");
-                  setFilterStatus("");
-                  setFilterPanelDecision("");
-                  setFilterStartDate("");
-                  setFilterEndDate("");
-                  setFilterPurchaseManager("");
-                  setFilterPlantManager("");
-                  setPage(1);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-              >
-                <X className="h-4 w-4" /> Reset
+            {(search || filterOwner || filterCategory || filterGrade || filterStatus || filterPanelDecision || filterStartDate || filterEndDate || filterPurchaseManager || filterPlantManager) && (
+              <button type="button" onClick={() => { setSearch(""); setFilterCategory(""); setFilterOwner(""); setFilterGrade(""); setFilterStatus(""); setFilterPanelDecision(""); setFilterStartDate(""); setFilterEndDate(""); setFilterPurchaseManager(""); setFilterPlantManager(""); setPage(1); }}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700">
+                <X className="h-3.5 w-3.5" /> Clear
               </button>
             )}
 
-            <div className="ml-auto text-sm font-medium text-slate-400">
-              {totalSites} site{totalSites !== 1 ? "s" : ""}
-            </div>
+            <span className="ml-auto text-xs font-medium text-slate-400">{totalSites} site{totalSites !== 1 ? "s" : ""}</span>
           </div>
+
+          {/* Secondary row — collapsed by default */}
+          {showFilters && (
+            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
+              <div className="w-52">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Status</label>
+                <div className="relative">
+                  <AlertCircle className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100">
+                    <option value="">All statuses</option>
+                    {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
+
+              <div className="w-52">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Panel decision</label>
+                <div className="relative">
+                  <ClipboardCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <select value={filterPanelDecision} onChange={(e) => { setFilterPanelDecision(e.target.value); setPage(1); }}
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100">
+                    <option value="">All decisions</option>
+                    {panelDecisionOptions.map((d) => <option key={d} value={d}>{getPanelDecisionLabel(d)}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
+
+              <div className="w-40">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Eval from</label>
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input type="date" value={filterStartDate} onChange={(e) => { setFilterStartDate(e.target.value); setPage(1); }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                </div>
+              </div>
+
+              <div className="w-40">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Eval to</label>
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input type="date" value={filterEndDate} onChange={(e) => { setFilterEndDate(e.target.value); setPage(1); }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                </div>
+              </div>
+
+              <div className="min-w-[180px] flex-1">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Purchase manager</label>
+                <div className="relative">
+                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input value={filterPurchaseManager} onChange={(e) => { setFilterPurchaseManager(e.target.value); setPage(1); }} placeholder="Name or role"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                </div>
+              </div>
+
+              <div className="min-w-[180px] flex-1">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Plant manager</label>
+                <div className="relative">
+                  <Factory className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input value={filterPlantManager} onChange={(e) => { setFilterPlantManager(e.target.value); setPage(1); }} placeholder="Name or role"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                </div>
+              </div>
+
+              <div className="w-40">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Group by</label>
+                <div className="relative">
+                  <Layers3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100">
+                    <option value="none">None</option>
+                    <option value="country">Country</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="grid gap-7 xl:grid-cols-[440px_minmax(0,1fr)]">
-          <aside className="space-y-6">
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+          {/* ── Site list ── */}
+          <aside className="space-y-2">
             {error && (
-              <InlineAlert
-                title="We couldn't load the site workspace"
-                message={error}
-                action={
-                  <button
-                    type="button"
-                    onClick={() => setRefreshTick((value) => value + 1)}
-                    className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
-                  >
-                    Retry
-                  </button>
-                }
+              <InlineAlert title="We couldn't load the site workspace" message={error}
+                action={<button type="button" onClick={() => setRefreshTick((v) => v + 1)} className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100">Retry</button>}
               />
             )}
 
             {isLoading ? (
-              <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
-                <RefreshCw className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                Loading sites…
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+                ))}
               </div>
             ) : siteBundles.length === 0 ? (
-              <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-400">
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400">
                 No sites match your filters.
               </div>
             ) : (
               groupedSites.map(([label, bundles]) => (
-                <section key={label} className="space-y-3">
+                <section key={label} className="space-y-1.5">
                   {groupBy !== "none" && (
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    <div className="flex items-center gap-2 px-1 py-1 text-xs font-semibold uppercase tracking-widest text-slate-400">
                       <span>{label}</span>
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
                   )}
-
                   {bundles.map((bundle) => (
-                    <SiteCard
-                      key={bundle.site.id_site}
-                      bundle={bundle}
+                    <SiteCard key={bundle.site.id_site} bundle={bundle}
                       isSelected={bundle.site.id_site === selectedSiteId}
-                      onSelect={() => setSelectedSiteId(bundle.site.id_site)}
-                    />
+                      onSelect={() => setSelectedSiteId(bundle.site.id_site)} />
                   ))}
                 </section>
               ))
             )}
 
             {totalSites > PAGE_SIZE && (
-              <Pagination
-                page={currentPage}
-                totalPages={totalPages}
-                totalItems={totalSites}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-                compact
-              />
+              <Pagination page={currentPage} totalPages={totalPages} totalItems={totalSites} pageSize={PAGE_SIZE} onPageChange={setPage} compact />
             )}
           </aside>
 
-          <section className="space-y-5">
-            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white px-6 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-              <div className="absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_45%)]" />
-
-              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    Selected Site
-                  </p>
-                  <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
-                    {selectedBundle?.site.site_name || "Select a site"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {selectedBundle
-                      ? `Site ${selectedBundle.site.id_site} · ${
-                          [
-                            selectedBundle.site.city,
-                            selectedBundle.site.country,
-                          ]
-                            .filter(Boolean)
-                            .join(", ") || "Location pending"
-                        }`
-                      : "Click any site on the left to inspect details"}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setRefreshTick((value) => value + 1)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:text-[#0C5381]"
-                >
-                  <RefreshCw className="h-4 w-4" /> Refresh
-                </button>
-              </div>
-            </div>
-
-            {!selectedBundle || !selectedOverview ? (
-              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white px-4 py-16 text-center text-sm text-slate-400">
-                Select a site from the left panel to see detailed information
-                here.
+          {/* ── Site detail ── */}
+          <section>
+            {!selectedBundle ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center text-sm text-slate-400">
+                Select a site to view its supplier relations.
               </div>
             ) : (
-              <>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <StatCard
-                    label="Relations"
-                    value={selectedBundle.relation_count}
-                    helper="Active site relationships"
-                    icon={<Layers3 className="h-4 w-4" />}
-                    tone="blue"
-                  />
-                  <StatCard
-                    label="Groups"
-                    value={selectedBundle.group_count}
-                    helper="Supplier groups linked"
-                    icon={<Building2 className="h-4 w-4" />}
-                    tone="purple"
-                  />
-                  <StatCard
-                    label="Panel Ready"
-                    value={selectedOverview.panelReady}
-                    helper="Can be added to panel"
-                    icon={<ClipboardCheck className="h-4 w-4" />}
-                    tone="green"
-                  />
-                  <StatCard
-                    label="On Hold / Archived"
-                    value={selectedOverview.archivedCount}
-                    helper="Rejected or on hold"
-                    icon={<Archive className="h-4 w-4" />}
-                    tone="red"
-                  />
-                </div>
-
-                {/* <div className="grid gap-5 xl:grid-cols-2">
-                  <SectionCard
-                    title="Site Profile"
-                    subtitle="Avocarbon site information"
-                  >
-                    <Field
-                      label="Site Name"
-                      value={selectedBundle.site.site_name || "-"}
-                    />
-                    <Field
-                      label="City"
-                      value={selectedBundle.site.city || "-"}
-                    />
-                    <Field
-                      label="Country"
-                      value={selectedBundle.site.country || "-"}
-                    />
-                    <Field
-                      label="Address"
-                      value={selectedBundle.site.address_line || "-"}
-                    />
-                    <Field
-                      label="Last Evaluation"
-                      value={formatDate(selectedOverview.latestEvaluation)}
-                    />
-                  </SectionCard>
-
-                  <SectionCard
-                    title="Coverage Snapshot"
-                    subtitle="Supplier relationship coverage"
-                  >
-                    <Field
-                      label="Relations"
-                      value={selectedBundle.relation_count}
-                    />
-                    <Field label="Groups" value={selectedBundle.group_count} />
-                    <Field
-                      label="Panel Ready"
-                      value={selectedOverview.panelReady}
-                    />
-                    <Field
-                      label="Archived"
-                      value={selectedOverview.archivedCount}
-                    />
-                  </SectionCard>
-                </div> */}
-
-                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                        Relations
-                      </p>
-                      <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
-                        Supplier relations table
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Units, groups, grade, panel decision and latest
-                        evaluation status for this site.
-                      </p>
-                    </div>
-                  </div>
-
-                  {renderRelationsTable(
-                    selectedBundle,
-                    openRelationDetail,
-                    openRelationEvaluation,
-                  )}
-                </div>
-
-                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="mb-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                      Groups
-                    </p>
-                    <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
-                      Supplier group summary
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Group ownership, scope and categories linked to the
-                      selected site.
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+                  <div>
+                    <h2 className="font-bold text-slate-900">{selectedBundle.site.site_name}</h2>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {[selectedBundle.site.city, selectedBundle.site.country].filter(Boolean).join(", ") || "Location not set"}
+                      {" · "}
+                      <span className="font-medium text-slate-600">{selectedBundle.relation_count} relation{selectedBundle.relation_count !== 1 ? "s" : ""}</span>
                     </p>
                   </div>
-
-                  {renderGroupsSummary(selectedBundle)}
+                  <button type="button" onClick={() => setRefreshTick((v) => v + 1)}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700">
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                  </button>
                 </div>
-              </>
+                <RelationsTable
+                  bundle={selectedBundle}
+                  onViewRelation={openRelationDetail}
+                  onOpenEvaluation={openRelationEvaluation}
+                />
+              </div>
             )}
           </section>
         </div>

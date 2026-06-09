@@ -24,10 +24,17 @@ export interface UnitFormData {
   address_line: string;
   city: string;
   country: string;
-  product_type: string;
-  product_category: string;
-  amount_value: string;
-  amount_currency: string;
+  // Product classification
+  family: string[];
+  sub_family: string[];
+  product_line: string[];
+  // Additional unit info
+  website: string;
+  carbon_footprint: string;
+  green_electricity_pct: string;
+  copper_brass_pct: string;
+  category: string[];
+  unit_contacts: ContactFormData[];
 }
 
 export interface ContactFormData {
@@ -54,6 +61,9 @@ export interface ContactResponse {
 }
 
 export interface CertificationFormData {
+  /** Standard category: quality | environmental | safety | energy | other */
+  standard_type: string;
+  /** Specific certification name per category: IATF 16949:2016 | ISO 9001 (cat BCD) | ISO 14001 | ... */
   certification_type: string;
   certificate_name: string;
   amount_value: string;
@@ -62,11 +72,15 @@ export interface CertificationFormData {
   end_date: string;
   expiry_mode: string;
   comments: string;
+  /** Pending file selected by the user, not yet uploaded */
+  file: File | null;
+  file_name: string;
 }
 
 export interface SupplierCertificationResponse {
   id_certification: number;
   id_supplier_unit?: number | null;
+  standard_type?: string | null;
   certification_type?: string | null;
   certificate_name?: string | null;
   amount_value?: number | null;
@@ -75,6 +89,9 @@ export interface SupplierCertificationResponse {
   end_date?: string | null;
   expiry_mode?: string | null;
   comments?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  file_size?: number | null;
 }
 
 export interface EvaluationDetailsFormData {
@@ -163,10 +180,61 @@ export interface SupplierStatusOverride {
   computed_status?: string | null;
 }
 
+export interface PlanDocument {
+  id_document: number;
+  file_name?: string | null;
+  file_url?: string | null;
+  file_notes?: string | null;
+  uploaded_at?: string | null;
+  comments?: string | null;
+}
+
+export interface SupplierDevelopmentPlan {
+  id_development_plan: number;
+  id_relation: number;
+  plan_title?: string | null;
+  plan_status?: string | null;
+  issue_date?: string | null;
+  due_date?: string | null;
+  submission_date?: string | null;
+  review_date?: string | null;
+  decision_date?: string | null;
+  reviewed_by?: string | null;
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  business_hold_active?: boolean | null;
+  escalated?: boolean | null;
+  escalation_date?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  file_notes?: string | null;
+  supplier_comments?: string | null;
+  internal_comments?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_overdue?: boolean;
+  days_past_due?: number | null;
+}
+
+export interface DevelopmentPlanRegisterRow {
+  relation: SupplierSiteRelation;
+  development_plan: SupplierDevelopmentPlan;
+  documents?: PlanDocument[];
+  site_name?: string | null;
+  site_city?: string | null;
+  site_country?: string | null;
+  unit_supplier_code?: string | null;
+  unit_code?: string | null;
+  group_id?: number | null;
+  group_name?: string | null;
+  group_code?: string | null;
+}
+
 export interface RelationEvaluationWorkspace {
   relation: SupplierSiteRelation;
   evaluation_date?: string | null;
   status_history: SupplierStatusHistoryEntry[];
+  development_plans?: SupplierDevelopmentPlan[];
   computed_supplier_status?: string | null;
   effective_supplier_status?: string | null;
   status_override?: SupplierStatusOverride | null;
@@ -209,6 +277,8 @@ export interface OnboardingFormData {
   site_id: number | '';
   supplier_scope: string;
   supplier_owner: string;
+  annual_spend_value: string;
+  annual_spend_currency: string;
   template_id: number | '';
 }
 
@@ -221,13 +291,11 @@ export type OnboardingStep =
   | 'configuration'
   | 'review';
 
-type SubmittedUnitFormData = Omit<UnitFormData, 'amount_value'> & {
-  amount_value: string | null;
-};
+type SubmittedUnitFormData = UnitFormData;
 
 type SubmittedCertificationFormData = Omit<
   CertificationFormData,
-  'amount_value' | 'start_date' | 'end_date'
+  'amount_value' | 'start_date' | 'end_date' | 'file'
 > & {
   amount_value: string | null;
   start_date: string | null;
@@ -239,11 +307,14 @@ export interface OnboardingRequest {
   group: GroupFormData;
   unit: SubmittedUnitFormData;
   contacts: ContactFormData[];
+  unit_contacts?: ContactFormData[];
   certifications: SubmittedCertificationFormData[];
   evaluation: EvaluationDetailsFormData;
   site_id: number;
   supplier_scope: string;
   supplier_owner: string;
+  annual_spend_value: string | null;
+  annual_spend_currency: string;
   template_id: number | null;
 }
 
@@ -343,6 +414,8 @@ export interface SupplierUnitResponse {
 export interface SiteRelationData {
   supplier_scope?: string;
   supplier_owner?: string;
+  annual_spend_value?: number | string;
+  annual_spend_currency?: string;
   operational_grade?: string;
   class_value?: number;
   evaluation_frequency?: string;
@@ -376,6 +449,8 @@ export interface SupplierSiteRelation {
   unit_code?: string;
   supplier_scope?: string;
   supplier_owner?: string;
+  annual_spend_value?: number | null;
+  annual_spend_currency?: string | null;
   operational_grade?: string;
   class_value?: number;
   evaluation_frequency?: string;
