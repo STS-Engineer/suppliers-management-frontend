@@ -46,6 +46,21 @@ interface NewContact {
   role_label: string;
 }
 
+const toContactOption = (
+  contact: ContactResponse,
+  source: "group" | "unit",
+  sourceLabel?: string,
+): ContactOption => ({
+  id_contact: contact.id_contact,
+  full_name: contact.full_name ?? null,
+  email: contact.email ?? null,
+  phone: contact.phone ?? null,
+  role_label: contact.role_label ?? null,
+  is_primary_contact: contact.is_primary_contact ?? null,
+  source,
+  source_label: sourceLabel,
+});
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -112,7 +127,7 @@ export const FlowB: React.FC<FlowBProps> = ({
         if (!active) return;
 
         const gc: ContactOption[] = (gRes.data?.items ?? []).map(
-          (c: ContactResponse) => ({ ...c, source: "group" as const }),
+          (c: ContactResponse) => toContactOption(c, "group"),
         );
 
         const ul: Array<{ id_supplier_unit: number; supplier_code: string }> =
@@ -122,11 +137,13 @@ export const FlowB: React.FC<FlowBProps> = ({
           ul.map(async (u) => {
             try {
               const r = await supplierAPI.listContactsForUnit(u.id_supplier_unit);
-              return (r.data?.items ?? []).map((c: ContactResponse) => ({
-                ...c,
-                source: "unit" as const,
-                source_label: u.supplier_code || `Unit ${u.id_supplier_unit}`,
-              }));
+              return (r.data?.items ?? []).map((c: ContactResponse) =>
+                toContactOption(
+                  c,
+                  "unit",
+                  u.supplier_code || `Unit ${u.id_supplier_unit}`,
+                ),
+              );
             } catch {
               return [];
             }

@@ -5,7 +5,7 @@
 import React from "react";
 import { UserPlus, X } from "lucide-react";
 import { UnitFormData, ContactFormData, FormErrors } from "../../types/onboarding";
-import { CreatableMultiSelect, FormInput, FormCheckbox } from "./FormElements";
+import { CreatableMultiSelect, FormInput, FormCheckbox, FormSelect } from "./FormElements";
 
 interface SupplierUnitFormProps {
   data: UnitFormData;

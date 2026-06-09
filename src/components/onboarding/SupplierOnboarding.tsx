@@ -117,6 +117,8 @@ const EMPTY_FORM: OnboardingFormData = {
   site_id: 0,
   supplier_scope: "local",
   supplier_owner: "",
+  annual_spend_value: "",
+  annual_spend_currency: "USD",
   template_id: "",
 };
 
@@ -432,7 +434,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     setValidationNotice(null);
 
     try {
-      const { unit_contacts, ...cleanedUnit } = formData.unit;
+      const { unit_contacts } = formData.unit;
 
       const cleanedCertifications = formData.certifications.map(({ file, ...cert }) => ({
         ...cert,
@@ -446,10 +448,12 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           ...formData.group,
           supplier_type: formData.group.supplier_type.join(", "),
         },
-        unit: cleanedUnit,
+        unit: formData.unit,
         unit_contacts: unit_contacts.filter((c) => c.full_name.trim()),
         contacts: formData.contacts,
         certifications: cleanedCertifications,
+        annual_spend_value: formData.annual_spend_value || undefined,
+        annual_spend_currency: formData.annual_spend_currency || undefined,
       };
 
       console.log("Submitting supplier master data:", payloadData);

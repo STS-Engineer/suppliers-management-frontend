@@ -130,7 +130,12 @@ export const SupplierMasterReviewStep: React.FC<
                 Products & Services
               </p>
               <p className="mt-1 text-gray-900">
-                {[data.unit.product_type, data.unit.product_category]
+                {[
+                  ...data.unit.family,
+                  ...data.unit.sub_family,
+                  ...data.unit.product_line,
+                  ...data.unit.category,
+                ]
                   .filter(Boolean)
                   .join(" • ") || "Not set"}
               </p>
