@@ -5,11 +5,13 @@ import {
   Building2,
   ChevronDown,
   ChevronLeft,
-  FolderKanban,
+  ClipboardList,
   GitBranchPlus,
   PanelLeft,
 } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
+import { ThemeToggleButton } from "../common/ThemeToggleButton";
+import UserDropdown from "../header/UserDropdown";
 import logoAvocarbonWide from "../../assets/logo/logo-avocarbon.png";
 
 type SubItem = {
@@ -39,10 +41,28 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Portfolio",
     icon: Building2,
     subItems: [
-      { name: "Supplier Panel", path: "/suppliers" },
-      { name: "Active Sites", path: "/suppliers/sites-active" },
+      { name: "Suppliers", path: "/suppliers" },
+      // { name: "Supplier Panel", path: "/suppliers/sites-active" },
+      { name: "Development Plans", path: "/suppliers/development-plans" },
     ],
   },
+  {
+    name: "Evaluations",
+    label: "Evaluations",
+    icon: ClipboardList,
+    subItems: [
+      { name: "Evaluation Dashboard", path: "/evaluations" },
+    ],
+  },
+  // {
+  //   name: "Purchasing Value",
+  //   label: "Value Mgmt",
+  //   icon: TrendingUp,
+  //   subItems: [
+  //     { name: "Opportunities", path: "/purchasing-value" },
+  //     { name: "KPI Dashboard", path: "/purchasing-value/kpis" },
+  //   ],
+  // },
   // {
   //   name: "Access Management",
   //   label: "Security",
@@ -316,27 +336,15 @@ export default function AppSidebar() {
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">
           {open ? (
-            <div className="rounded-2xl border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <FolderKanban size={12} className="text-sky-100/85" />
-                  <span className="text-[11.5px] font-semibold text-white/90">
-                    Operations Brief
-                  </span>
-                </div>
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
-                  <span className="relative h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-              </div>
-
-              <p className="text-[10.5px] leading-[1.65] text-sky-50/78">
-                Supplier panel, lifecycle workspace, and relation evaluations
-                aligned in one workspace.
-              </p>
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] px-3 py-2.5">
+              <UserDropdown />
+              <ThemeToggleButton />
             </div>
           ) : (
-            <div className="py-1" />
+            <div className="flex flex-col items-center gap-2 py-1">
+              <UserDropdown />
+              <ThemeToggleButton />
+            </div>
           )}
         </div>
       </aside>
