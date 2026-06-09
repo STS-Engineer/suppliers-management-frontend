@@ -71,7 +71,6 @@ export const SupplierGroupForm: React.FC<SupplierGroupFormProps> = ({
             onChange={(e) => onChange("supplier_scope", e.target.value)}
             options={[
               { value: "local", label: "Local" },
-              { value: "regional", label: "Regional" },
               { value: "global", label: "Global" },
             ]}
             placeholder="Select supplier scope"
@@ -92,7 +91,7 @@ export const SupplierGroupForm: React.FC<SupplierGroupFormProps> = ({
               helperText={
                 data.supplier_scope === "global"
                   ? "This owner will be used by default for all unit-site relations."
-                  : "Leave blank for local or regional suppliers. Site assignment will request the owner later."
+                  : "Leave blank for local suppliers. Site assignment will request the owner later."
               }
             />
           </div>

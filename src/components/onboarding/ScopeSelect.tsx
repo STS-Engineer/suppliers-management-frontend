@@ -12,11 +12,6 @@ interface ScopeSelectProps {
 
 const SCOPES = [
   { value: "local", label: "Local", desc: "Single site with focused coverage" },
-  {
-    value: "regional",
-    label: "Regional",
-    desc: "Shared support across a region",
-  },
   { value: "global", label: "Global", desc: "Broader group-level coverage" },
   {
     value: "strategic",

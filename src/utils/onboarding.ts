@@ -4,9 +4,8 @@
  */
 
 export const SUPPLIER_SCOPES = [
-  { value: 'local', label: 'Local - Regional supplier, standard evaluations' },
-  { value: 'regional', label: 'Regional - Multi-country supplier' },
-  { value: 'global', label: 'Global - Strategic supplier, multiple countries' },
+  { value: 'local', label: 'Local - Single site or local perimeter' },
+  { value: 'global', label: 'Global - Multi-country or strategic supplier' },
 ] as const;
 
 export const SUPPLIER_TYPES = [
@@ -165,8 +164,10 @@ export const PLD_PROD_OPTIONS = [
 ] as const;
 
 export const PLD_CERTIFICATION_OPTIONS = [
-  { value: 'IATF / ISO9001 (cat BCD)', label: 'IATF / ISO9001 (cat BCD)' },
-  { value: 'ISO9001', label: 'ISO9001' },
+  { value: 'IATF 16949:2016', label: 'IATF 16949:2016' },
+  { value: 'ISO 9001 (cat BCD)', label: 'ISO 9001 (cat BCD)' },
+  { value: 'ISO 9001', label: 'ISO 9001' },
+  { value: 'Distributor', label: 'Distributor' },
   { value: 'None', label: 'None' },
 ] as const;
 
@@ -359,6 +360,50 @@ export const getPldOnboardingOptions = () => ({
   prod_lia_ins: PLD_PROD_LIA_INS_OPTIONS,
   prod: PLD_PROD_OPTIONS,
 });
+
+/** Standard categories for certifications (standard_type field) */
+export const CERTIFICATION_STANDARD_TYPE_OPTIONS = [
+  { value: 'quality', label: 'Quality' },
+  { value: 'environmental', label: 'Environmental' },
+  { value: 'safety', label: 'Safety & Health' },
+  { value: 'energy', label: 'Energy' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+/** Certification names per standard category (drives the cascading select) */
+export const CERT_TYPES_BY_STANDARD: Record<string, Array<{ value: string; label: string }>> = {
+  quality: [
+    { value: 'IATF 16949:2016', label: 'IATF 16949:2016 — Automotive Quality Management' },
+    { value: 'ISO 9001 (cat BCD)', label: 'ISO 9001 (cat BCD)' },
+    { value: 'ISO 9001', label: 'ISO 9001 — Quality Management System' },
+    { value: 'ISO 13485', label: 'ISO 13485 — Medical Devices Quality' },
+    { value: 'Distributor', label: 'Distributor (no manufacturing cert)' },
+    { value: 'None', label: 'None' },
+  ],
+  environmental: [
+    { value: 'ISO 14001', label: 'ISO 14001 — Environmental Management' },
+    { value: 'ISO 14064', label: 'ISO 14064 — Greenhouse Gas' },
+    { value: 'REACH', label: 'REACH — Chemical Regulations' },
+    { value: 'RoHS', label: 'RoHS — Hazardous Substances' },
+    { value: 'None', label: 'None' },
+  ],
+  safety: [
+    { value: 'ISO 45001', label: 'ISO 45001 — Occupational Health & Safety' },
+    { value: 'ITAR', label: 'ITAR — International Traffic in Arms' },
+    { value: 'None', label: 'None' },
+  ],
+  energy: [
+    { value: 'ISO 50001', label: 'ISO 50001 — Energy Management' },
+    { value: 'None', label: 'None' },
+  ],
+  other: [
+    { value: 'ISO/IEC 27001', label: 'ISO/IEC 27001 — Information Security' },
+    { value: 'ISO 22301', label: 'ISO 22301 — Business Continuity' },
+    { value: 'FSC', label: 'FSC — Forest Stewardship Council' },
+    { value: 'Conflict-Free', label: 'Conflict-Free Minerals' },
+    { value: 'Other', label: 'Other' },
+  ],
+};
 
 export const getCertificationTypeOptions = () => PLD_CERTIFICATION_OPTIONS;
 

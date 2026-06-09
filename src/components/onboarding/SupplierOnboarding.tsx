@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import { useBlocker } from "react-router-dom";
 import {
   OnboardingFormData,
   OnboardingStep,
@@ -22,7 +23,7 @@ import { SupplierMasterSuccessPage } from "./SupplierMasterSuccessPage";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
 import { SupplierMasterCreationResponse } from "../../types/onboarding";
 import { SupplierManagement } from "./SupplierManagement";
-import { PageIntro } from "../UI";
+import { InlineAlert, PageIntro } from "../UI";
 
 interface SupplierOnboardingProps {
   onClose?: () => void;
@@ -33,15 +34,11 @@ const MASTER_STEPS: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "supplier", label: "Supplier Info", description: "Group profile" },
-  { id: "unit", label: "Unit Location", description: "First unit" },
-  { id: "contacts", label: "Contacts", description: "Primary contacts" },
-  {
-    id: "certifications",
-    label: "Certifications",
-    description: "Quality records",
-  },
-  { id: "review", label: "Review", description: "Create master" },
+  { id: "supplier",       label: "Supplier Info",  description: "Group profile"     },
+  { id: "contacts",       label: "Contacts",        description: "Group contacts"    },
+  { id: "unit",           label: "Unit Location",   description: "First unit"        },
+  { id: "certifications", label: "Certifications",  description: "Quality records"   },
+  { id: "review",         label: "Review",          description: "Create master"     },
 ];
 
 const EMPTY_FORM: OnboardingFormData = {
@@ -62,10 +59,15 @@ const EMPTY_FORM: OnboardingFormData = {
     address_line: "",
     city: "",
     country: "",
-    product_type: "",
-    product_category: "",
-    amount_value: "",
-    amount_currency: "USD",
+    family: [],
+    sub_family: [],
+    product_line: [],
+    website: "",
+    carbon_footprint: "",
+    green_electricity_pct: "",
+    copper_brass_pct: "",
+    category: [],
+    unit_contacts: [],
   },
   contacts: [
     {
@@ -136,27 +138,41 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   const [draftSaved, setDraftSaved] = useState(false);
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
 
+  // ── Navigation guard ──────────────────────────────────────────────────────
+  const formHasData =
+    !!masterResponse === false &&
+    (formData.group.nom.trim().length > 0 ||
+      formData.contacts.length > 0 ||
+      formData.unit.supplier_code.trim().length > 0);
+
+  const blocker = useBlocker(formHasData);
+
   const buildCertificationErrors = () => {
     const certificationErrors: Record<number, Record<string, string>> = {};
 
     formData.certifications.forEach((certification, index) => {
       const rowErrors: Record<string, string> = {};
       const hasAnyValue =
-        certification.certification_type.trim() ||
-        certification.certificate_name.trim() ||
-        certification.amount_value.trim() ||
+        certification.standard_type?.trim() ||
+        certification.certification_type?.trim() ||
+        certification.certificate_name?.trim() ||
+        certification.amount_value?.trim() ||
         certification.start_date ||
         certification.end_date ||
-        certification.expiry_mode.trim() ||
-        certification.comments.trim();
+        certification.expiry_mode?.trim() ||
+        certification.comments?.trim();
 
       if (!hasAnyValue) {
         return;
       }
 
-      if (!certification.certification_type.trim()) {
-        rowErrors.certification_type =
-          "Certification type is required when adding a certification";
+      if (!certification.standard_type?.trim()) {
+        rowErrors.standard_type =
+          "Standard category is required when adding a certification";
+      }
+
+      if (certification.standard_type && !certification.certification_type?.trim()) {
+        rowErrors.certification_type = "Certification is required";
       }
 
       if (
@@ -278,7 +294,9 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       certifications: [
         ...prev.certifications,
         {
+          standard_type: "",
           certification_type: "",
+          iatf_category: "",
           certificate_name: "",
           amount_value: "",
           amount_currency: "USD",
@@ -286,6 +304,8 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           end_date: "",
           expiry_mode: "",
           comments: "",
+          file: null,
+          file_name: "",
         },
       ],
     }));
@@ -412,28 +432,22 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     setValidationNotice(null);
 
     try {
-      // Clean payload: convert empty strings to null for numeric and date fields
-      const cleanedUnit = {
-        ...formData.unit,
-        amount_value: formData.unit.amount_value
-          ? formData.unit.amount_value
-          : null,
-      };
+      const { unit_contacts, ...cleanedUnit } = formData.unit;
 
-      const cleanedCertifications = formData.certifications.map((cert) => ({
+      const cleanedCertifications = formData.certifications.map(({ file, ...cert }) => ({
         ...cert,
         amount_value: cert.amount_value ? cert.amount_value : null,
         start_date: cert.start_date ? cert.start_date : null,
         end_date: cert.end_date ? cert.end_date : null,
       }));
 
-      // Clean evaluation: only include fields with values
       const payloadData = {
         group: {
           ...formData.group,
           supplier_type: formData.group.supplier_type.join(", "),
         },
         unit: cleanedUnit,
+        unit_contacts: unit_contacts.filter((c) => c.full_name.trim()),
         contacts: formData.contacts,
         certifications: cleanedCertifications,
       };
@@ -487,37 +501,49 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   }
 
   return (
-    <div className="onboarding-container">
-      <div className="mx-auto w-full max-w-[1700px] px-2 pt-2 sm:px-4 lg:px-6">
-        <PageIntro
-          eyebrow="Lifecycle Phase 1"
-          title="Create Supplier Master"
-          description="Start by creating the supplier group, its first unit, contacts, and certifications for the first unit. Site assignment, owner allocation, extra-unit certifications, and relation evaluations will follow in the next phase."
-          actions={
-            onClose ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-2xl border border-white/20 bg-white/12 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/18"
-              >
-                Close
-              </button>
-            ) : undefined
-          }
-        />
-      </div>
+    <div className="flex min-h-[calc(100vh-64px)] flex-col bg-slate-50">
+      <PageIntro
+        eyebrow="Lifecycle · Phase 1"
+        title="Create Supplier Master"
+        description="Set up the supplier group, first unit, contacts and certifications. Site assignment and relation evaluations follow in the next phase."
+        actions={
+          onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              Close
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Progress Steps */}
-      <div className="border-b border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-white shadow-sm">
         <StepProgress currentStep={currentStep} steps={MASTER_STEPS} />
       </div>
 
+      {/* Unsaved-progress banner */}
+      {formHasData && (
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5">
+          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-white">!</span>
+          <p className="text-xs font-medium text-amber-800">
+            Unsaved progress — complete all steps and click <strong>Create</strong> to save. Navigating away will discard your data.
+          </p>
+        </div>
+      )}
+
       {/* Form Content */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-        <div className="mx-auto max-w-[1700px] px-2 py-8 sm:px-4 lg:px-6">
+      <div className="flex-1">
+        <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:px-8">
           {validationNotice ? (
-            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-              {validationNotice}
+            <div className="mb-6">
+              <InlineAlert
+                title="Please check the form"
+                message={validationNotice}
+                tone="warning"
+              />
             </div>
           ) : null}
 
@@ -534,6 +560,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               data={formData.unit}
               errors={errors.unit || {}}
               onChange={handleUnitChange}
+              groupContacts={formData.contacts}
             />
           )}
 
@@ -575,45 +602,22 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
       {/* Navigation Buttons */}
       {currentStep !== "review" && (
-        <div className="bg-white border-t border-gray-200 shadow-lg">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {/* Draft Save Message */}
+        <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 shadow-[0_-4px_16px_rgba(15,23,42,0.06)] backdrop-blur">
+          <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6 lg:px-8">
             {draftSaved && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 flex items-center gap-2">
-                <svg
-                  className="w-5 h-5"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Draft saved successfully!
+              <div className="mb-3">
+                <InlineAlert title="Draft saved" message="Your progress has been saved." tone="info" />
               </div>
             )}
-
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={handlePrevious}
                 disabled={currentStep === "supplier"}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
                 Previous
               </button>
@@ -621,22 +625,52 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 text-white font-semibold hover:from-amber-600 hover:to-amber-500 transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0f2744] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a3a5c]"
               >
-                Next
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
+                Continue
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leave confirmation modal ── */}
+      {blocker.state === "blocked" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.25)]">
+            <div className="border-b border-slate-100 bg-amber-50 px-6 py-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900">Leave without saving?</h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    You have unsaved progress on this supplier creation. Leaving now will discard everything you've entered.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => blocker.reset?.()}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Stay and continue
+              </button>
+              <button
+                type="button"
+                onClick={() => blocker.proceed?.()}
+                className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700"
+              >
+                Leave and discard
               </button>
             </div>
           </div>

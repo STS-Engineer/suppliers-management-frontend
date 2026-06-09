@@ -1,15 +1,22 @@
 /**
  * Certifications Form Step
+ *
+ * Two-level cascading select:
+ *  1. Standard Type  (Quality / Environmental / Safety / Energy / Other)
+ *  2. Certification  — a fixed list per category
+ *                      Quality  → IATF 16949:2016 | ISO 9001 (cat BCD) | ISO 9001 | ISO 13485 | Distributor | None
+ *                      Environmental → ISO 14001 | ISO 14064 | REACH | RoHS | None
+ *                      …
+ *
+ * Plus: certificate name (free text), dates, comments, file upload.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useRef } from "react";
+import { CertificationFormData, FormErrors } from "../../types/onboarding";
 import {
-  CertificationFormData,
-  FormErrors,
-  OnboardingSelectionOptions,
-} from "../../types/onboarding";
-import { supplierAPI } from "../../services/supplierOnboardingAPI";
-import { getCertificationTypeOptions } from "../../utils/onboarding";
+  CERTIFICATION_STANDARD_TYPE_OPTIONS,
+  CERT_TYPES_BY_STANDARD,
+} from "../../utils/onboarding";
 import { FormInput, FormSelect } from "./FormElements";
 
 interface CertificationsFormProps {
@@ -24,15 +31,6 @@ interface CertificationsFormProps {
   ) => void;
 }
 
-const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CNY", "INR"];
-
-type CertificationOptionList = ReadonlyArray<
-  OnboardingSelectionOptions["certification_types"][number]
->;
-
-const DEFAULT_CERT_OPTIONS: CertificationOptionList =
-  getCertificationTypeOptions();
-
 export const CertificationsForm: React.FC<CertificationsFormProps> = ({
   certifications,
   errors,
@@ -40,134 +38,28 @@ export const CertificationsForm: React.FC<CertificationsFormProps> = ({
   onRemoveCertification,
   onChange,
 }) => {
-  const [certOptions, setCertOptions] =
-    useState<CertificationOptionList>(DEFAULT_CERT_OPTIONS);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadOptions = async () => {
-      try {
-        const response = await supplierAPI.getOnboardingOptions();
-        if (!active || !response?.data?.certification_types) return;
-
-        setCertOptions(response.data.certification_types);
-      } catch (error) {
-        console.error("Failed to load certification options:", error);
-      }
-    };
-
-    loadOptions();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
   return (
     <div className="form-section">
       <div className="section-header">
-        <h2>Quality Certifications</h2>
+        <h2>Quality &amp; Compliance Certifications</h2>
         <p>
-          Add the certifications for the first unit in this supplier master.
-          Additional units will capture their own certifications later.
+          Select the standard category first, then pick the specific
+          certification from the list. Upload the certificate document if
+          available.
         </p>
       </div>
 
       <div className="space-y-6">
         {certifications.map((cert, index) => (
-          <div key={index} className="certification-card">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
-                Certification #{index + 1}
-              </h3>
-              {certifications.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveCertification(index)}
-                  className="btn-icon-danger"
-                  title="Remove certification"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            <div className="form-grid">
-              <div className="col-span-2">
-                <FormSelect
-                  label="Certification Type"
-                  name={`cert-${index}-type`}
-                  value={cert.certification_type}
-                  onChange={(e) =>
-                    onChange(index, "certification_type", e.target.value)
-                  }
-                  options={certOptions}
-                  placeholder="Select certification type"
-                  error={errors[index]?.certification_type}
-                  required
-                />
-              </div>
-
-              <div className="col-span-2">
-                <FormInput
-                  label="Certificate Name"
-                  name={`cert-${index}-name`}
-                  value={cert.certificate_name}
-                  onChange={(e) =>
-                    onChange(index, "certificate_name", e.target.value)
-                  }
-                  placeholder="e.g., Quality Management System"
-                  error={errors[index]?.certificate_name}
-                />
-              </div>
-
-              <FormInput
-                label="Start Date"
-                name={`cert-${index}-start`}
-                type="date"
-                value={cert.start_date}
-                onChange={(e) => onChange(index, "start_date", e.target.value)}
-                error={errors[index]?.start_date}
-              />
-
-              <FormInput
-                label="Expiry Date"
-                name={`cert-${index}-end`}
-                type="date"
-                value={cert.end_date}
-                onChange={(e) => onChange(index, "end_date", e.target.value)}
-                error={errors[index]?.end_date}
-              />
-
-              <div className="col-span-2">
-                <label
-                  htmlFor={`cert-${index}-comments`}
-                  className="form-label"
-                >
-                  Comments
-                </label>
-                <textarea
-                  id={`cert-${index}-comments`}
-                  value={cert.comments}
-                  onChange={(e) => onChange(index, "comments", e.target.value)}
-                  placeholder="Additional notes about this certification..."
-                  rows={3}
-                  className="form-textarea"
-                />
-              </div>
-            </div>
-          </div>
+          <CertificationCard
+            key={index}
+            cert={cert}
+            index={index}
+            errors={errors[index] ?? {}}
+            onRemove={() => onRemoveCertification(index)}
+            onChange={(field, value) => onChange(index, field, value)}
+            canRemove={certifications.length > 0}
+          />
         ))}
 
         <button
@@ -207,6 +99,227 @@ export const CertificationsForm: React.FC<CertificationsFormProps> = ({
           </p>
         </div>
       )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Individual card
+// ---------------------------------------------------------------------------
+
+interface CardProps {
+  cert: CertificationFormData;
+  index: number;
+  errors: FormErrors;
+  canRemove: boolean;
+  onRemove: () => void;
+  onChange: (field: keyof CertificationFormData, value: any) => void;
+}
+
+const CertificationCard: React.FC<CardProps> = ({
+  cert,
+  index,
+  errors,
+  canRemove,
+  onRemove,
+  onChange,
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const certTypeOptions = cert.standard_type
+    ? (CERT_TYPES_BY_STANDARD[cert.standard_type] ?? [])
+    : [];
+
+  const handleStandardTypeChange = (value: string) => {
+    onChange("standard_type", value);
+    // Reset specific cert when category changes
+    onChange("certification_type", "");
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    onChange("file", file);
+    onChange("file_name", file?.name ?? "");
+  };
+
+  return (
+    <div className="certification-card">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold">Certification #{index + 1}</h3>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="btn-icon-danger"
+            title="Remove certification"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      <div className="form-grid">
+        {/* 1 — Standard category */}
+        <div className="col-span-2">
+          <FormSelect
+            label="Standard Type"
+            name={`cert-${index}-standard_type`}
+            value={cert.standard_type}
+            onChange={(e) => handleStandardTypeChange(e.target.value)}
+            options={CERTIFICATION_STANDARD_TYPE_OPTIONS as any}
+            placeholder="Select type (Quality, Environmental…)"
+            error={errors.standard_type}
+            required
+          />
+        </div>
+
+        {/* 2 — Specific certification (only shown once category is picked) */}
+        {cert.standard_type && (
+          <div className="col-span-2">
+            <FormSelect
+              label="Certification"
+              name={`cert-${index}-certification_type`}
+              value={cert.certification_type}
+              onChange={(e) => onChange("certification_type", e.target.value)}
+              options={certTypeOptions}
+              placeholder="Select certification"
+              error={errors.certification_type}
+              required
+            />
+          </div>
+        )}
+
+        {/* 3 — Certificate name / reference (free text) */}
+        <div className="col-span-2">
+          <FormInput
+            label="Certificate Name / Reference"
+            name={`cert-${index}-name`}
+            value={cert.certificate_name}
+            onChange={(e) => onChange("certificate_name", e.target.value)}
+            placeholder="e.g., QMS-2024-CN-001"
+            error={errors.certificate_name}
+          />
+        </div>
+
+        {/* 4 — Validity dates */}
+        <FormInput
+          label="Issue Date"
+          name={`cert-${index}-start`}
+          type="date"
+          value={cert.start_date}
+          onChange={(e) => onChange("start_date", e.target.value)}
+          error={errors.start_date}
+        />
+
+        <FormInput
+          label="Expiry Date"
+          name={`cert-${index}-end`}
+          type="date"
+          value={cert.end_date}
+          onChange={(e) => onChange("end_date", e.target.value)}
+          error={errors.end_date}
+        />
+
+        {/* 5 — Comments */}
+        <div className="col-span-2">
+          <label htmlFor={`cert-${index}-comments`} className="form-label">
+            Comments
+          </label>
+          <textarea
+            id={`cert-${index}-comments`}
+            value={cert.comments}
+            onChange={(e) => onChange("comments", e.target.value)}
+            placeholder="Additional notes about this certification…"
+            rows={2}
+            className="form-textarea"
+          />
+        </div>
+
+        {/* 6 — File upload */}
+        <div className="col-span-2">
+          <label className="form-label">Certificate Document</label>
+          <div
+            className={`mt-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-5 transition cursor-pointer ${
+              cert.file
+                ? "border-emerald-400 bg-emerald-50"
+                : "border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white"
+            }`}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {cert.file ? (
+              <div className="flex items-center gap-3 text-sm text-emerald-700">
+                <svg
+                  className="w-5 h-5 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="font-medium truncate max-w-xs">
+                  {cert.file.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange("file", null);
+                    onChange("file_name", "");
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="ml-2 text-red-500 hover:text-red-700 text-xs underline"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <>
+                <svg
+                  className="w-8 h-8 text-slate-400 mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <p className="text-sm text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    Click to upload
+                  </span>{" "}
+                  or drag &amp; drop
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  PDF, PNG, JPG up to 10 MB
+                </p>
+              </>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
+      </div>
     </div>
   );
 };
