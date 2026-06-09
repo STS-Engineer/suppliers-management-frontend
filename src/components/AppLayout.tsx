@@ -9,19 +9,28 @@ import AppSidebar from "./layout/AppSidebar";
 type Crumb = { section: string; page: string };
 
 const CRUMBS: Record<string, Crumb> = {
-  "/dashboard":                        { section: "Overview",          page: "Dashboard" },
-  "/suppliers":                        { section: "Portfolio",          page: "Suppliers" },
-  "/suppliers/sites-active":           { section: "Portfolio",          page: "Active Sites" },
-  "/suppliers/development-plans":      { section: "Lifecycle",          page: "Development Plans" },
-  "/suppliers/onboarding":             { section: "Lifecycle",          page: "New Supplier Master" },
-  "/suppliers/manage":                 { section: "Lifecycle",          page: "Group Management" },
-  "/evaluations":                      { section: "Evaluations",        page: "Evaluation Dashboard" },
-  "/purchasing-value":                 { section: "Value Management",   page: "Opportunities" },
+  "/dashboard": { section: "Overview", page: "Dashboard" },
+  "/suppliers": { section: "Portfolio", page: "Supplier Panel" },
+  // "/suppliers/sites-active":           { section: "Portfolio",          page: "Active Sites" },
+  "/suppliers/development-plans": {
+    section: "Lifecycle",
+    page: "Development Plans",
+  },
+  "/suppliers/onboarding": {
+    section: "Lifecycle",
+    page: "New Supplier Master",
+  },
+  "/suppliers/manage": { section: "Lifecycle", page: "Group Management" },
+  "/evaluations": { section: "Evaluations", page: "Evaluation Dashboard" },
+  "/purchasing-value": { section: "Value Management", page: "Opportunities" },
   // "/purchasing-value/kpis":         { section: "Value Management",   page: "KPI Dashboard" },
 };
 
 function resolveCrumb(pathname: string): Crumb {
-  if (pathname.startsWith("/supplier-relations/") && pathname.endsWith("/evaluation")) {
+  if (
+    pathname.startsWith("/supplier-relations/") &&
+    pathname.endsWith("/evaluation")
+  ) {
     return { section: "Evaluations", page: "Relation Scorecard" };
   }
   if (pathname.startsWith("/suppliers/") && pathname.includes("/manage")) {
@@ -72,7 +81,10 @@ export function AppLayout({
           </button>
 
           {/* Breadcrumb */}
-          <nav className="flex min-w-0 items-center gap-1.5" aria-label="Breadcrumb">
+          <nav
+            className="flex min-w-0 items-center gap-1.5"
+            aria-label="Breadcrumb"
+          >
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
               {crumb.section}
             </span>

@@ -42,7 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Portfolio",
     icon: Building2,
     subItems: [
-      { name: "Supplier Panel", path: "/suppliers/sites-active" },
+      { name: "Supplier Panel", path: "/suppliers" },
       { name: "Development Plans", path: "/suppliers/development-plans" },
     ],
   },

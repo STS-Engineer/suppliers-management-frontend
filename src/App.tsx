@@ -13,7 +13,7 @@ import RelationEvaluationPage from "./pages/RelationEvaluationPage";
 import { SupplierOnboardingPage } from "./pages/SupplierOnboardingPage";
 import "./styles/global.css";
 import "./styles/onboarding.css";
-import SuppliersPage from "./pages/SuppliersPage";
+// import SuppliersPage from "./pages/SuppliersPage";
 import ActiveSitesPage from "./pages/ActiveSitesPage";
 import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
 // import PurchasingValuePage from "./pages/PurchasingValuePage";
@@ -51,9 +51,9 @@ const router = createBrowserRouter([
   {
     element: <ProtectedShell />,
     children: [
-      { path: "/", element: <Navigate to="/suppliers/sites-active" replace /> },
-      { path: "/suppliers", element: <SuppliersPage /> },
-      { path: "/suppliers/sites-active", element: <ActiveSitesPage /> },
+      { path: "/", element: <Navigate to="/suppliers" replace /> },
+      { path: "/suppliers", element: <ActiveSitesPage /> },
+      { path: "/suppliers/sites-active", element: <Navigate to="/suppliers" replace /> },
       {
         path: "/suppliers/development-plans",
         element: <DevelopmentPlansPage />,
