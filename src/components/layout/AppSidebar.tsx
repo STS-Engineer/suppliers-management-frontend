@@ -8,6 +8,7 @@ import {
   ClipboardList,
   GitBranchPlus,
   PanelLeft,
+  TrendingUp,
 } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
 import { ThemeToggleButton } from "../common/ThemeToggleButton";
@@ -41,8 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Portfolio",
     icon: Building2,
     subItems: [
-      { name: "Suppliers", path: "/suppliers" },
-      // { name: "Supplier Panel", path: "/suppliers/sites-active" },
+      { name: "Active Sites", path: "/suppliers/sites-active" },
       { name: "Development Plans", path: "/suppliers/development-plans" },
     ],
   },
@@ -50,18 +50,13 @@ const PRIMARY_NAV: NavItem[] = [
     name: "Evaluations",
     label: "Evaluations",
     icon: ClipboardList,
-    subItems: [
-      { name: "Evaluation Dashboard", path: "/evaluations" },
-    ],
+    subItems: [{ name: "Evaluation Dashboard", path: "/evaluations" }],
   },
   // {
   //   name: "Purchasing Value",
   //   label: "Value Mgmt",
   //   icon: TrendingUp,
-  //   subItems: [
-  //     { name: "Opportunities", path: "/purchasing-value" },
-  //     { name: "KPI Dashboard", path: "/purchasing-value/kpis" },
-  //   ],
+  //   subItems: [{ name: "Opportunities", path: "/purchasing-value" }],
   // },
   // {
   //   name: "Access Management",

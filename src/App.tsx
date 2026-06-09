@@ -14,7 +14,7 @@ import { SupplierOnboardingPage } from "./pages/SupplierOnboardingPage";
 import "./styles/global.css";
 import "./styles/onboarding.css";
 import SuppliersPage from "./pages/SuppliersPage";
-// import ActiveSitesPage from "./pages/ActiveSitesPage";
+import ActiveSitesPage from "./pages/ActiveSitesPage";
 import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
 // import PurchasingValuePage from "./pages/PurchasingValuePage";
 // import PurchasingKpiPage from "./pages/PurchasingKpiPage";
@@ -51,20 +51,27 @@ const router = createBrowserRouter([
   {
     element: <ProtectedShell />,
     children: [
-      { path: "/",                                    element: <Navigate to="/suppliers" replace /> },
-      { path: "/suppliers",                           element: <SuppliersPage /> },
-      // Active Sites page temporarily hidden from this delivery.
-      { path: "/suppliers/sites-active",              element: <Navigate to="/suppliers" replace /> },
-      { path: "/suppliers/development-plans",         element: <DevelopmentPlansPage /> },
-      { path: "/suppliers/onboarding",                element: <SupplierOnboardingPage /> },
-      { path: "/suppliers/manage",                    element: <SupplierManagementPage /> },
-      { path: "/suppliers/:groupId/manage",           element: <SupplierManagementPage /> },
-      { path: "/supplier-relations/:relationId/evaluation", element: <RelationEvaluationPage /> },
-      // Purchasing Value pages temporarily hidden from this delivery.
-      { path: "/purchasing-value",                    element: <Navigate to="/suppliers" replace /> },
-      { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
-      { path: "/evaluations",                         element: <BatchEvaluationPage /> },
-      { path: "*",                                    element: <Navigate to="/suppliers" replace /> },
+      { path: "/", element: <Navigate to="/suppliers/sites-active" replace /> },
+      { path: "/suppliers", element: <SuppliersPage /> },
+      { path: "/suppliers/sites-active", element: <ActiveSitesPage /> },
+      {
+        path: "/suppliers/development-plans",
+        element: <DevelopmentPlansPage />,
+      },
+      { path: "/suppliers/onboarding", element: <SupplierOnboardingPage /> },
+      { path: "/suppliers/manage", element: <SupplierManagementPage /> },
+      {
+        path: "/suppliers/:groupId/manage",
+        element: <SupplierManagementPage />,
+      },
+      {
+        path: "/supplier-relations/:relationId/evaluation",
+        element: <RelationEvaluationPage />,
+      },
+      // { path: "/purchasing-value",                    element: <PurchasingValuePage /> },
+      // { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
+      { path: "/evaluations", element: <BatchEvaluationPage /> },
+      { path: "*", element: <Navigate to="/suppliers" replace /> },
     ],
   },
 ]);

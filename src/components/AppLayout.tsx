@@ -11,12 +11,12 @@ type Crumb = { section: string; page: string };
 const CRUMBS: Record<string, Crumb> = {
   "/dashboard":                        { section: "Overview",          page: "Dashboard" },
   "/suppliers":                        { section: "Portfolio",          page: "Suppliers" },
-  // "/suppliers/sites-active":        { section: "Portfolio",          page: "Supplier Panel" },
+  "/suppliers/sites-active":           { section: "Portfolio",          page: "Active Sites" },
   "/suppliers/development-plans":      { section: "Lifecycle",          page: "Development Plans" },
   "/suppliers/onboarding":             { section: "Lifecycle",          page: "New Supplier Master" },
   "/suppliers/manage":                 { section: "Lifecycle",          page: "Group Management" },
   "/evaluations":                      { section: "Evaluations",        page: "Evaluation Dashboard" },
-  // "/purchasing-value":              { section: "Value Management",   page: "Opportunities" },
+  "/purchasing-value":                 { section: "Value Management",   page: "Opportunities" },
   // "/purchasing-value/kpis":         { section: "Value Management",   page: "KPI Dashboard" },
 };
 
