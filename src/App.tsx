@@ -1,15 +1,24 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  RouterProvider,
+  useLocation,
+} from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { useAuth } from "./context/AuthContext";
 import SignInPage from "./pages/SignInPage";
-// import AccessManagementPage from "./pages/AccessManagementPage";
 import SupplierManagementPage from "./pages/SupplierManagementPage";
 import RelationEvaluationPage from "./pages/RelationEvaluationPage";
 import { SupplierOnboardingPage } from "./pages/SupplierOnboardingPage";
 import "./styles/global.css";
 import "./styles/onboarding.css";
 import SuppliersPage from "./pages/SuppliersPage";
-import ActiveSitesPage from "./pages/ActiveSitesPage";
+// import ActiveSitesPage from "./pages/ActiveSitesPage";
+import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
+// import PurchasingValuePage from "./pages/PurchasingValuePage";
+// import PurchasingKpiPage from "./pages/PurchasingKpiPage";
+import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 
 function ProtectedShell() {
   const location = useLocation();
@@ -34,31 +43,32 @@ function ProtectedShell() {
   );
 }
 
-export default function App() {
-  return (
-    <Routes>
-      <Route path="/signin" element={<SignInPage />} />
+const router = createBrowserRouter([
+  {
+    path: "/signin",
+    element: <SignInPage />,
+  },
+  {
+    element: <ProtectedShell />,
+    children: [
+      { path: "/",                                    element: <Navigate to="/suppliers" replace /> },
+      { path: "/suppliers",                           element: <SuppliersPage /> },
+      // Active Sites page temporarily hidden from this delivery.
+      { path: "/suppliers/sites-active",              element: <Navigate to="/suppliers" replace /> },
+      { path: "/suppliers/development-plans",         element: <DevelopmentPlansPage /> },
+      { path: "/suppliers/onboarding",                element: <SupplierOnboardingPage /> },
+      { path: "/suppliers/manage",                    element: <SupplierManagementPage /> },
+      { path: "/suppliers/:groupId/manage",           element: <SupplierManagementPage /> },
+      { path: "/supplier-relations/:relationId/evaluation", element: <RelationEvaluationPage /> },
+      // Purchasing Value pages temporarily hidden from this delivery.
+      { path: "/purchasing-value",                    element: <Navigate to="/suppliers" replace /> },
+      { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
+      { path: "/evaluations",                         element: <BatchEvaluationPage /> },
+      { path: "*",                                    element: <Navigate to="/suppliers" replace /> },
+    ],
+  },
+]);
 
-      <Route element={<ProtectedShell />}>
-        <Route path="/" element={<Navigate to="/suppliers" replace />} />
-        <Route path="/suppliers" element={<SuppliersPage />} />
-        <Route path="/suppliers/sites-active" element={<ActiveSitesPage />} />
-        <Route
-          path="/suppliers/onboarding"
-          element={<SupplierOnboardingPage />}
-        />
-        <Route path="/suppliers/manage" element={<SupplierManagementPage />} />
-        {/* <Route path="/access-management" element={<AccessManagementPage />} /> */}
-        <Route
-          path="/suppliers/:groupId/manage"
-          element={<SupplierManagementPage />}
-        />
-        <Route
-          path="/supplier-relations/:relationId/evaluation"
-          element={<RelationEvaluationPage />}
-        />
-        <Route path="*" element={<Navigate to="/suppliers" replace />} />
-      </Route>
-    </Routes>
-  );
+export default function App() {
+  return <RouterProvider router={router} />;
 }

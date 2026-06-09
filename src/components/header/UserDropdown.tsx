@@ -22,7 +22,9 @@ export default function UserDropdown() {
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const [menuPosition, setMenuPosition] = useState<{
+    top?: number; bottom?: number; left?: number; right?: number;
+  }>({});
 
   const initials = useMemo(() => {
     const source = user?.full_name || user?.email || "User";
@@ -45,10 +47,27 @@ export default function UserDropdown() {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      setMenuPosition({
-        top: rect.bottom + 12,
-        right: Math.max(window.innerWidth - rect.right, 16),
-      });
+      const PANEL_WIDTH = 288; // w-72
+      const GAP = 10;
+
+      // ── Horizontal: open to the right if trigger is on the left half ──
+      const midX = (rect.left + rect.right) / 2;
+      let h: { left?: number; right?: number };
+      if (midX < window.innerWidth / 2) {
+        // Sidebar / left side → open to the right of the trigger
+        h = { left: Math.min(rect.right + GAP, window.innerWidth - PANEL_WIDTH - 16) };
+      } else {
+        // Right side → open to the left (original behaviour)
+        h = { right: Math.max(window.innerWidth - rect.left + GAP, 16) };
+      }
+
+      // ── Vertical: open upward when near the bottom ──
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const v = spaceBelow < 240
+        ? { bottom: window.innerHeight - rect.top + GAP }
+        : { top: rect.bottom + GAP };
+
+      setMenuPosition({ ...h, ...v });
     };
 
     const handlePointerDown = (event: MouseEvent) => {
@@ -120,8 +139,10 @@ export default function UserDropdown() {
       ref={panelRef}
       className="fixed z-[9999] w-72 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_24px_50px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-slate-900"
       style={{
-        top: `${menuPosition.top}px`,
-        right: `${menuPosition.right}px`,
+        top:    menuPosition.top    != null ? `${menuPosition.top}px`    : undefined,
+        bottom: menuPosition.bottom != null ? `${menuPosition.bottom}px` : undefined,
+        left:   menuPosition.left   != null ? `${menuPosition.left}px`   : undefined,
+        right:  menuPosition.right  != null ? `${menuPosition.right}px`  : undefined,
       }}
     >
       <div className="rounded-2xl bg-slate-50 p-3 dark:bg-white/[0.04]">

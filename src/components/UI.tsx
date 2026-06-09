@@ -192,27 +192,39 @@ export function PageIntro({
   children,
 }: PageIntroProps) {
   return (
-    <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 px-6 py-8 text-white shadow-sm">
-      <div className="mx-auto flex w-full flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div className="max-w-3xl">
-          {eyebrow ? (
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">
-              {eyebrow}
+    <section className="relative -mx-4 overflow-hidden bg-[#0f2744] px-6 py-5 text-white shadow-[0_4px_24px_rgba(15,23,42,0.18)] sm:-mx-6">
+      {/* Subtle radial accent */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.22),transparent_55%),radial-gradient(ellipse_at_bottom_left,rgba(14,165,233,0.12),transparent_50%)]" />
+
+      <div className="relative mx-auto flex w-full items-start justify-between gap-4">
+        {/* Left — eyebrow + title + description */}
+        <div className="flex min-w-0 items-start gap-4">
+          <div className="mt-1 hidden h-9 w-0.5 flex-shrink-0 rounded-full bg-gradient-to-b from-sky-400 to-blue-600 sm:block" />
+          <div className="min-w-0">
+            {eyebrow ? (
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-sky-300/80">
+                {eyebrow}
+              </p>
+            ) : null}
+            <h2 className="mt-0.5 text-2xl font-bold tracking-tight text-white">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-slate-300/90">
+              {description}
             </p>
-          ) : null}
-
-          <h2 className="mt-2 text-3xl font-bold tracking-tight">{title}</h2>
-
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
-            {description}
-          </p>
+          </div>
         </div>
 
-        {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+        {/* Right — actions */}
+        {actions ? (
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2.5">
+            {actions}
+          </div>
+        ) : null}
       </div>
 
       {children ? (
-        <div className="relative mt-6 w-full">{children}</div>
+        <div className="relative mt-5 w-full">{children}</div>
       ) : null}
     </section>
   );
