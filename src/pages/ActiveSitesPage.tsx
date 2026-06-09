@@ -6,8 +6,6 @@ import {
   ClipboardCheck,
   ExternalLink,
   Filter,
-  LayoutPanelLeft,
-  Layers3,
   Search,
   ShieldCheck,
   X,
@@ -30,7 +28,47 @@ import type {
   SupplierUnitResponse,
 } from "../types/onboarding";
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 15;
+
+const AVATAR_PALETTES = [
+  "from-violet-500 to-purple-600",
+  "from-blue-500 to-cyan-600",
+  "from-emerald-500 to-teal-600",
+  "from-rose-500 to-pink-600",
+  "from-amber-500 to-orange-600",
+  "from-indigo-500 to-blue-600",
+  "from-sky-500 to-blue-500",
+  "from-fuchsia-500 to-violet-600",
+];
+
+function supplierInitials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+function supplierPalette(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTES[hash % AVATAR_PALETTES.length];
+}
+
+const GRADE_ACCENT: Record<string, string> = {
+  green: "border-l-emerald-400",
+  amber: "border-l-amber-400",
+  red: "border-l-rose-400",
+  slate: "border-l-slate-200",
+  purple: "border-l-violet-400",
+};
+
+const GRADE_TILE: Record<string, string> = {
+  green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  amber: "bg-amber-50 text-amber-700 ring-amber-200",
+  red: "bg-rose-50 text-rose-700 ring-rose-200",
+  slate: "bg-slate-100 text-slate-500 ring-slate-200",
+  purple: "bg-violet-50 text-violet-700 ring-violet-200",
+};
 
 type RelationRow = {
   site: AvocarbonSite;
@@ -40,10 +78,9 @@ type RelationRow = {
   workspace: RelationEvaluationWorkspace | null;
 };
 
-type MenuItem = {
+type WorkspaceTab = {
   key: string;
   label: string;
-  helper: string;
   icon: ReactNode;
   status?: string;
   panelDecision?: string;
@@ -53,7 +90,7 @@ const normalizeText = (value: unknown) =>
   String(value ?? "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .trim();
 
 const formatDate = (value?: string | null) => {
@@ -69,8 +106,8 @@ const formatDate = (value?: string | null) => {
 
 const PANEL_DECISION_LABELS: Record<string, string> = {
   panel_add: "Can be added to panel",
-  panel_add_exec_committee: "Needs exec committee agreement",
-  panel_reject: "Cannot be added to panel",
+  panel_add_exec_committee: "Needs exec committee",
+  panel_reject: "Cannot be added",
 };
 
 const getPanelDecisionLabel = (value?: string | null) => {
@@ -151,6 +188,31 @@ function Badge({
   return <Pill text={text} tone={toneMap[tone]} />;
 }
 
+const STRATEGIC_CHIP: Record<string, { label: string; cls: string }> = {
+  strategic:   { label: "Strategic",   cls: "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200" },
+  directed:    { label: "Directed",    cls: "bg-sky-50 text-sky-700 ring-1 ring-sky-200" },
+  monopolistic:{ label: "Monopolistic",cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
+  none:        { label: "None",        cls: "bg-slate-100 text-slate-400 ring-1 ring-slate-200" },
+};
+
+function StrategicChips({ value }: { value?: string | null }) {
+  if (!value) return <span className="text-slate-300">—</span>;
+  const parts = value.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return <span className="text-slate-300">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {parts.map((p) => {
+        const chip = STRATEGIC_CHIP[p] ?? { label: p, cls: "bg-slate-100 text-slate-500 ring-1 ring-slate-200" };
+        return (
+          <span key={p} className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${chip.cls}`}>
+            {chip.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return <KeyValueRow label={label} value={value} />;
 }
@@ -165,14 +227,32 @@ function MetricCard({
   helper?: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+      <p className="mt-1.5 text-2xl font-bold tracking-tight text-slate-950">
         {value}
       </p>
       {helper && <p className="mt-1 text-xs text-slate-400">{helper}</p>}
+    </div>
+  );
+}
+
+const STRATEGIC_CHIP_MODAL: Record<string, { label: string; cls: string }> = {
+  strategic:    { label: "Strategic",    cls: "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200" },
+  directed:     { label: "Directed",     cls: "bg-sky-50 text-sky-700 ring-1 ring-sky-200" },
+  monopolistic: { label: "Monopolistic", cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200" },
+  none:         { label: "None",         cls: "bg-slate-100 text-slate-400 ring-1 ring-slate-200" },
+};
+
+function ScoreBar({ score, max = 100 }: { score: number | null | undefined; max?: number }) {
+  if (score == null) return <div className="h-1.5 w-full rounded-full bg-slate-100" />;
+  const pct = Math.min(100, Math.max(0, (score / max) * 100));
+  const color = pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-400" : "bg-rose-500";
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -184,204 +264,171 @@ function RelationDetailModal({
   record: RelationRow;
   onClose: () => void;
 }) {
+  const gradeTone = getGradeTone(record.relation.final_grade);
+  const gradeTileCls = {
+    green:  "bg-emerald-500 text-white",
+    amber:  "bg-amber-400 text-white",
+    red:    "bg-rose-500 text-white",
+    slate:  "bg-slate-200 text-slate-600",
+    purple: "bg-violet-500 text-white",
+  }[gradeTone] ?? "bg-slate-200 text-slate-600";
+
+  const strategicParts = (record.relation.strategic_mention || "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+
+  const classScore = record.workspace?.class_score != null
+    ? Number(record.workspace.class_score) : null;
+  const opScore = record.workspace?.operational_score != null
+    ? Number(record.workspace.operational_score) : null;
+
+  const location = [record.site.site_name, record.site.city, record.site.country]
+    .filter(Boolean).join(" · ");
+
+  // Supplier initials avatar
+  const name = record.group.nom || "?";
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const avatarInitials = words.length === 1
+    ? words[0].slice(0, 2).toUpperCase()
+    : (words[0][0] + words[words.length - 1][0]).toUpperCase();
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-8 backdrop-blur-xl">
-      <div className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-[0_30px_100px_rgba(2,6,23,0.6)]">
-        <div className="relative overflow-hidden border-b border-white/10 bg-slate-950 px-8 py-7 text-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.18),transparent_42%)]" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-md">
+      <div
+        className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_40px_120px_rgba(2,6,23,0.5)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
+        <div className="relative overflow-hidden bg-[#0f2744] px-7 py-6 text-white">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.3),transparent_55%)]" />
 
-          <div className="relative flex items-start justify-between gap-6">
-            <div>
-              {/* <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
-                Relation Intelligence
-              </span> */}
-
-              <h3 className="mt-4 text-3xl font-bold tracking-tight">
-                {record.site.site_name || "Unnamed site"}
-                <span className="mx-3 text-slate-500">/</span>
-                {record.relation.relation_code ||
-                  `REL-${String(record.relation.id_relation).padStart(6, "0")}`}
-              </h3>
-
-              {/* <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                Premium supplier relation view with site profile, current
-                decision status, latest scoring, and operational classification.
-              </p> */}
+          <div className="relative flex items-start justify-between gap-4">
+            {/* Left: avatar + name + location */}
+            <div className="flex items-start gap-4">
+              <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-sm font-extrabold shadow-lg ${gradeTileCls}`}>
+                {record.relation.final_grade || avatarInitials}
+              </div>
+              <div>
+                <h3 className="text-lg font-bold leading-tight tracking-tight text-white">
+                  {name}
+                </h3>
+                <p className="mt-0.5 text-xs text-blue-200/80">{location || "—"}</p>
+                {/* Category chips */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(record.group.supplier_type || "").split(",").filter(Boolean).map((t) => (
+                    <span key={t} className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80">
+                      {t.trim()}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="rounded-2xl border border-white/10 bg-white/10 p-2.5 text-slate-300 backdrop-blur transition hover:bg-white/20 hover:text-white"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="relative mt-6 flex flex-wrap gap-2">
-            <Badge text={record.site.site_name || "Site"} tone="blue" />
-            <Badge
-              text={
-                record.unit.unit_code ||
-                `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`
-              }
-              tone="slate"
-            />
-            <Badge
-              text={record.relation.final_grade || "Pending grade"}
-              tone={getGradeTone(record.relation.final_grade)}
-            />
-            <Badge
-              text={record.relation.supplier_status || "Pending status"}
-              tone={getStatusTone(record.relation.supplier_status)}
-            />
-            <Badge
-              text={getPanelDecisionLabel(record.relation.panel_decision)}
-              tone={getPanelDecisionTone(record.relation.panel_decision)}
-            />
+          {/* Status + panel badges */}
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <Badge text={record.relation.supplier_status || "Pending"} tone={getStatusTone(record.relation.supplier_status)} />
+            <Badge text={getPanelDecisionLabel(record.relation.panel_decision)} tone={getPanelDecisionTone(record.relation.panel_decision)} />
+            {strategicParts.filter((p) => p !== "none").map((p) => {
+              const chip = STRATEGIC_CHIP_MODAL[p];
+              return chip ? (
+                <span key={p} className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-white/80">
+                  {chip.label}
+                </span>
+              ) : null;
+            })}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-slate-100 px-8 py-7">
-          <div className="mb-6 grid gap-4 md:grid-cols-4">
-            <MetricCard
-              label="Final Grade"
-              value={record.relation.final_grade || "-"}
-              helper="Consolidated supplier grade"
-            />
-            <MetricCard
-              label="Class Value"
-              value={record.relation.class_value ?? "-"}
-              helper="Classification level"
-            />
-            <MetricCard
-              label="Class Score"
-              value={
-                record.workspace?.class_score != null
-                  ? Number(record.workspace.class_score).toFixed(1)
-                  : "-"
-              }
-              helper="Latest class evaluation"
-            />
-            <MetricCard
-              label="Operational Score"
-              value={
-                record.workspace?.operational_score != null
-                  ? Number(record.workspace.operational_score).toFixed(1)
-                  : "-"
-              }
-              helper="Operational maturity"
-            />
-          </div>
+        {/* ── Score strip ── */}
+        <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-white">
+          {[
+            { label: "Final Grade",   value: record.relation.final_grade || "—",                           bar: null },
+            { label: "Class Value",   value: record.relation.class_value ?? "—",                            bar: null },
+            { label: "Class Score",   value: classScore != null ? classScore.toFixed(1) : "—",              bar: classScore },
+            { label: "Ops Score",     value: opScore != null ? opScore.toFixed(1) : "—",                    bar: opScore },
+          ].map((m, i) => (
+            <div key={i} className="flex flex-col gap-1 px-5 py-3.5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{m.label}</p>
+              <p className="text-2xl font-extrabold tracking-tight text-slate-900">{m.value}</p>
+              {m.bar != null && <ScoreBar score={m.bar} />}
+            </div>
+          ))}
+        </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <SectionCard
-              title="Supplier Identity"
-              subtitle="Site, group and unit information"
-            >
-              <Field label="Site" value={record.site.site_name || "-"} />
-              <Field label="City" value={record.site.city || "-"} />
-              <Field label="Country" value={record.site.country || "-"} />
-              <Field label="Group" value={record.group.nom || "-"} />
-              <Field
-                label="Group Code"
-                value={
-                  record.group.group_code ||
-                  `GRP-${String(record.group.id_group).padStart(6, "0")}`
-                }
-              />
-              <Field
-                label="Category"
-                value={record.group.supplier_type || "-"}
-              />
-              <Field
-                label="Unit"
-                value={
-                  record.unit.unit_code ||
-                  `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`
-                }
-              />
-              <Field
-                label="Relation"
-                value={
-                  record.relation.relation_code ||
-                  `REL-${String(record.relation.id_relation).padStart(6, "0")}`
-                }
-              />
-            </SectionCard>
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
 
-            <SectionCard
-              title="Decision & Evaluation"
-              subtitle="Latest relation status and panel signal"
-            >
-              <Field
-                label="Supplier Status"
-                value={record.relation.supplier_status || "-"}
-              />
-              <Field
-                label="Panel Decision"
-                value={getPanelDecisionLabel(record.relation.panel_decision)}
-              />
-              <Field
-                label="Operational Grade"
-                value={record.relation.operational_grade || "-"}
-              />
-              <Field
-                label="Strategic Mention"
-                value={record.relation.strategic_mention || "-"}
-              />
-              <Field
-                label="Last Evaluation"
-                value={formatDate(record.relation.last_evaluation_date)}
-              />
-            </SectionCard>
-          </div>
-
-          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h4 className="text-lg font-bold tracking-tight text-slate-950">
-                Relation Summary
-              </h4>
-              <p className="mt-1 text-sm text-slate-500">
-                Executive overview of the selected supplier relation.
-              </p>
+            {/* Supplier Identity */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Supplier</p>
+              <div className="space-y-0">
+                <InfoRow label="Group" value={record.group.nom || "—"} />
+                <InfoRow label="Unit" value={record.unit.unit_code || `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`} mono />
+                <InfoRow label="Relation" value={record.relation.relation_code || `REL-${String(record.relation.id_relation).padStart(6, "0")}`} mono />
+                <InfoRow label="Category" value={record.group.supplier_type || "—"} />
+              </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                  Current Supplier Status
-                </p>
-                <div className="mt-2">
-                  <Badge
-                    text={record.relation.supplier_status || "Pending"}
-                    tone={getStatusTone(record.relation.supplier_status)}
-                  />
-                </div>
+            {/* Site */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Site</p>
+              <div className="space-y-0">
+                <InfoRow label="Plant" value={record.site.site_name || "—"} />
+                <InfoRow label="City" value={record.site.city || "—"} />
+                <InfoRow label="Country" value={record.site.country || "—"} />
+                <InfoRow label="Last eval" value={formatDate(record.relation.last_evaluation_date)} />
               </div>
+            </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                  Panel Decision
-                </p>
-                <div className="mt-2">
-                  <Badge
-                    text={getPanelDecisionLabel(record.relation.panel_decision)}
-                    tone={getPanelDecisionTone(record.relation.panel_decision)}
-                  />
-                </div>
+            {/* Evaluation */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Evaluation</p>
+              <div className="space-y-0">
+                <InfoRow label="Operational grade" value={record.relation.operational_grade || "—"} />
+                <InfoRow label="Status" value={<Badge text={record.relation.supplier_status || "Pending"} tone={getStatusTone(record.relation.supplier_status)} />} />
+                <InfoRow label="Panel" value={<Badge text={getPanelDecisionLabel(record.relation.panel_decision)} tone={getPanelDecisionTone(record.relation.panel_decision)} />} />
               </div>
+            </div>
+
+            {/* Strategic */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategic</p>
+              {strategicParts.length === 0 ? (
+                <p className="text-sm text-slate-400">No strategic mention</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {strategicParts.map((p) => {
+                    const chip = STRATEGIC_CHIP_MODAL[p] ?? { label: p, cls: "bg-slate-100 text-slate-500 ring-1 ring-slate-200" };
+                    return (
+                      <span key={p} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${chip.cls}`}>
+                        {chip.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-200 bg-white/95 px-8 py-5 backdrop-blur-xl">
-          <p className="text-xs text-slate-400">Supplier relation record </p>
-
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
+          <p className="font-mono text-[11px] text-slate-400">
+            {record.relation.relation_code || `REL-${String(record.relation.id_relation).padStart(6, "0")}`}
+          </p>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
             Close
           </button>
@@ -391,69 +438,63 @@ function RelationDetailModal({
   );
 }
 
+function InfoRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-slate-50 py-2 last:border-b-0">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className={`text-right text-xs font-semibold text-slate-800 ${mono ? "font-mono" : ""}`}>
+        {value || "—"}
+      </span>
+    </div>
+  );
+}
+
+const panelTabs: WorkspaceTab[] = [
+  {
+    key: "panel_add",
+    label: "On panel",
+    icon: <ShieldCheck className="h-3.5 w-3.5" />,
+    panelDecision: "panel_add",
+  },
+  {
+    key: "panel_add_exec_committee",
+    label: "Needs committee",
+    icon: <ClipboardCheck className="h-3.5 w-3.5" />,
+    panelDecision: "panel_add_exec_committee",
+  },
+];
+
+const gradeOptions = [
+  "A1", "A2", "A3", "A4",
+  "B1", "B2", "B3", "B4",
+  "C1", "C2", "C3", "C4",
+  "D",
+];
+
 export default function ActiveSitesPage() {
   const [siteBundles, setSiteBundles] = useState<SitePanelBundle[]>([]);
-  const [selectedRow, setSelectedRow] = useState<RelationRow | null>(null);
   const [modalRow, setModalRow] = useState<RelationRow | null>(null);
   const [search, setSearch] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
-  const [activeMenu, setActiveMenu] = useState("active");
+  const [activeTab, setActiveTab] = useState("panel_add");
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const selectedRowRequestRef = useRef(0);
 
-  const menuItems: MenuItem[] = [
-    {
-      key: "active",
-      label: "Active Sites",
-      helper: "Live supplier relations",
-      icon: <ShieldCheck className="h-4 w-4" />,
-    },
-    {
-      key: "panel",
-      label: "Panel Ready",
-      helper: "Ready for approval",
-      icon: <ClipboardCheck className="h-4 w-4" />,
-      panelDecision: "panel_add",
-    },
-    {
-      key: "hold",
-      label: "On Hold",
-      helper: "Status is on hold",
-      icon: <AlertCircle className="h-4 w-4" />,
-      status: "hold",
-    },
-    {
-      key: "archived",
-      label: "Archived",
-      helper: "Rejected or inactive",
-      icon: <Archive className="h-4 w-4" />,
-      panelDecision: "panel_reject",
-    },
-  ];
-
-  const activeMenuItem =
-    menuItems.find((item) => item.key === activeMenu) || menuItems[0];
-
-  const gradeOptions = [
-    "A1",
-    "A2",
-    "A3",
-    "A4",
-    "B1",
-    "B2",
-    "B3",
-    "B4",
-    "C1",
-    "C2",
-    "C3",
-    "C4",
-    "D",
-  ];
+  const activeTabDef =
+    panelTabs.find((t) => t.key === activeTab) || panelTabs[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -468,8 +509,8 @@ export default function ActiveSitesPage() {
           limit: 500,
           site_name: search || undefined,
           class_grade: filterGrade || undefined,
-          status: filterStatus || activeMenuItem.status || undefined,
-          panel_decision: activeMenuItem.panelDecision || "" || undefined,
+          status: filterStatus || undefined,
+          panel_decision: activeTabDef.panelDecision,
           category: filterCategory || undefined,
         });
 
@@ -501,7 +542,7 @@ export default function ActiveSitesPage() {
     filterGrade,
     filterStatus,
     filterCategory,
-    activeMenu,
+    activeTab,
     reloadTick,
   ]);
 
@@ -521,13 +562,26 @@ export default function ActiveSitesPage() {
     if (!search) return relationRows;
     const keyword = normalizeText(search);
     return relationRows.filter((row) =>
-      normalizeText(row.site.site_name).includes(keyword),
+      normalizeText(row.site.site_name).includes(keyword) ||
+      normalizeText(row.group.nom).includes(keyword) ||
+      normalizeText(row.group.supplier_type).includes(keyword),
     );
   }, [relationRows, search]);
 
+  const counts = useMemo(() => {
+    const base: Record<string, number> = {
+      panel_add: 0,
+      panel_add_exec_committee: 0,
+    };
+    relationRows.forEach((row) => {
+      const d = row.relation.panel_decision;
+      if (d && d in base) base[d] += 1;
+    });
+    return base;
+  }, [relationRows]);
+
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-
   const pagedRows = filteredRows.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
@@ -537,102 +591,98 @@ export default function ActiveSitesPage() {
     if (currentPage !== page) setPage(currentPage);
   }, [currentPage, page]);
 
-  const counts = useMemo(() => {
-    const base = { active: 0, panel: 0, hold: 0, archived: 0 };
+  const hasActiveFilters =
+    search || filterGrade || filterStatus || filterCategory;
 
-    relationRows.forEach((row) => {
-      const status = normalizeText(row.relation.supplier_status);
+  const clearFilters = () => {
+    setSearch("");
+    setFilterGrade("");
+    setFilterStatus("");
+    setFilterCategory("");
+  };
 
-      if (row.relation.panel_decision === "panel_reject") {
-        base.archived += 1;
-        return;
-      }
-
-      if (status.includes("hold")) {
-        base.hold += 1;
-        return;
-      }
-
-      if (row.relation.panel_decision?.includes("panel_add")) {
-        base.panel += 1;
-      }
-
-      base.active += 1;
-    });
-
-    return base;
-  }, [relationRows]);
-
-  const selectRow = async (row: RelationRow) => {
+  const openModal = async (row: RelationRow) => {
     const requestId = selectedRowRequestRef.current + 1;
     selectedRowRequestRef.current = requestId;
-    setSelectedRow(row);
+    setModalRow(row);
 
     try {
       const response = await supplierAPI.getRelationEvaluationWorkspace(
         row.relation.id_relation,
       );
       if (selectedRowRequestRef.current !== requestId) return;
-
-      setSelectedRow({
+      setModalRow({
         ...row,
         workspace: response.data as RelationEvaluationWorkspace,
       });
-    } catch (e) {
-      if (selectedRowRequestRef.current !== requestId) return;
-      setSelectedRow(row);
+    } catch {
+      // modal stays open with partial data
     }
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-160px)] flex-col gap-7">
+    <div className="flex min-h-[calc(100vh-160px)] flex-col gap-6">
       <PageIntro
-        eyebrow="Panel"
-        title="Active Supplier Sites"
-        description="Monitor live site relations, panel readiness, and supplier status signals from one structured workspace."
+        eyebrow="Portfolio"
+        title="Supplier Panel"
+        description="Suppliers formally approved or pending committee validation — confirmed panel members across all Avocarbon sites."
       />
 
-      <div className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      {/* ── Search & filters ── */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[260px] flex-1">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Site name
+          <div className="min-w-[260px] flex-[2]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Category
+            </label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                placeholder="e.g. Ferrites, Capacitors…"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+              />
+            </div>
+          </div>
+
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Supplier / Site
             </label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search active sites"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                placeholder="Search by name or site"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
               />
             </div>
           </div>
 
-          <div className="w-48">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Class Grade
+          <div className="w-40">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Grade
             </label>
             <div className="relative">
               <Filter className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <select
                 value={filterGrade}
                 onChange={(e) => setFilterGrade(e.target.value)}
-                className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-9 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-9 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
               >
                 <option value="">All grades</option>
-                {gradeOptions.map((grade) => (
-                  <option key={grade} value={grade}>
-                    {grade}
-                  </option>
+                {gradeOptions.map((g) => (
+                  <option key={g} value={g}>{g}</option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             </div>
           </div>
 
-          <div className="w-56">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <div className="w-48">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Status
             </label>
             <div className="relative">
@@ -641,428 +691,285 @@ export default function ActiveSitesPage() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 placeholder="Filter status"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
               />
             </div>
           </div>
 
-          <div className="w-56">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Category
-            </label>
-            <div className="relative">
-              <Layers3 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                placeholder="Category contains"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
-          </div>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="grid gap-7 xl:grid-cols-[280px_minmax(0,1fr)_420px]">
-        <aside className="space-y-4">
-          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-            <div className="bg-slate-950 px-5 py-4 text-white">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
-                <LayoutPanelLeft className="h-4 w-4" />
-                Workspace
-              </div>
-            </div>
-
-            <div className="space-y-2 p-3">
-              {menuItems.map((item) => {
-                const isActive = item.key === activeMenu;
-                const count = counts[item.key as keyof typeof counts] || 0;
-
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setActiveMenu(item.key)}
-                    className={`group w-full rounded-2xl border px-3.5 py-3 text-left transition-all duration-300 ${
-                      isActive
-                        ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-950/20"
-                        : "border-transparent bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-xl transition ${
-                          isActive
-                            ? "bg-white/12 text-white"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {item.icon}
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className={`text-sm font-bold ${
-                            isActive ? "text-white" : "text-slate-900"
-                          }`}
-                        >
-                          {item.label}
-                        </div>
-                        <div
-                          className={`text-xs ${
-                            isActive ? "text-slate-300" : "text-slate-400"
-                          }`}
-                        >
-                          {item.helper}
-                        </div>
-                      </div>
-
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-bold ${
-                          isActive
-                            ? "bg-white/12 text-white"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
-
-        <section className="space-y-4">
-          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white px-6 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-            <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_45%)]" />
-
-            <div className="relative flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                  Active Sites
-                </p>
-                <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
-                  Supplier site activity
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Monitor active site relations, scores, statuses and panel
-                  readiness.
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-slate-950 px-4 py-3 text-right text-white">
-                <div className="text-xs text-slate-300">Relations</div>
-                <div className="text-2xl font-bold">{filteredRows.length}</div>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <InlineAlert
-              title="We couldn't load the active site panel"
-              message={error}
-              action={
-                <button
-                  type="button"
-                  onClick={() => setReloadTick((value) => value + 1)}
-                  className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
-                >
-                  Retry
-                </button>
-              }
-            />
-          )}
-
-          {isLoading ? (
-            <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-16 text-center text-sm text-slate-400 shadow-sm">
-              Loading active sites…
-            </div>
-          ) : pagedRows.length === 0 ? (
-            <div className="rounded-[2rem] border border-slate-200 bg-white px-4 py-16 text-center text-sm text-slate-400 shadow-sm">
-              No active relations match your filters.
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100 text-sm">
-                  <thead className="bg-slate-50/90">
-                    <tr className="text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      <th className="px-5 py-4">Site / Unit</th>
-                      <th className="px-5 py-4">Group</th>
-                      <th className="px-5 py-4">Grade</th>
-                      <th className="px-5 py-4">Status</th>
-                      <th className="px-5 py-4">Panel</th>
-                      <th className="px-5 py-4">Class</th>
-                      <th className="px-5 py-4">Last Eval</th>
-                      <th className="px-5 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {pagedRows.map((row) => {
-                      const isSelected =
-                        selectedRow?.relation.id_relation ===
-                        row.relation.id_relation;
-
-                      return (
-                        <tr
-                          key={row.relation.id_relation}
-                          onClick={() => selectRow(row)}
-                          className={`cursor-pointer transition ${
-                            isSelected
-                              ? "bg-slate-950 text-white"
-                              : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <td className="px-5 py-4">
-                            <div
-                              className={`text-xs font-semibold uppercase tracking-widest ${
-                                isSelected ? "text-blue-200" : "text-slate-400"
-                              }`}
-                            >
-                              {row.site.site_name || "Unnamed site"}
-                            </div>
-                            <div
-                              className={`mt-1 font-bold ${
-                                isSelected ? "text-white" : "text-slate-950"
-                              }`}
-                            >
-                              {row.unit.unit_code ||
-                                `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div
-                              className={`font-semibold ${
-                                isSelected ? "text-white" : "text-slate-800"
-                              }`}
-                            >
-                              {row.group.nom || "-"}
-                            </div>
-                            <div
-                              className={`mt-0.5 text-xs ${
-                                isSelected ? "text-slate-300" : "text-slate-400"
-                              }`}
-                            >
-                              {row.group.supplier_type || "Uncategorized"}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <Badge
-                              text={row.relation.final_grade || "Pending"}
-                              tone={getGradeTone(row.relation.final_grade)}
-                            />
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <Badge
-                              text={row.relation.supplier_status || "Pending"}
-                              tone={getStatusTone(row.relation.supplier_status)}
-                            />
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <Badge
-                              text={getPanelDecisionLabel(
-                                row.relation.panel_decision,
-                              )}
-                              tone={getPanelDecisionTone(
-                                row.relation.panel_decision,
-                              )}
-                            />
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`font-semibold ${
-                                isSelected ? "text-white" : "text-slate-700"
-                              }`}
-                            >
-                              {row.relation.class_value ?? "-"}
-                            </span>
-                          </td>
-
-                          <td
-                            className={`px-5 py-4 text-xs ${
-                              isSelected ? "text-slate-300" : "text-slate-500"
-                            }`}
-                          >
-                            {formatDate(row.relation.last_evaluation_date)}
-                          </td>
-
-                          <td className="px-5 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setModalRow(row);
-                              }}
-                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                                isSelected
-                                  ? "bg-white/12 text-white hover:bg-white/20"
-                                  : "bg-slate-950 text-white hover:bg-blue-700"
-                              }`}
-                            >
-                              Details <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {filteredRows.length > PAGE_SIZE && (
-            <Pagination
-              page={currentPage}
-              totalPages={totalPages}
-              totalItems={filteredRows.length}
-              pageSize={PAGE_SIZE}
-              onPageChange={setPage}
-              compact
-            />
-          )}
-        </section>
-
-        <aside className="space-y-4">
-          <div className="sticky top-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
-            <div className="relative bg-slate-950 px-6 py-6 text-white">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_40%)]" />
-
-              <div className="relative">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
-                  Relation Detail
-                </div>
-
-                <h3 className="mt-3 text-2xl font-bold tracking-tight">
-                  {selectedRow
-                    ? selectedRow.relation.relation_code ||
-                      `REL-${String(selectedRow.relation.id_relation).padStart(6, "0")}`
-                    : "No relation selected"}
-                </h3>
-
-                <p className="mt-1 text-sm text-slate-300">
-                  {selectedRow
-                    ? selectedRow.site.site_name || "-"
-                    : "Select a relation to inspect supplier intelligence."}
-                </p>
-              </div>
-            </div>
-
-            <div className="p-5">
-              {selectedRow ? (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                        Grade
-                      </p>
-                      <p className="mt-1 text-2xl font-bold text-slate-950">
-                        {selectedRow.relation.final_grade || "-"}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                        Class
-                      </p>
-                      <p className="mt-1 text-2xl font-bold text-slate-950">
-                        {selectedRow.relation.class_value ?? "-"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <SectionCard
-                    title="Supplier Unit"
-                    subtitle="Latest relation summary"
-                  >
-                    <Field
-                      label="Unit"
-                      value={
-                        selectedRow.unit.unit_code ||
-                        `UNT-${String(selectedRow.unit.id_supplier_unit).padStart(6, "0")}`
-                      }
-                    />
-                    <Field label="Group" value={selectedRow.group.nom || "-"} />
-                    <Field
-                      label="Relation"
-                      value={
-                        selectedRow.relation.relation_code ||
-                        `REL-${String(selectedRow.relation.id_relation).padStart(6, "0")}`
-                      }
-                    />
-                    <Field
-                      label="Site"
-                      value={selectedRow.site.site_name || "-"}
-                    />
-                    <Field
-                      label="Status"
-                      value={selectedRow.relation.supplier_status || "-"}
-                    />
-                    <Field
-                      label="Panel Decision"
-                      value={getPanelDecisionLabel(
-                        selectedRow.relation.panel_decision,
-                      )}
-                    />
-                  </SectionCard>
-
-                  <SectionCard title="Scores" subtitle="Latest evaluation">
-                    <Field
-                      label="Class Score"
-                      value={
-                        selectedRow.workspace?.class_score != null
-                          ? Number(selectedRow.workspace.class_score).toFixed(1)
-                          : "-"
-                      }
-                    />
-                    <Field
-                      label="Operational Score"
-                      value={
-                        selectedRow.workspace?.operational_score != null
-                          ? Number(
-                              selectedRow.workspace.operational_score,
-                            ).toFixed(1)
-                          : "-"
-                      }
-                    />
-                    <Field
-                      label="Final Grade"
-                      value={selectedRow.relation.final_grade || "-"}
-                    />
-                    <Field
-                      label="Last Evaluation"
-                      value={formatDate(
-                        selectedRow.relation.last_evaluation_date,
-                      )}
-                    />
-                  </SectionCard>
-
-                  <button
-                    type="button"
-                    onClick={() => setModalRow(selectedRow)}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-slate-950/20 transition hover:bg-blue-700"
-                  >
-                    Open full detail <ExternalLink className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-400">
-                  Select a relation to see the unit details.
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
+      {/* ── Panel toggle + count ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          {panelTabs.map((tab) => {
+            const isActive = tab.key === activeTab;
+            const count = counts[tab.key] || 0;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 ${
+                  isActive
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold leading-none ${
+                  isActive ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-sm text-slate-400">
+          <span className="font-bold text-slate-700">{filteredRows.length}</span>{" "}
+          supplier{filteredRows.length !== 1 ? "s" : ""} on panel
+          {hasActiveFilters ? " matching filters" : ""}
+        </p>
       </div>
 
+      {/* ── Error ── */}
+      {error && (
+        <InlineAlert
+          title="We couldn't load the active site panel"
+          message={error}
+          action={
+            <button
+              type="button"
+              onClick={() => setReloadTick((v) => v + 1)}
+              className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
+            >
+              Retry
+            </button>
+          }
+        />
+      )}
+
+      {/* ── Table ── */}
+      {isLoading ? (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-[#0b1f38] text-left">
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Supplier</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Category</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Site</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Grade</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Status</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Strategic</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Last eval</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="border-b border-slate-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-100" />
+                        <div className="space-y-1.5">
+                          <div className="h-3 w-36 animate-pulse rounded-full bg-slate-100" />
+                          <div className="h-2.5 w-20 animate-pulse rounded-full bg-slate-50" />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-100" /></td>
+                    <td className="px-5 py-4">
+                      <div className="space-y-1.5">
+                        <div className="h-3 w-20 animate-pulse rounded-full bg-slate-100" />
+                        <div className="h-2.5 w-16 animate-pulse rounded-full bg-slate-50" />
+                      </div>
+                    </td>
+                    <td className="px-5 py-4"><div className="h-8 w-12 animate-pulse rounded-xl bg-slate-100" /></td>
+                    <td className="px-5 py-4"><div className="h-6 w-28 animate-pulse rounded-full bg-slate-100" /></td>
+                    <td className="px-5 py-4"><div className="h-6 w-32 animate-pulse rounded-full bg-slate-100" /></td>
+                    <td className="px-5 py-4"><div className="h-3 w-16 animate-pulse rounded-full bg-slate-100" /></td>
+                    <td className="px-5 py-4"><div className="h-7 w-16 animate-pulse rounded-lg bg-slate-100" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : pagedRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center">
+          <p className="text-sm font-semibold text-slate-500">No results found</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Try adjusting your filters or switching tabs.
+          </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Clear all filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-[#0b1f38] text-left">
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Supplier</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Category</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Site</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Grade</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Status</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Strategic</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Last eval</th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+
+              <tbody>
+                {pagedRows.map((row) => {
+                  const gradeTone = getGradeTone(row.relation.final_grade);
+                  const name = row.group.nom || "?";
+                  const initials = supplierInitials(name);
+                  const palette = supplierPalette(name);
+                  const accentClass = GRADE_ACCENT[gradeTone] ?? GRADE_ACCENT.slate;
+                  const gradeTileClass = GRADE_TILE[gradeTone] ?? GRADE_TILE.slate;
+
+                  return (
+                    <tr
+                      key={row.relation.id_relation}
+                      onClick={() => openModal(row)}
+                      className={`group cursor-pointer border-b border-slate-50 border-l-4 transition-colors duration-150 last:border-b-0 hover:bg-slate-50/70 ${accentClass}`}
+                    >
+                      {/* Supplier */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-xs font-bold text-white shadow-sm ${palette}`}
+                          >
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-base font-bold text-slate-900 leading-tight">
+                              {name}
+                            </div>
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-500 tracking-wide">
+                                {row.unit.unit_code ||
+                                  `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Category */}
+                      <td className="px-5 py-4">
+                        {row.group.supplier_type ? (
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {row.group.supplier_type}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+
+                      {/* Site */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-400 ring-2 ring-blue-100" />
+                          <div>
+                            <div className="font-medium text-slate-800">
+                              {row.site.site_name || "—"}
+                            </div>
+                            {row.site.country && (
+                              <div className="mt-0.5 text-xs text-slate-400">
+                                {row.site.city
+                                  ? `${row.site.city}, ${row.site.country}`
+                                  : row.site.country}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Grade */}
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex h-9 w-12 items-center justify-center rounded-xl text-sm font-extrabold ring-1 ${gradeTileClass}`}
+                        >
+                          {row.relation.final_grade || "—"}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-5 py-4">
+                        <Badge
+                          text={row.relation.supplier_status || "Pending"}
+                          tone={getStatusTone(row.relation.supplier_status)}
+                        />
+                      </td>
+
+                      {/* Strategic mention */}
+                      <td className="px-5 py-4">
+                        <StrategicChips value={row.relation.strategic_mention} />
+                      </td>
+
+                      {/* Last eval */}
+                      <td className="px-5 py-4 text-xs text-slate-400">
+                        {formatDate(row.relation.last_evaluation_date)}
+                      </td>
+
+                      {/* Action */}
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openModal(row);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 hover:bg-blue-600"
+                        >
+                          View <ExternalLink className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pagination ── */}
+      {filteredRows.length > PAGE_SIZE && (
+        <Pagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredRows.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          compact
+        />
+      )}
+
+      {/* ── Detail modal ── */}
       {modalRow && (
         <RelationDetailModal
           record={modalRow}
