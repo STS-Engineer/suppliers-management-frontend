@@ -8,7 +8,9 @@ import {
   ExternalLink,
   FileCheck,
   Mail,
+  RefreshCw,
   RotateCcw,
+  Send,
   ThumbsDown,
   ThumbsUp,
   Upload,
@@ -16,6 +18,7 @@ import {
 } from "lucide-react";
 import supplierAPI from "../../services/supplierOnboardingAPI";
 import type {
+  ContactResponse,
   DevelopmentPlanRegisterRow,
   PlanDocument,
 } from "../../types/onboarding";
@@ -326,6 +329,80 @@ function ErrorMsg({ msg }: { msg: string }) {
   );
 }
 
+function ContactCard({
+  contact,
+  selected,
+  onToggle,
+}: {
+  contact: ContactResponse;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const hasEmail = !!contact.email;
+  const initials = (contact.full_name ?? "?")
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+
+  return (
+    <button
+      type="button"
+      disabled={!hasEmail}
+      onClick={onToggle}
+      className={`flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition ${
+        !hasEmail
+          ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
+          : selected
+          ? "border-sky-400 bg-sky-50 shadow-sm shadow-sky-100"
+          : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"
+      }`}
+    >
+      {/* Avatar */}
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+          selected ? "bg-sky-500 text-white shadow-md shadow-sky-200" : "bg-slate-100 text-slate-600"
+        }`}
+      >
+        {initials || "?"}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {contact.full_name || "—"}
+          </p>
+          {contact.is_primary_contact && (
+            <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-700">
+              Primary
+            </span>
+          )}
+        </div>
+        {contact.role_label && (
+          <p className="text-[11px] font-medium text-slate-500">{contact.role_label}</p>
+        )}
+        <p className={`mt-0.5 truncate text-[11px] ${hasEmail ? "text-slate-600" : "italic text-slate-400"}`}>
+          {contact.email ?? "No email address"}
+        </p>
+      </div>
+
+      {/* Checkbox */}
+      <div
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+          selected ? "border-sky-500 bg-sky-500" : "border-slate-300 bg-white"
+        }`}
+      >
+        {selected && (
+          <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
 interface QueuedFile {
   id: string;
   file: File;
@@ -352,30 +429,54 @@ export function SharedSendRequestModal({
   const [dueDate, setDueDate] = useState(plan.due_date?.slice(0, 10) ?? "");
   const [planTitle, setPlanTitle] = useState(plan.plan_title ?? "");
   const [customMessage, setCustomMessage] = useState("");
-  const [overrideMode, setOverrideMode] = useState(false);
-  const [toRaw, setToRaw] = useState("");
   const [ccRaw, setCcRaw] = useState(supplierOwner);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Contacts
+  const [contacts, setContacts] = useState<ContactResponse[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [extraEmailsRaw, setExtraEmailsRaw] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    supplierAPI
+      .listContactsForUnit(item.relation.id_supplier_unit)
+      .then((res) => {
+        if (cancelled) return;
+        const loaded = (res.data?.items ?? []) as ContactResponse[];
+        setContacts(loaded);
+        const primaries = loaded.filter((c) => c.is_primary_contact && c.email).map((c) => c.email!);
+        const all = loaded.filter((c) => c.email).map((c) => c.email!);
+        setSelectedEmails(new Set(primaries.length ? primaries : all));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setContactsLoading(false); });
+    return () => { cancelled = true; };
+  }, [item.relation.id_supplier_unit]);
+
+  const toggleContact = (email: string) =>
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+
+  const extraParsed = extraEmailsRaw.trim() ? parseEmails(extraEmailsRaw) : [];
+  const totalRecipients = selectedEmails.size + extraParsed.length;
 
   const handleSubmit = async () => {
     if (!dueDate) {
       setError("A due date is required before sending the request.");
       return;
     }
-    let toEmails: string[] | undefined;
-    if (overrideMode) {
-      const parsed = parseEmails(toRaw);
-      if (!parsed.length) {
-        setError("Enter at least one recipient email.");
-        return;
-      }
-      if (!validateEmails(parsed)) {
-        setError("One or more recipient email addresses are invalid.");
-        return;
-      }
-      toEmails = parsed;
+    if (extraParsed.length && !validateEmails(extraParsed)) {
+      setError("One or more extra email addresses are invalid.");
+      return;
     }
+    const allTo = [...new Set([...selectedEmails, ...extraParsed])];
     const ccParsed = parseEmails(ccRaw);
     if (ccParsed.length && !validateEmails(ccParsed)) {
       setError("One or more CC email addresses are invalid.");
@@ -397,6 +498,7 @@ export function SharedSendRequestModal({
         resolvedItem.relation.id_relation,
         resolvedItem.development_plan.id_development_plan,
         {
+          plan_status: "Request sent",
           due_date: dueDate,
           plan_title: planTitle.trim() || undefined,
           sync_relation_hold_status: false,
@@ -407,7 +509,7 @@ export function SharedSendRequestModal({
         resolvedItem.development_plan.id_development_plan,
         {
           custom_message: customMessage.trim() || undefined,
-          to_emails: toEmails,
+          to_emails: allTo.length ? allTo : undefined,
           extra_cc_emails: ccParsed.length ? ccParsed : undefined,
         },
       );
@@ -474,40 +576,83 @@ export function SharedSendRequestModal({
           </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        {/* ── Contact selection ─────────────────────────────────────── */}
+        <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">
-              Email Recipients
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setOverrideMode((value) => !value);
-                if (!overrideMode) setToRaw("");
-              }}
-              className="text-xs font-semibold text-sky-600 hover:text-sky-800"
-            >
-              {overrideMode ? "Use default contacts" : "Override recipients"}
-            </button>
-          </div>
-          {!overrideMode ? (
-            <p className="text-xs text-slate-500">
-              Email will be sent to the registered contacts for this supplier
-              unit.
-            </p>
-          ) : (
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-600">
-                Send To <span className="text-rose-500">*</span>
-              </label>
-              <input
-                value={toRaw}
-                onChange={(event) => setToRaw(event.target.value)}
-                className={inputCls}
-                placeholder="email1@example.com, email2@example.com"
-              />
+              <p className="text-sm font-semibold text-slate-800">Supplier Contacts</p>
+              <p className="text-xs text-slate-500">Select who will receive the request email</p>
+            </div>
+            {contacts.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const emailsWithAddr = contacts.filter((c) => c.email).map((c) => c.email!);
+                  setSelectedEmails(
+                    selectedEmails.size === emailsWithAddr.length
+                      ? new Set()
+                      : new Set(emailsWithAddr),
+                  );
+                }}
+                className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+              >
+                {selectedEmails.size === contacts.filter((c) => c.email).length
+                  ? "Deselect all"
+                  : "Select all"}
+              </button>
+            )}
+          </div>
+
+          {contactsLoading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading contacts…
+            </div>
+          ) : contacts.length === 0 ? (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              No contacts found for this supplier unit. Enter email addresses below.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {contacts.map((c) => (
+                <ContactCard
+                  key={c.id_contact}
+                  contact={c}
+                  selected={!!c.email && selectedEmails.has(c.email)}
+                  onToggle={() => c.email && toggleContact(c.email)}
+                />
+              ))}
             </div>
           )}
+
+          {/* Extra manual emails */}
+          <div className="pt-1">
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Add extra recipients{" "}
+              <span className="font-normal text-slate-400">(not listed above)</span>
+            </label>
+            <input
+              value={extraEmailsRaw}
+              onChange={(e) => setExtraEmailsRaw(e.target.value)}
+              className={inputCls}
+              placeholder="extra@company.com, another@company.com"
+            />
+          </div>
+
+          {/* Recipient summary */}
+          {totalRecipients > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Send className="h-3.5 w-3.5 text-sky-500" />
+              <span className="text-xs font-semibold text-sky-700">
+                {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* CC */}
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               CC — Supplier Owner / Additional
@@ -521,9 +666,7 @@ export function SharedSendRequestModal({
             {supplierOwner && (
               <p className="mt-1 text-xs text-slate-400">
                 Pre-filled with supplier owner:{" "}
-                <span className="font-medium text-slate-600">
-                  {supplierOwner}
-                </span>
+                <span className="font-medium text-slate-600">{supplierOwner}</span>
               </p>
             )}
           </div>
@@ -555,11 +698,15 @@ export function SharedSendRequestModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || !dueDate}
+            disabled={isSaving || !dueDate || totalRecipients === 0}
             className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Mail className="h-4 w-4" />
-            {isSaving ? "Sending..." : "Send Request Email"}
+            {isSaving
+              ? "Sending..."
+              : totalRecipients > 0
+              ? `Send to ${totalRecipients} Recipient${totalRecipients !== 1 ? "s" : ""}`
+              : "Send Request Email"}
           </button>
         </div>
       </div>

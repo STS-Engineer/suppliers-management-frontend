@@ -974,6 +974,51 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async sendRelationDevelopmentPlanReminder(
+    relationId: number,
+    planId: number,
+    data?: {
+      custom_message?: string;
+      changed_by?: string;
+      to_emails?: string[];
+      extra_cc_emails?: string[];
+    },
+  ) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/development-plans/${planId}/send-reminder`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data || {}),
+      },
+      "Failed to send the reminder email.",
+    );
+  }
+
+  async sendRelationDevelopmentPlanRevisionRequest(
+    relationId: number,
+    planId: number,
+    data?: { custom_message?: string; changed_by?: string; to_emails?: string[]; extra_cc_emails?: string[] },
+  ) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/development-plans/${planId}/send-revision-request`,
+      { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify(data || {}) },
+      "Failed to send the revision request email.",
+    );
+  }
+
+  async sendRelationDevelopmentPlanDecisionNotification(
+    relationId: number,
+    planId: number,
+    data: { decision: "approved" | "rejected"; custom_message?: string; changed_by?: string; to_emails?: string[]; extra_cc_emails?: string[] },
+  ) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/development-plans/${planId}/send-decision-notification`,
+      { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify(data) },
+      "Failed to send the decision notification email.",
+    );
+  }
+
   async listPlanDocuments(relationId: number, planId: number) {
     return this.request(
       `${this.baseUrl}/supplier-relations/${relationId}/development-plans/${planId}/documents`,

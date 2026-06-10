@@ -31,6 +31,7 @@ import { InlineAlert, PageIntro, Pill } from "../components/UI";
 import { SharedSendRequestModal } from "../components/development-plans/SendRequestModal";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import type {
+  ContactResponse,
   DevelopmentPlanRegisterRow,
   PlanDocument,
   SupplierDevelopmentPlan,
@@ -65,7 +66,7 @@ const STATUS_GROUP: Record<string, StatusGroup> = {
 };
 
 const getStatusGroup = (s?: string | null): StatusGroup =>
-  STATUS_GROUP[(s ?? "").toLowerCase()] ?? "progress";
+  STATUS_GROUP[(s || "must be send").toLowerCase()] ?? "action";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -234,8 +235,10 @@ const ACTION_CFG: Record<string, { label: string; modal: ModalKey; bg: string; t
   },
 };
 
+// Null/empty status means the backend auto-created the plan without setting a
+// status — treat it as "Must be send" (the correct initial state for new plans).
 const getAction = (s?: string | null) =>
-  ACTION_CFG[(s ?? "").toLowerCase()] ?? {
+  ACTION_CFG[(s || "must be send").toLowerCase()] ?? {
     label: "View Details", modal: "details" as ModalKey,
     bg: "border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100",
     text: "text-slate-700",
@@ -513,7 +516,7 @@ function PlanTimeline({ plan }: { plan: SupplierDevelopmentPlan }) {
       dot: "bg-amber-400",
     },
     { date: plan.issue_date, label: "Request issued", dot: "bg-slate-400" },
-    ...(plan.plan_status !== "Must be send" && plan.issue_date
+    ...((plan.plan_status ?? "").toLowerCase() !== "must be send" && plan.issue_date
       ? [
           {
             date: plan.issue_date,
@@ -611,228 +614,8 @@ function ErrorMsg({ msg }: { msg: string }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STEP 1 — Send Request
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function SendRequestModal({
-  item,
-  onClose,
-  onSuccess,
-}: {
-  item: DevelopmentPlanRegisterRow;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const plan = item.development_plan;
-  const supplierOwner = (item.relation as any).supplier_owner as
-    | string
-    | undefined;
-
-  const [dueDate, setDueDate] = useState(plan.due_date?.slice(0, 10) ?? "");
-  const [planTitle, setPlanTitle] = useState(plan.plan_title ?? "");
-  const [customMessage, setCustomMessage] = useState("");
-  const [overrideMode, setOverrideMode] = useState(false);
-  const [toRaw, setToRaw] = useState("");
-  const [ccRaw, setCcRaw] = useState(supplierOwner ?? "");
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async () => {
-    if (!dueDate) {
-      setError("A due date is required before sending the request.");
-      return;
-    }
-    let toEmails: string[] | undefined;
-    if (overrideMode) {
-      const parsed = parseEmails(toRaw);
-      if (!parsed.length) {
-        setError("Enter at least one recipient email.");
-        return;
-      }
-      if (!validateEmails(parsed)) {
-        setError("One or more recipient email addresses are invalid.");
-        return;
-      }
-      toEmails = parsed;
-    }
-    const ccParsed = parseEmails(ccRaw);
-    if (ccParsed.length && !validateEmails(ccParsed)) {
-      setError("One or more CC email addresses are invalid.");
-      return;
-    }
-    setIsSaving(true);
-    setError(null);
-    try {
-      await supplierAPI.updateRelationDevelopmentPlan(
-        item.relation.id_relation,
-        plan.id_development_plan,
-        {
-          due_date: dueDate,
-          plan_title: planTitle.trim() || undefined,
-          sync_relation_hold_status: false,
-        },
-      );
-      await supplierAPI.sendRelationDevelopmentPlanRequest(
-        item.relation.id_relation,
-        plan.id_development_plan,
-        {
-          custom_message: customMessage.trim() || undefined,
-          to_emails: toEmails,
-          extra_cc_emails: ccParsed.length ? ccParsed : undefined,
-        },
-      );
-      onSuccess();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send the request.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <Modal
-      title="Send Development Plan Request"
-      subtitle="Step 1 of 4 — Notify the supplier"
-      onClose={onClose}
-    >
-      <div className="space-y-5">
-        <WorkflowStepper currentStep={1} />
-        <SupplierBanner item={item} tone="amber" />
-        {error && <ErrorMsg msg={error} />}
-
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">
-            Plan Title
-          </label>
-          <input
-            value={planTitle}
-            onChange={(e) => setPlanTitle(e.target.value)}
-            className={inputCls}
-            placeholder="Development plan title…"
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">
-              Score Update Date
-            </label>
-            <div className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500">
-              {formatDate(plan.issue_date) ?? "—"}
-            </div>
-            <p className="mt-1 text-xs text-slate-400">
-              Date the scorecard was updated (Red status triggered this plan).
-            </p>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">
-              Due Date <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className={inputCls}
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Deadline included in the email.
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">
-              Email Recipients
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setOverrideMode((v) => !v);
-                if (!overrideMode) setToRaw("");
-              }}
-              className="text-xs font-semibold text-sky-600 hover:text-sky-800"
-            >
-              {overrideMode ? "Use default contacts" : "Override recipients"}
-            </button>
-          </div>
-          {!overrideMode ? (
-            <p className="text-xs text-slate-500">
-              Email will be sent to the registered contacts for this supplier
-              unit.
-            </p>
-          ) : (
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-600">
-                Send To <span className="text-rose-500">*</span>
-              </label>
-              <input
-                value={toRaw}
-                onChange={(e) => setToRaw(e.target.value)}
-                className={inputCls}
-                placeholder="email1@example.com, email2@example.com"
-              />
-            </div>
-          )}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              CC — Supplier Owner / Additional
-            </label>
-            <input
-              value={ccRaw}
-              onChange={(e) => setCcRaw(e.target.value)}
-              className={inputCls}
-              placeholder="owner@company.com"
-            />
-            {supplierOwner && (
-              <p className="mt-1 text-xs text-slate-400">
-                Pre-filled with supplier owner:{" "}
-                <span className="font-medium text-slate-600">
-                  {supplierOwner}
-                </span>
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">
-            Custom Message{" "}
-            <span className="font-normal text-slate-400">(optional)</span>
-          </label>
-          <textarea
-            value={customMessage}
-            onChange={(e) => setCustomMessage(e.target.value)}
-            rows={3}
-            className={`${inputCls} resize-none`}
-            placeholder="Additional context to include in the email…"
-          />
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isSaving || !dueDate}
-            className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Mail className="h-4 w-4" />
-            {isSaving ? "Sending…" : "Send Request Email"}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
+// SendRequestModal (Step 1) is SharedSendRequestModal imported from
+// src/components/development-plans/SendRequestModal.tsx
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STEP 2 — Mark Received (multi-file)
@@ -1440,14 +1223,53 @@ function ReviewDecisionModal({
   onSuccess: (result: "approved" | "rejected") => void;
 }) {
   const plan = item.development_plan;
+  const supplierOwner = (item.relation as any).supplier_owner as string | undefined;
+
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
   const [decisionDate, setDecisionDate] = useState(todayStr());
   const [decisionBy, setDecisionBy] = useState("");
   const [internalComments, setInternalComments] = useState("");
-  // Development plan approval/rejection does NOT automatically change supplier status.
-  // Status is driven by the final grade (A1/B2/C4/D3…) via the evaluation cycle.
   const [isSaving, setIsSaving] = useState(false);
+  const [saveStep, setSaveStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Notification to supplier
+  const [contacts, setContacts] = useState<ContactResponse[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [extraEmailsRaw, setExtraEmailsRaw] = useState("");
+  const [ccRaw, setCcRaw] = useState(supplierOwner ?? "");
+  const [customMessage, setCustomMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    supplierAPI
+      .listContactsForUnit(item.relation.id_supplier_unit)
+      .then((res) => {
+        if (cancelled) return;
+        const loaded = (res.data?.items ?? []) as ContactResponse[];
+        setContacts(loaded);
+        const primaries = loaded.filter((c) => c.is_primary_contact && c.email).map((c) => c.email!);
+        const all = loaded.filter((c) => c.email).map((c) => c.email!);
+        setSelectedEmails(new Set(primaries.length ? primaries : all));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setContactsLoading(false); });
+    return () => { cancelled = true; };
+  }, [item.relation.id_supplier_unit]);
+
+  const toggleContact = (email: string) =>
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+
+  const extraParsed = extraEmailsRaw.trim() ? parseEmails(extraEmailsRaw) : [];
+  const totalRecipients = selectedEmails.size + extraParsed.length;
+
+  const notifAccent = decision === "approved" ? "sky" : "orange";
 
   const handleSubmit = async () => {
     if (!decision) {
@@ -1455,20 +1277,26 @@ function ReviewDecisionModal({
       return;
     }
     if (!decisionBy.trim()) {
-      setError(
-        `Please enter the name of the person ${
-          decision === "approved" ? "approving" : "rejecting"
-        } this plan.`,
-      );
+      setError(`Please enter the name of the person ${decision === "approved" ? "approving" : "rejecting"} this plan.`);
       return;
     }
     if (decision === "rejected" && !internalComments.trim()) {
       setError("A rejection reason is required.");
       return;
     }
+    if (extraParsed.length && !validateEmails(extraParsed)) {
+      setError("One or more extra email addresses are invalid.");
+      return;
+    }
+    const ccParsed = parseEmails(ccRaw);
+    if (ccParsed.length && !validateEmails(ccParsed)) {
+      setError("One or more CC email addresses are invalid.");
+      return;
+    }
     setIsSaving(true);
     setError(null);
     try {
+      setSaveStep("Recording decision…");
       await supplierAPI.updateRelationDevelopmentPlan(
         item.relation.id_relation,
         plan.id_development_plan,
@@ -1478,18 +1306,31 @@ function ReviewDecisionModal({
           approved_by: decision === "approved" ? decisionBy.trim() : undefined,
           rejected_by: decision === "rejected" ? decisionBy.trim() : undefined,
           internal_comments: internalComments.trim() || undefined,
-          // Supplier status is driven by the evaluation final grade (A1/C4/D2…),
-          // not by plan approval. Never auto-sync here.
           sync_relation_hold_status: false,
         },
       );
+
+      if (totalRecipients > 0) {
+        setSaveStep("Notifying supplier…");
+        const allTo = [...new Set([...selectedEmails, ...extraParsed])];
+        await supplierAPI.sendRelationDevelopmentPlanDecisionNotification(
+          item.relation.id_relation,
+          plan.id_development_plan,
+          {
+            decision,
+            custom_message: customMessage.trim() || undefined,
+            to_emails: allTo,
+            extra_cc_emails: ccParsed.length ? ccParsed : undefined,
+          },
+        );
+      }
+
       onSuccess(decision);
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to record the decision.",
-      );
+      setError(e instanceof Error ? e.message : "Failed to record the decision.");
     } finally {
       setIsSaving(false);
+      setSaveStep(null);
     }
   };
 
@@ -1498,6 +1339,7 @@ function ReviewDecisionModal({
       title="Committee Review Decision"
       subtitle="Step 4 of 4 — Record the committee's decision"
       onClose={onClose}
+      size="md"
     >
       <div className="space-y-5">
         <WorkflowStepper currentStep={4} isRejected={decision === "rejected"} />
@@ -1523,11 +1365,7 @@ function ReviewDecisionModal({
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 }`}
               >
-                {d === "approved" ? (
-                  <ThumbsUp className="h-4 w-4" />
-                ) : (
-                  <ThumbsDown className="h-4 w-4" />
-                )}
+                {d === "approved" ? <ThumbsUp className="h-4 w-4" /> : <ThumbsDown className="h-4 w-4" />}
                 {d === "approved" ? "Approve Plan" : "Reject Plan"}
               </button>
             ))}
@@ -1538,74 +1376,127 @@ function ReviewDecisionModal({
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">
-                  Decision Date
-                </label>
-                <input
-                  type="date"
-                  value={decisionDate}
-                  onChange={(e) => setDecisionDate(e.target.value)}
-                  className={inputCls}
-                />
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Decision Date</label>
+                <input type="date" value={decisionDate} onChange={(e) => setDecisionDate(e.target.value)} className={inputCls} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-semibold text-slate-700">
                   {decision === "approved" ? "Approved By" : "Rejected By"}{" "}
                   <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  value={decisionBy}
-                  onChange={(e) => setDecisionBy(e.target.value)}
-                  className={inputCls}
-                  placeholder="Committee member name…"
-                />
+                <input value={decisionBy} onChange={(e) => setDecisionBy(e.target.value)} className={inputCls} placeholder="Committee member name…" />
               </div>
             </div>
 
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">
-                {decision === "rejected" ? (
-                  <>
-                    Rejection Reason <span className="text-rose-500">*</span>
-                  </>
-                ) : (
-                  "Decision Notes (optional)"
-                )}
+                {decision === "rejected" ? (<>Rejection Reason <span className="text-rose-500">*</span></>) : "Decision Notes (optional)"}
               </label>
               <textarea
                 value={internalComments}
                 onChange={(e) => setInternalComments(e.target.value)}
                 rows={3}
-                className={`${inputCls} resize-none ${
-                  decision === "rejected"
-                    ? "border-rose-200 bg-rose-50/40 focus:border-rose-300 focus:ring-rose-100"
-                    : ""
-                }`}
-                placeholder={
-                  decision === "rejected"
-                    ? "Required — explain why the plan was rejected…"
-                    : "Optional committee notes…"
-                }
+                className={`${inputCls} resize-none ${decision === "rejected" ? "border-rose-200 bg-rose-50/40 focus:border-rose-300 focus:ring-rose-100" : ""}`}
+                placeholder={decision === "rejected" ? "Required — explain why the plan was rejected…" : "Optional committee notes…"}
               />
             </div>
 
-            {decision === "approved" && (
-              <div className="flex items-start gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-800">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
-                The supplier's business status is controlled by their evaluation grade (A1, C4, D2…).
-                Plan approval does not change it — run a new evaluation to update the status.
+            {/* ── Supplier notification ──────────────────────────────── */}
+            <div className={`space-y-3 rounded-2xl border p-4 ${
+              decision === "approved"
+                ? "border-emerald-100 bg-emerald-50/40"
+                : "border-rose-100 bg-rose-50/30"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Notify Supplier</p>
+                  <p className="text-xs text-slate-500">
+                    {decision === "approved"
+                      ? "Inform the supplier their plan has been approved"
+                      : "Inform the supplier their plan was not accepted"}
+                  </p>
+                </div>
+                {contacts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const emailsWithAddr = contacts.filter((c) => c.email).map((c) => c.email!);
+                      setSelectedEmails(
+                        selectedEmails.size === emailsWithAddr.length ? new Set() : new Set(emailsWithAddr),
+                      );
+                    }}
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+                  >
+                    {selectedEmails.size === contacts.filter((c) => c.email).length ? "Deselect all" : "Select all"}
+                  </button>
+                )}
               </div>
-            )}
+
+              {contactsLoading ? (
+                <div className="flex items-center gap-2 py-3 text-sm text-slate-400">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Loading contacts…
+                </div>
+              ) : contacts.length === 0 ? (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  No contacts found. Enter email addresses below to notify the supplier.
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {contacts.map((c) => (
+                    <ContactCard
+                      key={c.id_contact}
+                      contact={c}
+                      selected={!!c.email && selectedEmails.has(c.email)}
+                      onToggle={() => c.email && toggleContact(c.email)}
+                      accentColor={notifAccent}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Add extra recipients <span className="font-normal text-slate-400">(not listed above)</span>
+                </label>
+                <input value={extraEmailsRaw} onChange={(e) => setExtraEmailsRaw(e.target.value)} className={inputCls} placeholder="extra@company.com" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">CC — Supplier Owner / Additional</label>
+                <input value={ccRaw} onChange={(e) => setCcRaw(e.target.value)} className={inputCls} placeholder="owner@company.com" />
+                {supplierOwner && (
+                  <p className="mt-1 text-xs text-slate-400">Pre-filled: <span className="font-medium text-slate-600">{supplierOwner}</span></p>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Message to Supplier <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <textarea value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} rows={2} className={`${inputCls} resize-none`} placeholder="Any additional context to include in the notification…" />
+              </div>
+
+              {totalRecipients > 0 ? (
+                <div className="flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="text-xs font-semibold text-slate-600">
+                    Notification will be sent to {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  No recipients selected — decision will be recorded without notifying the supplier
+                </div>
+              )}
+            </div>
           </>
         )}
 
         <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
+          <button type="button" onClick={onClose} disabled={isSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             Cancel
           </button>
           <button
@@ -1613,21 +1504,15 @@ function ReviewDecisionModal({
             onClick={handleSubmit}
             disabled={isSaving || !decision}
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-              decision === "rejected"
-                ? "bg-rose-600 hover:bg-rose-700"
-                : "bg-emerald-600 hover:bg-emerald-700"
+              decision === "rejected" ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
             }`}
           >
-            {decision === "approved" ? (
-              <ThumbsUp className="h-4 w-4" />
-            ) : (
-              <ThumbsDown className="h-4 w-4" />
-            )}
+            {decision === "approved" ? <ThumbsUp className="h-4 w-4" /> : <ThumbsDown className="h-4 w-4" />}
             {isSaving
-              ? "Saving…"
+              ? (saveStep ?? "Saving…")
               : decision === "approved"
-              ? "Approve Plan"
-              : "Reject Plan"}
+              ? totalRecipients > 0 ? `Approve & Notify ${totalRecipients}` : "Approve Plan"
+              : totalRecipients > 0 ? `Reject & Notify ${totalRecipients}` : "Reject Plan"}
           </button>
         </div>
       </div>
@@ -1649,9 +1534,7 @@ function RequestRevisionModal({
   onSuccess: () => void;
 }) {
   const plan = item.development_plan;
-  const supplierOwner = (item.relation as any).supplier_owner as
-    | string
-    | undefined;
+  const supplierOwner = (item.relation as any).supplier_owner as string | undefined;
 
   const [newDueDate, setNewDueDate] = useState("");
   const [ccRaw, setCcRaw] = useState(supplierOwner ?? "");
@@ -1659,9 +1542,53 @@ function RequestRevisionModal({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Contacts
+  const [contacts, setContacts] = useState<ContactResponse[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [extraEmailsRaw, setExtraEmailsRaw] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    supplierAPI
+      .listContactsForUnit(item.relation.id_supplier_unit)
+      .then((res) => {
+        if (cancelled) return;
+        const loaded = (res.data?.items ?? []) as ContactResponse[];
+        setContacts(loaded);
+        const primaries = loaded.filter((c) => c.is_primary_contact && c.email).map((c) => c.email!);
+        const all = loaded.filter((c) => c.email).map((c) => c.email!);
+        setSelectedEmails(new Set(primaries.length ? primaries : all));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setContactsLoading(false); });
+    return () => { cancelled = true; };
+  }, [item.relation.id_supplier_unit]);
+
+  const toggleContact = (email: string) =>
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+
+  const extraParsed = extraEmailsRaw.trim() ? parseEmails(extraEmailsRaw) : [];
+  const totalRecipients = selectedEmails.size + extraParsed.length;
+
   const handleSubmit = async () => {
     if (!newDueDate) {
       setError("Please set a new due date for the revision.");
+      return;
+    }
+    if (extraParsed.length && !validateEmails(extraParsed)) {
+      setError("One or more extra email addresses are invalid.");
+      return;
+    }
+    const allTo = [...new Set([...selectedEmails, ...extraParsed])];
+    const ccParsed = parseEmails(ccRaw);
+    if (ccParsed.length && !validateEmails(ccParsed)) {
+      setError("One or more CC email addresses are invalid.");
       return;
     }
     setIsSaving(true);
@@ -1679,21 +1606,18 @@ function RequestRevisionModal({
           sync_relation_hold_status: false,
         },
       );
-      const ccParsed = parseEmails(ccRaw);
-      await supplierAPI.sendRelationDevelopmentPlanRequest(
+      await supplierAPI.sendRelationDevelopmentPlanRevisionRequest(
         item.relation.id_relation,
         plan.id_development_plan,
         {
           custom_message: customMessage.trim() || undefined,
-          extra_cc_emails:
-            ccParsed.length && validateEmails(ccParsed) ? ccParsed : undefined,
+          to_emails: allTo.length ? allTo : undefined,
+          extra_cc_emails: ccParsed.length && validateEmails(ccParsed) ? ccParsed : undefined,
         },
       );
       onSuccess();
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Failed to request revision.",
-      );
+      setError(e instanceof Error ? e.message : "Failed to request revision.");
     } finally {
       setIsSaving(false);
     }
@@ -1704,7 +1628,7 @@ function RequestRevisionModal({
       title="Request Plan Revision"
       subtitle="Return the plan to the supplier for revision"
       onClose={onClose}
-      size="sm"
+      size="md"
     >
       <div className="space-y-5">
         <SupplierBanner item={item} tone="amber" />
@@ -1714,18 +1638,12 @@ function RequestRevisionModal({
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
             <div>
-              <p className="text-sm font-semibold text-rose-800">
-                Plan was rejected
-              </p>
+              <p className="text-sm font-semibold text-rose-800">Plan was rejected</p>
               {plan.rejected_by && (
-                <p className="mt-0.5 text-xs text-rose-600">
-                  Rejected by: {plan.rejected_by}
-                </p>
+                <p className="mt-0.5 text-xs text-rose-600">Rejected by: {plan.rejected_by}</p>
               )}
               {plan.internal_comments && (
-                <p className="mt-1 text-xs italic text-rose-600">
-                  {plan.internal_comments}
-                </p>
+                <p className="mt-1 text-xs italic text-rose-600">{plan.internal_comments}</p>
               )}
             </div>
           </div>
@@ -1748,10 +1666,84 @@ function RequestRevisionModal({
           </p>
         </div>
 
+        {/* ── Contact selection ─────────────────────────────────────────── */}
+        <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Supplier Contacts</p>
+              <p className="text-xs text-slate-500">Select who will receive the revision request</p>
+            </div>
+            {contacts.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const emailsWithAddr = contacts.filter((c) => c.email).map((c) => c.email!);
+                  setSelectedEmails(
+                    selectedEmails.size === emailsWithAddr.length
+                      ? new Set()
+                      : new Set(emailsWithAddr),
+                  );
+                }}
+                className="text-xs font-semibold text-amber-700 hover:text-amber-900"
+              >
+                {selectedEmails.size === contacts.filter((c) => c.email).length
+                  ? "Deselect all"
+                  : "Select all"}
+              </button>
+            )}
+          </div>
+
+          {contactsLoading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading contacts…
+            </div>
+          ) : contacts.length === 0 ? (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              No contacts found for this supplier unit. Enter email addresses below.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {contacts.map((c) => (
+                <ContactCard
+                  key={c.id_contact}
+                  contact={c}
+                  selected={!!c.email && selectedEmails.has(c.email)}
+                  onToggle={() => c.email && toggleContact(c.email)}
+                  accentColor="amber"
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="pt-1">
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Add extra recipients{" "}
+              <span className="font-normal text-slate-400">(not listed above)</span>
+            </label>
+            <input
+              value={extraEmailsRaw}
+              onChange={(e) => setExtraEmailsRaw(e.target.value)}
+              className={inputCls}
+              placeholder="extra@company.com, another@company.com"
+            />
+          </div>
+
+          {totalRecipients > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Mail className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-xs font-semibold text-amber-700">
+                {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* CC */}
         <div>
           <label className="mb-1 block text-sm font-semibold text-slate-700">
-            CC{" "}
-            <span className="font-normal text-slate-400">(optional)</span>
+            CC <span className="font-normal text-slate-400">(optional)</span>
           </label>
           <input
             value={ccRaw}
@@ -1759,6 +1751,11 @@ function RequestRevisionModal({
             className={inputCls}
             placeholder="owner@company.com"
           />
+          {supplierOwner && (
+            <p className="mt-1 text-xs text-slate-400">
+              Pre-filled: <span className="font-medium text-slate-600">{supplierOwner}</span>
+            </p>
+          )}
         </div>
 
         <div>
@@ -1787,11 +1784,15 @@ function RequestRevisionModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || !newDueDate}
+            disabled={isSaving || !newDueDate || totalRecipients === 0}
             className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw className="h-4 w-4" />
-            {isSaving ? "Sending…" : "Request Revision"}
+            {isSaving
+              ? "Sending…"
+              : totalRecipients > 0
+              ? `Request Revision — ${totalRecipients} Recipient${totalRecipients !== 1 ? "s" : ""}`
+              : "Request Revision"}
           </button>
         </div>
       </div>
@@ -2069,6 +2070,374 @@ function ViewDetailsModal({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Remind Modal — send a follow-up reminder email to the supplier
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CONTACT_CARD_ACCENT = {
+  orange: {
+    selected: "border-orange-400 bg-orange-50 shadow-sm shadow-orange-100",
+    hover: "hover:border-orange-200 hover:bg-orange-50/40",
+    avatar: "bg-orange-500 text-white shadow-md shadow-orange-200",
+    badge: "bg-orange-100 text-orange-700",
+    checkbox: "border-orange-500 bg-orange-500",
+  },
+  amber: {
+    selected: "border-amber-400 bg-amber-50 shadow-sm shadow-amber-100",
+    hover: "hover:border-amber-200 hover:bg-amber-50/40",
+    avatar: "bg-amber-500 text-white shadow-md shadow-amber-200",
+    badge: "bg-amber-100 text-amber-700",
+    checkbox: "border-amber-500 bg-amber-500",
+  },
+  sky: {
+    selected: "border-sky-400 bg-sky-50 shadow-sm shadow-sky-100",
+    hover: "hover:border-sky-200 hover:bg-sky-50/40",
+    avatar: "bg-sky-500 text-white shadow-md shadow-sky-200",
+    badge: "bg-sky-100 text-sky-700",
+    checkbox: "border-sky-500 bg-sky-500",
+  },
+} as const;
+
+function ContactCard({
+  contact,
+  selected,
+  onToggle,
+  accentColor = "orange",
+}: {
+  contact: ContactResponse;
+  selected: boolean;
+  onToggle: () => void;
+  accentColor?: keyof typeof CONTACT_CARD_ACCENT;
+}) {
+  const hasEmail = !!contact.email;
+  const accent = CONTACT_CARD_ACCENT[accentColor];
+  const initials = (contact.full_name ?? "?")
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+
+  return (
+    <button
+      type="button"
+      disabled={!hasEmail}
+      onClick={onToggle}
+      className={`flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition ${
+        !hasEmail
+          ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
+          : selected
+          ? accent.selected
+          : `border-slate-200 bg-white ${accent.hover}`
+      }`}
+    >
+      {/* Avatar */}
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+          selected ? accent.avatar : "bg-slate-100 text-slate-600"
+        }`}
+      >
+        {initials || "?"}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {contact.full_name || "—"}
+          </p>
+          {contact.is_primary_contact && (
+            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${accent.badge}`}>
+              Primary
+            </span>
+          )}
+        </div>
+        {contact.role_label && (
+          <p className="text-[11px] font-medium text-slate-500">{contact.role_label}</p>
+        )}
+        <p className={`mt-0.5 truncate text-[11px] ${hasEmail ? "text-slate-600" : "italic text-slate-400"}`}>
+          {contact.email ?? "No email address"}
+        </p>
+      </div>
+
+      {/* Checkbox */}
+      <div
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+          selected ? accent.checkbox : "border-slate-300 bg-white"
+        }`}
+      >
+        {selected && (
+          <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function RemindModal({
+  item,
+  onClose,
+  onSuccess,
+}: {
+  item: DevelopmentPlanRegisterRow;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const plan = item.development_plan;
+  const supplierOwner = (item.relation as any).supplier_owner as string | undefined;
+
+  // Contacts
+  const [contacts, setContacts] = useState<ContactResponse[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+
+  // Extra manual emails (comma-separated, beyond the contact cards)
+  const [extraEmailsRaw, setExtraEmailsRaw] = useState("");
+
+  // CC + message
+  const [ccRaw, setCcRaw] = useState(supplierOwner ?? "");
+  const [customMessage, setCustomMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const today = new Date();
+  const due = plan.due_date ? new Date(plan.due_date) : null;
+  const daysOverdue =
+    due && due < today
+      ? Math.floor((today.getTime() - due.getTime()) / 86_400_000)
+      : 0;
+
+  // Fetch unit contacts on mount
+  useEffect(() => {
+    let cancelled = false;
+    supplierAPI
+      .listContactsForUnit(item.relation.id_supplier_unit)
+      .then((res) => {
+        if (cancelled) return;
+        const loaded = (res.data?.items ?? []) as ContactResponse[];
+        setContacts(loaded);
+        // Pre-select primary contacts; fall back to all contacts with emails
+        const primaries = loaded.filter((c) => c.is_primary_contact && c.email).map((c) => c.email!);
+        const all = loaded.filter((c) => c.email).map((c) => c.email!);
+        setSelectedEmails(new Set(primaries.length ? primaries : all));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setContactsLoading(false); });
+    return () => { cancelled = true; };
+  }, [item.relation.id_supplier_unit]);
+
+  const toggleContact = (email: string) =>
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+
+  const extraParsed = extraEmailsRaw.trim() ? parseEmails(extraEmailsRaw) : [];
+  const totalRecipients = selectedEmails.size + extraParsed.length;
+
+  const handleSubmit = async () => {
+    if (extraParsed.length && !validateEmails(extraParsed)) {
+      setError("One or more extra email addresses are invalid.");
+      return;
+    }
+    const allTo = [...new Set([...selectedEmails, ...extraParsed])];
+    const ccParsed = parseEmails(ccRaw);
+    if (ccParsed.length && !validateEmails(ccParsed)) {
+      setError("One or more CC email addresses are invalid.");
+      return;
+    }
+    if (!allTo.length) {
+      setError("Select at least one recipient or enter an email address.");
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      await supplierAPI.sendRelationDevelopmentPlanReminder(
+        item.relation.id_relation,
+        plan.id_development_plan,
+        {
+          custom_message: customMessage.trim() || undefined,
+          to_emails: allTo,
+          extra_cc_emails: ccParsed.length ? ccParsed : undefined,
+        },
+      );
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send the reminder.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Send Reminder to Supplier"
+      subtitle="Follow-up email — plan request was already sent"
+      onClose={onClose}
+      size="md"
+    >
+      <div className="space-y-5">
+        <SupplierBanner item={item} tone="amber" />
+        {error && <ErrorMsg msg={error} />}
+
+        {/* Overdue warning */}
+        {daysOverdue > 0 && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+            <div>
+              <p className="font-semibold">
+                Plan is overdue by {daysOverdue} day{daysOverdue !== 1 ? "s" : ""}
+              </p>
+              <p className="mt-0.5 text-xs text-red-600">
+                The deadline was {formatDate(plan.due_date)}. The reminder email will highlight this.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Contact selection ─────────────────────────────────────────── */}
+        <div className="space-y-3 rounded-2xl border border-orange-100 bg-orange-50/40 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Supplier Contacts</p>
+              <p className="text-xs text-slate-500">
+                Select who should receive this reminder
+              </p>
+            </div>
+            {contacts.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const emailsWithAddr = contacts.filter((c) => c.email).map((c) => c.email!);
+                  setSelectedEmails(
+                    selectedEmails.size === emailsWithAddr.length
+                      ? new Set()
+                      : new Set(emailsWithAddr),
+                  );
+                }}
+                className="text-xs font-semibold text-orange-600 hover:text-orange-800"
+              >
+                {selectedEmails.size === contacts.filter((c) => c.email).length
+                  ? "Deselect all"
+                  : "Select all"}
+              </button>
+            )}
+          </div>
+
+          {contactsLoading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading contacts…
+            </div>
+          ) : contacts.length === 0 ? (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              No contacts found for this supplier unit. Enter email addresses below.
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {contacts.map((c) => (
+                <ContactCard
+                  key={c.id_contact}
+                  contact={c}
+                  selected={!!c.email && selectedEmails.has(c.email)}
+                  onToggle={() => c.email && toggleContact(c.email)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Extra manual recipients */}
+          <div className="pt-1">
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Add extra recipients{" "}
+              <span className="font-normal text-slate-400">(not listed above)</span>
+            </label>
+            <input
+              value={extraEmailsRaw}
+              onChange={(e) => setExtraEmailsRaw(e.target.value)}
+              className={inputCls}
+              placeholder="extra@company.com, another@company.com"
+            />
+          </div>
+
+          {/* Recipient summary chip */}
+          {totalRecipients > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Mail className="h-3.5 w-3.5 text-orange-500" />
+              <span className="text-xs font-semibold text-orange-700">
+                {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* ── CC ────────────────────────────────────────────────────────── */}
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-slate-600">
+            CC — Supplier Owner / Additional
+          </label>
+          <input
+            value={ccRaw}
+            onChange={(e) => setCcRaw(e.target.value)}
+            className={inputCls}
+            placeholder="owner@company.com"
+          />
+          {supplierOwner && (
+            <p className="mt-1 text-xs text-slate-400">
+              Pre-filled:{" "}
+              <span className="font-medium text-slate-600">{supplierOwner}</span>
+            </p>
+          )}
+        </div>
+
+        {/* ── Custom message ────────────────────────────────────────────── */}
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">
+            Message to Supplier{" "}
+            <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <textarea
+            value={customMessage}
+            onChange={(e) => setCustomMessage(e.target.value)}
+            rows={3}
+            className={`${inputCls} resize-none`}
+            placeholder="Additional context or urgency to include in the reminder…"
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSaving || totalRecipients === 0}
+            className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="h-4 w-4" />
+            {isSaving
+              ? "Sending…"
+              : totalRecipients > 0
+              ? `Send Reminder to ${totalRecipients}`
+              : "Send Reminder"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Main page
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2108,6 +2477,7 @@ export default function DevelopmentPlansPage() {
   const [decisionModal, setDecisionModal] = useState<DevelopmentPlanRegisterRow | null>(null);
   const [revisionModal, setRevisionModal] = useState<DevelopmentPlanRegisterRow | null>(null);
   const [detailsModal, setDetailsModal] = useState<DevelopmentPlanRegisterRow | null>(null);
+  const [remindModal, setRemindModal] = useState<DevelopmentPlanRegisterRow | null>(null);
 
   const openModal = (item: DevelopmentPlanRegisterRow, modal: ModalKey) => {
     if (modal === "send") setSendModal(item);
@@ -2125,6 +2495,7 @@ export default function DevelopmentPlansPage() {
     setDecisionModal(null);
     setRevisionModal(null);
     setDetailsModal(null);
+    setRemindModal(null);
   };
 
   useEffect(() => {
@@ -2689,6 +3060,12 @@ export default function DevelopmentPlansPage() {
                         <td className="px-5 py-4 align-middle">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <StatusPill status={dp.plan_status} />
+                            {dp.is_overdue && ["must be send", "request sent"].includes(sl) && (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm shadow-red-300">
+                                <Clock className="h-2.5 w-2.5" />
+                                Late
+                              </span>
+                            )}
                             {dp.business_hold_active && (
                               <span className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm shadow-rose-200">
                                 On Hold
@@ -2803,6 +3180,16 @@ export default function DevelopmentPlansPage() {
                                 </button>
                               );
                             })()}
+                            {(dp.plan_status ?? "").toLowerCase() === "request sent" && (
+                              <button
+                                type="button"
+                                onClick={() => setRemindModal(item)}
+                                className="inline-flex items-center gap-1 rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-semibold text-orange-700 transition hover:border-orange-300 hover:bg-orange-100"
+                              >
+                                <Send className="h-3 w-3" />
+                                Remind
+                              </button>
+                            )}
                             {action.modal !== "details" && (
                               <button
                                 type="button"
@@ -2940,6 +3327,13 @@ export default function DevelopmentPlansPage() {
           item={detailsModal}
           onClose={closeAll}
           onSuccess={() => onSuccess("Plan updated.")}
+        />
+      )}
+      {remindModal && (
+        <RemindModal
+          item={remindModal}
+          onClose={closeAll}
+          onSuccess={() => onSuccess("Reminder sent to supplier.")}
         />
       )}
     </div>
