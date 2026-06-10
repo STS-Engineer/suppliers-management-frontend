@@ -334,16 +334,16 @@ export default function AppSidebar() {
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">
           {open ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] px-3 py-2.5 min-w-0">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.05))] px-3 py-2 min-w-0">
               <div className="min-w-0 flex-1 overflow-hidden">
                 <UserDropdown />
               </div>
-              <ThemeToggleButton />
+              <ThemeToggleButton compact />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 py-1">
               <UserDropdown />
-              <ThemeToggleButton />
+              <ThemeToggleButton compact />
             </div>
           )}
         </div>

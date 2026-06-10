@@ -19,30 +19,32 @@ type KPIProps = {
 
 const statusClassMap: Record<SupplierStatus, string> = {
   Active:
-    "border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
-  "On Hold": "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100",
-  Exit: "border-slate-200 bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+    "border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+  "On Hold":
+    "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20",
+  Exit:
+    "border-slate-200 bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:border-slate-600/40 dark:bg-slate-700/20 dark:text-slate-300 dark:ring-slate-600/20",
   "Can Quote":
-    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
   "Can Quote & Deliver":
-    "border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+    "border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
   "Business On Hold":
-    "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100",
+    "border-rose-200/80 bg-rose-50 text-rose-700 ring-1 ring-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20",
   "Pending Self-Assessment":
-    "border-slate-200 bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+    "border-slate-200 bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:border-slate-600/40 dark:bg-slate-700/20 dark:text-slate-300 dark:ring-slate-600/20",
   "Pending Committee":
-    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
   "Pending COMEX":
-    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+    "border-amber-200/80 bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
   "Under Qualification":
-    "border-sky-200/80 bg-sky-50 text-sky-700 ring-1 ring-sky-100",
+    "border-sky-200/80 bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20",
 };
 
 const classClassMap: Record<SupplierClass, string> = {
-  A: "border-emerald-200/80 bg-emerald-50 text-emerald-700",
-  B: "border-sky-200/80 bg-sky-50 text-sky-700",
-  C: "border-amber-200/80 bg-amber-50 text-amber-700",
-  D: "border-rose-200/80 bg-rose-50 text-rose-700",
+  A: "border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300",
+  B: "border-sky-200/80 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/12 dark:text-sky-300",
+  C: "border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300",
+  D: "border-rose-200/80 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/12 dark:text-rose-300",
 };
 
 const kpiToneMap: Record<NonNullable<KPIProps["tone"]>, string> = {
@@ -192,13 +194,13 @@ export function PageIntro({
   children,
 }: PageIntroProps) {
   return (
-    <section className="relative -mx-4 overflow-hidden bg-[#0f2744] px-6 py-5 text-white shadow-[0_4px_24px_rgba(15,23,42,0.18)] sm:-mx-6">
+    <section className="relative -mx-4 overflow-hidden bg-[#0f2744] px-4 py-5 text-white shadow-[0_4px_24px_rgba(15,23,42,0.18)] sm:-mx-6 sm:px-6">
       {/* Subtle radial accent */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.22),transparent_55%),radial-gradient(ellipse_at_bottom_left,rgba(14,165,233,0.12),transparent_50%)]" />
 
-      <div className="relative mx-auto flex w-full items-start justify-between gap-4">
+      <div className="relative mx-auto flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         {/* Left — eyebrow + title + description */}
-        <div className="flex min-w-0 items-start gap-4">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
           <div className="mt-1 hidden h-9 w-0.5 flex-shrink-0 rounded-full bg-gradient-to-b from-sky-400 to-blue-600 sm:block" />
           <div className="min-w-0">
             {eyebrow ? (
@@ -206,7 +208,7 @@ export function PageIntro({
                 {eyebrow}
               </p>
             ) : null}
-            <h2 className="mt-0.5 text-2xl font-bold tracking-tight text-white">
+            <h2 className="mt-0.5 text-xl font-bold tracking-tight text-white sm:text-2xl">
               {title}
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-slate-300/90">
@@ -217,14 +219,14 @@ export function PageIntro({
 
         {/* Right — actions */}
         {actions ? (
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-2.5">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2 sm:gap-2.5">
             {actions}
           </div>
         ) : null}
       </div>
 
       {children ? (
-        <div className="relative mt-5 w-full">{children}</div>
+        <div className="relative mt-4 w-full sm:mt-5">{children}</div>
       ) : null}
     </section>
   );
@@ -260,9 +262,9 @@ export function InlineAlert({
   action?: ReactNode;
 }) {
   const toneMap: Record<InlineAlertTone, string> = {
-    info: "border-blue-200 bg-blue-50 text-blue-900",
-    warning: "border-amber-200 bg-amber-50 text-amber-900",
-    danger: "border-rose-200 bg-rose-50 text-rose-900",
+    info: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200",
+    warning: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+    danger: "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200",
   };
 
   return (
@@ -286,11 +288,11 @@ export function Pill({
   tone?: PillTone;
 }) {
   const toneMap: Record<PillTone, string> = {
-    neutral: "border-slate-200 bg-slate-50 text-slate-700",
-    brand: "border-sky-200 bg-sky-50 text-sky-800",
-    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    warning: "border-amber-200 bg-amber-50 text-amber-700",
-    danger: "border-rose-200 bg-rose-50 text-rose-700",
+    neutral: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600/40 dark:bg-slate-700/20 dark:text-slate-300",
+    brand: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
+    warning: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
+    danger: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300",
   };
 
   return (

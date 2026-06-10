@@ -248,23 +248,22 @@ const PHASES = [
   "Closed",
 ];
 const TYPE_COLORS: Record<string, string> = {
-  Negotiation: "bg-violet-100 text-violet-700 border-violet-200",
-  Sourcing: "bg-sky-100 text-sky-700 border-sky-200",
-  "Technical Productivity":
-    "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Cash: "bg-amber-100 text-amber-700 border-amber-200",
+  Negotiation: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25",
+  Sourcing: "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25",
+  "Technical Productivity": "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
+  Cash: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
 };
 const STATUS_COLORS: Record<string, string> = {
-  Assigned: "bg-slate-100 text-slate-600",
-  "Working on it": "bg-blue-100 text-blue-700",
-  "Awaiting Validation": "bg-amber-100 text-amber-700",
-  "Under Committee Review": "bg-purple-100 text-purple-700",
-  "Needs Rework": "bg-orange-100 text-orange-700",
-  Validated: "bg-emerald-100 text-emerald-700",
-  Stuck: "bg-orange-100 text-orange-700",
-  Cancelled: "bg-red-100 text-red-700",
-  Complete: "bg-teal-100 text-teal-700",
-  "Customer Refusal": "bg-pink-100 text-pink-700",
+  Assigned: "bg-slate-100 text-slate-600 dark:bg-slate-700/30 dark:text-slate-300",
+  "Working on it": "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+  "Awaiting Validation": "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  "Under Committee Review": "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300",
+  "Needs Rework": "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  Validated: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  Stuck: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  Cancelled: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
+  Complete: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+  "Customer Refusal": "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
 };
 const PHASE_CONFIG: Record<string, { color: string; desc: string }> = {
   "Phase 0": {
@@ -329,11 +328,11 @@ function InfoRow({
 }) {
   if (!value) return null;
   return (
-    <div className="flex gap-3 px-4 py-2 border-b border-slate-50 last:border-0">
-      <span className="w-36 shrink-0 text-[11px] font-semibold text-slate-400 pt-0.5">
+    <div className="flex gap-3 border-b border-slate-50 px-4 py-2 last:border-0 dark:border-white/[0.05]">
+      <span className="w-36 shrink-0 pt-0.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
         {label}
       </span>
-      <span className={`text-sm break-all ${valueClassName ?? "text-slate-700"}`}>
+      <span className={`break-all text-sm ${valueClassName ?? "text-slate-700 dark:text-slate-200"}`}>
         {value}
       </span>
     </div>
@@ -354,14 +353,14 @@ function MetricCard({
   subClassName?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/[0.07] dark:bg-white/[0.04]">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
         {icon}
         {label}
       </div>
-      <p className="text-sm font-bold text-slate-800">{value}</p>
+      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{value}</p>
       {sub && (
-        <p className={`mt-0.5 text-[10px] ${subClassName ?? "text-slate-400"}`}>
+        <p className={`mt-0.5 text-[10px] ${subClassName ?? "text-slate-400 dark:text-slate-500"}`}>
           {sub}
         </p>
       )}
@@ -4958,7 +4957,7 @@ function DetailDrawer({
         onClick={onClose}
       />
       <div
-        className="relative z-10 flex flex-col bg-white shadow-2xl"
+        className="relative z-10 flex flex-col bg-white shadow-2xl dark:bg-[#0f1e30]"
         style={{ width: drawerWidth }}
       >
         {/* Drag handle — left edge */}
@@ -4968,12 +4967,12 @@ function DetailDrawer({
           title="Drag to resize"
         />
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50 px-6 py-4">
+        <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50 px-6 py-4 dark:border-white/[0.07] dark:from-[#0f1e30] dark:to-[#101f35]">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
               #{opp.opportunity_id}
             </p>
-            <h2 className="mt-0.5 text-base font-bold text-slate-800 truncate max-w-md">
+            <h2 className="mt-0.5 max-w-md truncate text-base font-bold text-slate-800 dark:text-slate-100">
               {opp.opportunity_name}
             </h2>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -5123,18 +5122,18 @@ function OppCard({
   return (
     <div
       onClick={onClick}
-      className="group cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
+      className="group cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]"
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-[12.5px] font-bold text-slate-800 leading-snug line-clamp-2">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <p className="line-clamp-2 text-[12.5px] font-bold leading-snug text-slate-800 dark:text-slate-100">
           {opp.opportunity_name}
         </p>
         <ChevronRight
           size={13}
-          className="mt-0.5 shrink-0 text-slate-300 group-hover:text-blue-400"
+          className="mt-0.5 shrink-0 text-slate-300 group-hover:text-blue-400 dark:text-slate-600 dark:group-hover:text-blue-400"
         />
       </div>
-      <p className="text-[10.5px] text-slate-400 mb-2">{opp.idea_owner}</p>
+      <p className="mb-2 text-[10.5px] text-slate-400 dark:text-slate-500">{opp.idea_owner}</p>
       <div className="flex flex-wrap gap-1 mb-2">
         <span
           className={`rounded-full border px-2 py-0.5 text-[9.5px] font-bold ${typeClass}`}
@@ -5153,7 +5152,7 @@ function OppCard({
         )}
       </div>
       {(opp.expected_annual_saving || opp.priority_category) && (
-        <div className="flex items-center gap-3 border-t border-slate-50 pt-2">
+        <div className="flex items-center gap-3 border-t border-slate-50 pt-2 dark:border-white/[0.06]">
           {opp.expected_annual_saving && (
             <div className="flex items-center gap-1">
               <TrendingUp size={10} className="text-emerald-500" />
@@ -5231,16 +5230,16 @@ function PhaseColumn({
       <div className="mb-3 flex items-center gap-2 px-1">
         <CircleDot size={13} className={cfg.color} />
         <div className="min-w-0">
-          <p className="text-[12.5px] font-bold text-slate-800">{phase}</p>
-          <p className="text-[10px] text-slate-400 truncate">{cfg.desc}</p>
+          <p className="text-[12.5px] font-bold text-slate-800 dark:text-slate-100">{phase}</p>
+          <p className="truncate text-[10px] text-slate-400 dark:text-slate-500">{cfg.desc}</p>
         </div>
-        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600">
+        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600 dark:bg-white/[0.08] dark:text-slate-300">
           {opps.length}
         </span>
       </div>
       <div className="space-y-2.5">
         {opps.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-[11px] text-slate-400">
+          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-[11px] text-slate-400 dark:border-white/[0.1] dark:text-slate-600">
             Empty
           </div>
         ) : (
@@ -5264,7 +5263,7 @@ function PhaseColumn({
 // Filter helpers
 // ---------------------------------------------------------------------------
 function Sep() {
-  return <div className="h-4 w-px bg-slate-200 shrink-0" />;
+  return <div className="h-4 w-px shrink-0 bg-slate-200 dark:bg-white/[0.1]" />;
 }
 
 function FilterSelect({
@@ -5291,7 +5290,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`rounded-lg border px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-400 cursor-pointer max-w-[160px] ${isActive ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-700"}`}
+        className={`max-w-[160px] cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-400 ${isActive ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300" : "border-slate-200 bg-white text-slate-700 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-slate-300"}`}
       >
         {options.map((opt, i) => (
           <option key={opt} value={values ? values[i] : opt}>
@@ -5495,33 +5494,33 @@ export default function PurchasingValuePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#f0f7ff_0,#f8fafc_50%,#f0f4f8_100%)]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#f0f7ff_0,#f8fafc_50%,#f0f4f8_100%)] dark:bg-[radial-gradient(circle_at_top_left,#0f1e35_0,#0b1829_50%,#0a1525_100%)]">
       {/* Header */}
 
-      <div className="border-b border-slate-200/70 bg-white/80 px-8 py-5 backdrop-blur-sm">
-        <div className="flex items-start justify-between">
+      <div className="border-b border-slate-200/70 bg-white/80 px-4 py-4 backdrop-blur-sm dark:border-white/[0.07] dark:bg-[#0f1e30]/80 sm:px-8 sm:py-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-[9.5px] font-black uppercase tracking-[0.4em] text-slate-400">
+            <p className="text-[9.5px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-slate-500">
               Purchasing
             </p>
-            <h1 className="mt-0.5 text-xl font-bold text-slate-900">
+            <h1 className="mt-0.5 text-xl font-bold text-slate-900 dark:text-slate-50">
               Value Management
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
               Pipeline · SB3 / SB3-Cash · Phase 0 to Phase 4
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={load}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-slate-300 dark:hover:bg-white/[0.09]"
             >
               <RefreshCw size={12} />
               Refresh
             </button>
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               <PlusCircle size={14} />
               New Opportunity
@@ -5581,17 +5580,17 @@ export default function PurchasingValuePage() {
       </div>
 
       {/* Filters */}
-      <div className="border-b border-slate-200/50 bg-white/60 backdrop-blur-sm">
+      <div className="border-b border-slate-200/50 bg-white/60 backdrop-blur-sm dark:border-white/[0.07] dark:bg-[#0a1929]/60">
         {/* Row 1 — Type pills */}
-        <div className="flex items-center gap-2 border-b border-slate-100/60 px-8 py-2 flex-wrap">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100/60 px-4 py-2 dark:border-white/[0.05] sm:px-8">
+          <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
             Type
           </span>
           {["All", ...TYPES].map((t) => (
             <button
               key={t}
               onClick={() => setFilterType(t)}
-              className={`rounded-xl px-3 py-1 text-xs font-semibold transition-colors ${filterType === t ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              className={`rounded-xl px-3 py-1 text-xs font-semibold transition-colors ${filterType === t ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.07] dark:text-slate-300 dark:hover:bg-white/[0.12]"}`}
             >
               {t}
             </button>
@@ -5599,7 +5598,7 @@ export default function PurchasingValuePage() {
         </div>
 
         {/* Row 2 — Status, Budget, Priority, Validation, Plant */}
-        <div className="flex items-center gap-3 border-b border-slate-100/60 px-8 py-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100/60 px-4 py-2 dark:border-white/[0.05] sm:px-8">
           <FilterSelect
             label="Status"
             value={filterStatus}
@@ -5673,7 +5672,7 @@ export default function PurchasingValuePage() {
         </div>
 
         {/* Row 3 — People filters + escalation + clear */}
-        <div className="flex items-center gap-3 px-8 py-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2 sm:px-8">
           {pmOptions.length > 0 && (
             <FilterSelect
               label="Project Manager"
@@ -5752,7 +5751,7 @@ export default function PurchasingValuePage() {
 
         {/* Result count */}
         {activeFilters > 0 && (
-          <div className="px-8 py-1 text-[11px] text-blue-600 bg-blue-50/40">
+          <div className="bg-blue-50/40 px-4 py-1 text-[11px] text-blue-600 dark:bg-blue-500/[0.08] dark:text-blue-300 sm:px-8">
             <strong>{filtered.length}</strong> of {opportunities.length}{" "}
             opportunities match
           </div>
@@ -5760,15 +5759,15 @@ export default function PurchasingValuePage() {
       </div>
 
       {/* Kanban */}
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 sm:px-8 sm:py-6">
         {loading && (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <RefreshCw size={14} className="animate-spin" />
             Loading…
           </div>
         )}
         {error && (
-          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">
             {error}
           </p>
         )}
@@ -5786,7 +5785,7 @@ export default function PurchasingValuePage() {
                 {i < visiblePhases.length - 1 && (
                   <ArrowRight
                     size={16}
-                    className="mt-8 shrink-0 text-slate-200"
+                    className="mt-8 shrink-0 text-slate-200 dark:text-slate-700"
                   />
                 )}
               </div>

@@ -6,6 +6,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
+import { PageIntro } from "../components/UI";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,46 +107,38 @@ type Tab = "dashboard" | "upload";
 export default function BatchEvaluationPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Page header */}
-      <div className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-[#062B49]">
-                Supplier Evaluations
-              </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
-                Track evaluation deadlines and upload batch scorecard results
-              </p>
-            </div>
-            {/* Tab switcher */}
-            <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1">
-              {(
-                [
-                  { id: "dashboard", label: "Dashboard" },
-                  { id: "upload",    label: "Batch Upload" },
-                ] as { id: Tab; label: string }[]
-              ).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${
-                    tab === t.id
-                      ? "bg-white text-[#062B49] shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+  const tabSwitcher = (
+    <div className="flex w-fit rounded-xl border border-white/20 bg-white/10 p-1 backdrop-blur-sm">
+      {(
+        [
+          { id: "dashboard", label: "Dashboard" },
+          { id: "upload",    label: "Batch Upload" },
+        ] as { id: Tab; label: string }[]
+      ).map((t) => (
+        <button
+          key={t.id}
+          onClick={() => setTab(t.id)}
+          className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${
+            tab === t.id
+              ? "bg-white/20 text-white shadow-sm"
+              : "text-blue-200/70 hover:text-white"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
 
-      <div className="mx-auto max-w-[1600px] px-6 py-6">
+  return (
+    <div className="flex flex-col gap-6">
+      <PageIntro
+        eyebrow="Evaluations"
+        title="Supplier Evaluations"
+        description="Track evaluation deadlines and upload batch scorecard results."
+        actions={tabSwitcher}
+      />
+      <div>
         {tab === "dashboard" && <EvaluationDashboard />}
         {tab === "upload"    && <BatchUploadPanel />}
       </div>
@@ -224,7 +217,7 @@ function EvaluationDashboard() {
                 className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition-all ${
                   active
                     ? "border-[#062B49] bg-[#062B49] shadow-lg shadow-[#062B49]/20"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-white/[0.15]"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -233,7 +226,7 @@ function EvaluationDashboard() {
                     {cfg.label}
                   </span>
                 </div>
-                <div className={`mt-3 text-3xl font-bold ${active ? "text-white" : "text-[#062B49]"}`}>
+                <div className={`mt-3 text-3xl font-bold ${active ? "text-white" : "text-[#062B49] dark:text-white"}`}>
                   {count}
                 </div>
                 {active && (
@@ -261,7 +254,7 @@ function EvaluationDashboard() {
             placeholder="Search by unit name or plant…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition focus:border-[#062B49]/40 focus:ring-4 focus:ring-[#062B49]/8"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#062B49]/40 focus:ring-4 focus:ring-[#062B49]/8 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10"
           />
         </div>
 
@@ -271,7 +264,7 @@ function EvaluationDashboard() {
           <select
             value={pageSize}
             onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-[#062B49]/40"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-[#062B49]/40 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:focus:border-blue-500/40"
           >
             {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -283,7 +276,7 @@ function EvaluationDashboard() {
         {/* Refresh */}
         <button
           onClick={load}
-          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#111e30] dark:text-slate-300 dark:hover:bg-white/[0.05]"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -301,25 +294,25 @@ function EvaluationDashboard() {
       ) : filtered.length === 0 ? (
         <EmptyState message={search || activeFilter !== "ALL" ? "No suppliers match your filter." : "No active relations found."} />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
+                <tr className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929]">
                   {["Urgency", "Unit", "Plant", "Current Grade", "Status", "Frequency", "Last Evaluated", "Next Due"].map((h) => (
-                    <th key={h} className="px-5 py-3.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    <th key={h} className="px-5 py-3.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 dark:divide-white/[0.05]">
                 {paginated.map((item) => {
                   const scfg = STATUS_CFG[item.eval_status];
                   const gradeClr = item.current_grade ? GRADE_CLR[item.current_grade] : null;
                   const statusClr = item.current_status ? SUPPLY_STATUS_CFG[item.current_status] : null;
                   return (
-                    <tr key={item.relation_id} className="group hover:bg-slate-50/70 transition-colors">
+                    <tr key={item.relation_id} className="group hover:bg-slate-50/70 transition-colors dark:hover:bg-white/[0.03]">
                       {/* Urgency */}
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${scfg.badge}`}>
@@ -336,12 +329,12 @@ function EvaluationDashboard() {
 
                       {/* Unit */}
                       <td className="px-5 py-4">
-                        <div className="text-sm font-semibold text-slate-900">{item.unit_name}</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.unit_name}</div>
                       </td>
 
                       {/* Plant */}
                       <td className="px-5 py-4">
-                        <div className="text-sm font-medium text-slate-700">{item.plant_name}</div>
+                        <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.plant_name}</div>
                         {(item.plant_city || item.plant_country) && (
                           <div className="mt-0.5 text-xs text-slate-400">
                             {[item.plant_city, item.plant_country].filter(Boolean).join(", ")}
@@ -397,12 +390,12 @@ function EvaluationDashboard() {
           </div>
 
           {/* Pagination footer */}
-          <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-5 py-3">
-            <p className="text-xs text-slate-500">
-              Showing <span className="font-semibold text-slate-700">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)}</span> of{" "}
-              <span className="font-semibold text-slate-700">{filtered.length}</span> relations
+          <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-white/[0.06] dark:bg-[#0d1929]">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Showing <span className="font-semibold text-slate-700 dark:text-slate-200">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)}</span> of{" "}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">{filtered.length}</span> relations
               {activeFilter !== "ALL" && (
-                <> · filtered from <span className="font-semibold text-slate-700">{items.length}</span> total</>
+                <> · filtered from <span className="font-semibold text-slate-700 dark:text-slate-200">{items.length}</span> total</>
               )}
             </p>
             <Pagination page={page} totalPages={totalPages} onChange={setPage} />
@@ -438,7 +431,7 @@ function Pagination({ page, totalPages, onChange }: {
   return (
     <div className="flex items-center gap-1">
       <button onClick={() => onChange(page - 1)} disabled={page === 1}
-        className={`${btn} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40`}>
+        className={`${btn} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300 dark:hover:bg-white/[0.05]`}>
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -452,7 +445,7 @@ function Pagination({ page, totalPages, onChange }: {
             className={`${btn} ${
               page === p
                 ? "bg-[#062B49] text-white shadow-sm shadow-[#062B49]/20"
-                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300 dark:hover:bg-white/[0.05]"
             }`}>
             {p}
           </button>
@@ -460,7 +453,7 @@ function Pagination({ page, totalPages, onChange }: {
       )}
 
       <button onClick={() => onChange(page + 1)} disabled={page === totalPages}
-        className={`${btn} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40`}>
+        className={`${btn} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300 dark:hover:bg-white/[0.05]`}>
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
@@ -524,9 +517,9 @@ function BatchUploadPanel() {
     <div className="mx-auto max-w-4xl space-y-5">
 
       {/* Format + template card */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="text-sm font-bold text-slate-900">File format</h2>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        <div className="border-b border-slate-100 px-6 py-4 dark:border-white/[0.06]">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">File format</h2>
           <p className="mt-0.5 text-xs text-slate-500">
             Your file must contain these columns. Download the pre-filled template to get started — supplier codes and plant names are already filled in.
           </p>
@@ -575,7 +568,7 @@ function BatchUploadPanel() {
         </div>
 
         {/* Downloads */}
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-6 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-6 py-4 dark:border-white/[0.06]">
           <button onClick={handleDownloadPrefilled} disabled={downloadingPrefilled}
             className="flex items-center gap-2 rounded-xl bg-[#062B49] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:opacity-60">
             {downloadingPrefilled
@@ -585,7 +578,7 @@ function BatchUploadPanel() {
             {downloadingPrefilled ? "Preparing…" : "Pre-filled template (all active relations)"}
           </button>
           <span className="text-xs text-slate-400">or blank Excel template:</span>
-          <a href={xlsxTemplateBase} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50">.xlsx</a>
+          <a href={xlsxTemplateBase} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300 dark:hover:bg-[#0d1929]/80">.xlsx</a>
         </div>
       </div>
 
@@ -598,8 +591,8 @@ function BatchUploadPanel() {
           onClick={() => !file && fileRef.current?.click()}
           className={`flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-12 text-center transition ${
             dragging ? "border-[#062B49] bg-[#062B49]/5 cursor-copy"
-            : file   ? "border-emerald-400 bg-emerald-50 cursor-default"
-                     : "border-slate-300 bg-white cursor-pointer hover:border-slate-400 hover:bg-slate-50"
+            : file   ? "border-emerald-400 bg-emerald-50 cursor-default dark:border-emerald-500/50 dark:bg-emerald-500/10"
+                     : "border-slate-300 bg-white cursor-pointer hover:border-slate-400 hover:bg-slate-50 dark:border-white/[0.15] dark:bg-[#0d1929] dark:hover:border-white/[0.25] dark:hover:bg-[#0d1929]"
           }`}
         >
           {file ? (
@@ -646,18 +639,18 @@ function BatchUploadPanel() {
 
       {/* Action bar */}
       {file && !result && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-          <div className="text-sm text-slate-600">
-            <span className="font-semibold text-slate-900">{file.name}</span>
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            <span className="font-semibold text-slate-900 dark:text-white">{file.name}</span>
             <span className="ml-2 text-slate-400">· {(file.size / 1024).toFixed(1)} KB</span>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={reset}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50">
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.05]">
               Remove
             </button>
             <button onClick={() => handleUpload(true)} disabled={uploading}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50">
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]">
               {uploading ? "Checking…" : "Validate only"}
             </button>
             <button onClick={() => handleUpload(false)} disabled={uploading}
@@ -722,9 +715,9 @@ function UploadResultPanel({ result, onReset }: { result: UploadResult; onReset:
 
       {/* Processed rows table */}
       {result.processed_rows?.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-5 py-3.5">
-            <h3 className="text-sm font-bold text-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 px-5 py-3.5 dark:border-white/[0.06]">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               Processed <span className="ml-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{result.processed}</span>
             </h3>
           </div>
@@ -737,14 +730,14 @@ function UploadResultPanel({ result, onReset }: { result: UploadResult; onReset:
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 dark:divide-white/[0.04]">
                 {result.processed_rows.map((row, i) => {
                   const gc = GRADE_CLR[row.grade] ?? "";
                   const sc = SUPPLY_STATUS_CFG[row.new_status] ?? "";
                   return (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-semibold text-slate-900">{row.supplier_code}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{row.plant_name}</td>
+                    <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                      <td className="px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100">{row.supplier_code}</td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{row.plant_name}</td>
                       <td className="px-4 py-2.5 text-slate-500">{row.evaluation_date}</td>
                       <td className="px-4 py-2.5">
                         <span className={`rounded px-2 py-0.5 font-bold ${gc}`}>{row.grade}</span>
@@ -804,23 +797,23 @@ function UploadResultPanel({ result, onReset }: { result: UploadResult; onReset:
 // ---------------------------------------------------------------------------
 
 const LoadingState = () => (
-  <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white py-20 shadow-sm">
-    <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#062B49]" />
+  <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white py-20 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+    <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#062B49] dark:border-white/[0.15] dark:border-t-blue-400" />
     <span className="text-sm text-slate-400">Loading evaluation data…</span>
   </div>
 );
 
 const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
-  <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white py-16 text-center shadow-sm">
-    <p className="text-sm text-red-600">{message}</p>
-    <button onClick={onRetry} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+  <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white py-16 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+    <p className="text-sm text-red-600 dark:text-red-400">{message}</p>
+    <button onClick={onRetry} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.05]">
       Retry
     </button>
   </div>
 );
 
 const EmptyState = ({ message }: { message: string }) => (
-  <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-20 text-sm text-slate-400 shadow-sm">
+  <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-20 text-sm text-slate-400 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
     {message}
   </div>
 );

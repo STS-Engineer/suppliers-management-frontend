@@ -3,6 +3,7 @@ import { ChevronRight, Menu } from "lucide-react";
 import { type Location, useLocation } from "react-router-dom";
 import { useSidebar } from "../context/SidebarContext";
 import AppSidebar from "./layout/AppSidebar";
+import { ThemeToggleButton } from "./common/ThemeToggleButton";
 
 // ── Route breadcrumb registry ────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export function AppLayout({
   const crumb = resolveCrumb(effectiveLocation.pathname);
 
   return (
-    <div className="relative h-screen overflow-hidden bg-white text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative h-screen overflow-hidden bg-[#f2f5f8] text-slate-900 antialiased dark:bg-[#0b1829] dark:text-slate-100">
       <AppSidebar />
 
       <main
@@ -67,7 +68,7 @@ export function AppLayout({
         ].join(" ")}
       >
         {/* ── Header ───────────────────────────────────────────────────── */}
-        <header className="relative z-10 flex h-11 shrink-0 items-center border-b border-white/[0.07] bg-[#0b1f38] px-4 sm:px-6">
+        <header className="relative z-10 flex h-12 shrink-0 items-center gap-3 border-b border-white/[0.07] bg-[#0b1f38] px-3 sm:px-5">
           {/* Subtle inner highlight on top edge */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/[0.08]" />
 
@@ -75,32 +76,34 @@ export function AppLayout({
           <button
             type="button"
             onClick={toggleMobileSidebar}
-            className="mr-3 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.06] text-white/60 transition hover:bg-white/[0.12] hover:text-white lg:hidden"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.06] text-white/60 transition hover:bg-white/[0.12] hover:text-white lg:hidden"
             aria-label="Open navigation"
           >
-            <Menu className="h-3.5 w-3.5" />
+            <Menu className="h-4 w-4" />
           </button>
 
           {/* Breadcrumb */}
           <nav
-            className="flex min-w-0 items-center gap-1.5"
+            className="flex min-w-0 flex-1 items-center gap-1.5"
             aria-label="Breadcrumb"
           >
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+            <span className="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35 sm:block">
               {crumb.section}
             </span>
-            <ChevronRight className="h-3 w-3 flex-shrink-0 text-white/20" />
-            <span className="truncate text-[12.5px] font-semibold text-white/75">
+            <ChevronRight className="hidden h-3 w-3 flex-shrink-0 text-white/20 sm:block" />
+            <span className="truncate text-[12.5px] font-semibold text-white/80">
               {crumb.page}
             </span>
           </nav>
 
-          {/* Right spacer — reserved for future controls */}
-          <div className="ml-auto" />
+          {/* Right — theme toggle (visible on all screen sizes) */}
+          <div className="flex flex-shrink-0 items-center">
+            <ThemeToggleButton compact />
+          </div>
         </header>
 
         {/* ── Page content ─────────────────────────────────────────────── */}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-6 pt-0 sm:px-5">
           {children}
         </div>
       </main>

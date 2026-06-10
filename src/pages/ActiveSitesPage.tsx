@@ -294,7 +294,7 @@ function RelationDetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-md">
       <div
-        className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_40px_120px_rgba(2,6,23,0.5)]"
+        className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_40px_120px_rgba(2,6,23,0.5)] dark:bg-[#0f1e30]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -348,7 +348,7 @@ function RelationDetailModal({
         </div>
 
         {/* ── Score strip ── */}
-        <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-white">
+        <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-white dark:divide-white/[0.07] dark:border-white/[0.07] dark:bg-[#111e30]">
           {[
             { label: "Final Grade",   value: record.relation.final_grade || "—",                           bar: null },
             { label: "Class Value",   value: record.relation.class_value ?? "—",                            bar: null },
@@ -357,18 +357,18 @@ function RelationDetailModal({
           ].map((m, i) => (
             <div key={i} className="flex flex-col gap-1 px-5 py-3.5">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{m.label}</p>
-              <p className="text-2xl font-extrabold tracking-tight text-slate-900">{m.value}</p>
+              <p className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">{m.value}</p>
               {m.bar != null && <ScoreBar score={m.bar} />}
             </div>
           ))}
         </div>
 
         {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+        <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4 dark:bg-[#0a1929]">
           <div className="grid gap-3 sm:grid-cols-2">
 
             {/* Supplier Identity */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Supplier</p>
               <div className="space-y-0">
                 <InfoRow label="Group" value={record.group.nom || "—"} />
@@ -379,7 +379,7 @@ function RelationDetailModal({
             </div>
 
             {/* Site */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Site</p>
               <div className="space-y-0">
                 <InfoRow label="Plant" value={record.site.site_name || "—"} />
@@ -390,7 +390,7 @@ function RelationDetailModal({
             </div>
 
             {/* Evaluation */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Evaluation</p>
               <div className="space-y-0">
                 <InfoRow label="Operational grade" value={record.relation.operational_grade || "—"} />
@@ -400,7 +400,7 @@ function RelationDetailModal({
             </div>
 
             {/* Strategic */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategic</p>
               {strategicParts.length === 0 ? (
                 <p className="text-sm text-slate-400">No strategic mention</p>
@@ -448,9 +448,9 @@ function InfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-slate-50 py-2 last:border-b-0">
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className={`text-right text-xs font-semibold text-slate-800 ${mono ? "font-mono" : ""}`}>
+    <div className="flex items-center justify-between gap-4 border-b border-slate-50 py-2 last:border-b-0 dark:border-white/[0.05]">
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+      <span className={`text-right text-xs font-semibold text-slate-800 dark:text-slate-200 ${mono ? "font-mono" : ""}`}>
         {value || "—"}
       </span>
     </div>
@@ -629,7 +629,7 @@ export default function ActiveSitesPage() {
       />
 
       {/* ── Search & filters ── */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[260px] flex-[2]">
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -641,7 +641,7 @@ export default function ActiveSitesPage() {
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
                 placeholder="e.g. Ferrites, Capacitors…"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
               />
             </div>
           </div>
@@ -656,7 +656,7 @@ export default function ActiveSitesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name or site"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
               />
             </div>
           </div>
@@ -670,7 +670,7 @@ export default function ActiveSitesPage() {
               <select
                 value={filterGrade}
                 onChange={(e) => setFilterGrade(e.target.value)}
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-9 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-9 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10"
               >
                 <option value="">All grades</option>
                 {gradeOptions.map((g) => (
@@ -691,7 +691,7 @@ export default function ActiveSitesPage() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 placeholder="Filter status"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
               />
             </div>
           </div>
@@ -700,7 +700,7 @@ export default function ActiveSitesPage() {
             <button
               type="button"
               onClick={clearFilters}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/[0.15] dark:hover:text-slate-200"
             >
               <X className="h-3.5 w-3.5" />
               Clear
@@ -711,7 +711,7 @@ export default function ActiveSitesPage() {
 
       {/* ── Panel toggle + count ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
           {panelTabs.map((tab) => {
             const isActive = tab.key === activeTab;
             const count = counts[tab.key] || 0;
@@ -722,14 +722,14 @@ export default function ActiveSitesPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 ${
                   isActive
-                    ? "bg-slate-950 text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    ? "bg-slate-950 text-white shadow-sm dark:bg-white/[0.12] dark:text-white"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-slate-200"
                 }`}
               >
                 {tab.icon}
                 {tab.label}
                 <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold leading-none ${
-                  isActive ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"
+                  isActive ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500 dark:bg-white/[0.08] dark:text-slate-300"
                 }`}>
                   {count}
                 </span>
@@ -738,7 +738,7 @@ export default function ActiveSitesPage() {
           })}
         </div>
         <p className="text-sm text-slate-400">
-          <span className="font-bold text-slate-700">{filteredRows.length}</span>{" "}
+          <span className="font-bold text-slate-700 dark:text-slate-200">{filteredRows.length}</span>{" "}
           supplier{filteredRows.length !== 1 ? "s" : ""} on panel
           {hasActiveFilters ? " matching filters" : ""}
         </p>
@@ -763,7 +763,7 @@ export default function ActiveSitesPage() {
 
       {/* ── Table ── */}
       {isLoading ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5 dark:border-white/[0.08] dark:bg-[#111e30] dark:ring-0">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -780,21 +780,21 @@ export default function ActiveSitesPage() {
               </thead>
               <tbody>
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-50">
+                  <tr key={i} className="border-b border-slate-50 dark:border-white/[0.05]">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-100" />
+                        <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-100 dark:bg-white/[0.06]" />
                         <div className="space-y-1.5">
-                          <div className="h-3 w-36 animate-pulse rounded-full bg-slate-100" />
-                          <div className="h-2.5 w-20 animate-pulse rounded-full bg-slate-50" />
+                          <div className="h-3 w-36 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
+                          <div className="h-2.5 w-20 animate-pulse rounded-full bg-slate-50 dark:bg-white/[0.04]" />
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-100" /></td>
+                    <td className="px-5 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" /></td>
                     <td className="px-5 py-4">
                       <div className="space-y-1.5">
-                        <div className="h-3 w-20 animate-pulse rounded-full bg-slate-100" />
-                        <div className="h-2.5 w-16 animate-pulse rounded-full bg-slate-50" />
+                        <div className="h-3 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
+                        <div className="h-2.5 w-16 animate-pulse rounded-full bg-slate-50 dark:bg-white/[0.04]" />
                       </div>
                     </td>
                     <td className="px-5 py-4"><div className="h-8 w-12 animate-pulse rounded-xl bg-slate-100" /></td>
@@ -809,23 +809,23 @@ export default function ActiveSitesPage() {
           </div>
         </div>
       ) : pagedRows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center">
-          <p className="text-sm font-semibold text-slate-500">No results found</p>
-          <p className="mt-1 text-xs text-slate-400">
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center dark:border-white/[0.12] dark:bg-white/[0.02]">
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">No results found</p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
             Try adjusting your filters or switching tabs.
           </p>
           {hasActiveFilters && (
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]"
             >
               Clear all filters
             </button>
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#0b1f38]/5 dark:border-white/[0.08] dark:bg-[#111e30] dark:ring-0">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -854,7 +854,7 @@ export default function ActiveSitesPage() {
                     <tr
                       key={row.relation.id_relation}
                       onClick={() => openModal(row)}
-                      className={`group cursor-pointer border-b border-slate-50 border-l-4 transition-colors duration-150 last:border-b-0 hover:bg-slate-50/70 ${accentClass}`}
+                      className={`group cursor-pointer border-b border-slate-50 border-l-4 transition-colors duration-150 last:border-b-0 hover:bg-slate-50/70 dark:border-b-white/[0.05] dark:hover:bg-white/[0.035] ${accentClass}`}
                     >
                       {/* Supplier */}
                       <td className="px-4 py-4">
@@ -865,11 +865,11 @@ export default function ActiveSitesPage() {
                             {initials}
                           </div>
                           <div className="min-w-0">
-                            <div className="truncate text-base font-bold text-slate-900 leading-tight">
+                            <div className="truncate text-base font-bold text-slate-900 leading-tight dark:text-slate-100">
                               {name}
                             </div>
                             <div className="mt-1.5">
-                              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-500 tracking-wide">
+                              <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-500 tracking-wide dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400">
                                 {row.unit.unit_code ||
                                   `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`}
                               </span>
@@ -881,20 +881,20 @@ export default function ActiveSitesPage() {
                       {/* Category */}
                       <td className="px-5 py-4">
                         {row.group.supplier_type ? (
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
                             {row.group.supplier_type}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
                         )}
                       </td>
 
                       {/* Site */}
                       <td className="px-5 py-4">
                         <div className="flex items-start gap-2">
-                          <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-400 ring-2 ring-blue-100" />
+                          <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-400 ring-2 ring-blue-100 dark:ring-blue-900/40" />
                           <div>
-                            <div className="font-medium text-slate-800">
+                            <div className="font-medium text-slate-800 dark:text-slate-200">
                               {row.site.site_name || "—"}
                             </div>
                             {row.site.country && (

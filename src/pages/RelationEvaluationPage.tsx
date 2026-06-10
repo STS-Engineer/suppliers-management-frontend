@@ -437,7 +437,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 const inputCls =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-[#062B49]/40 focus:ring-4 focus:ring-[#062B49]/8";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-[#062B49]/40 focus:ring-4 focus:ring-[#062B49]/8 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10";
 
 export default function RelationEvaluationPage() {
   const { relationId } = useParams<{ relationId: string }>();
@@ -819,7 +819,7 @@ export default function RelationEvaluationPage() {
 
   if (loading)
     return (
-      <div className="flex min-h-screen items-center justify-center gap-3 bg-slate-50">
+      <div className="flex min-h-[60vh] items-center justify-center gap-3">
         <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#062B49]" />
         <span className="text-sm text-slate-400">
           Loading evaluation workspace…
@@ -830,10 +830,12 @@ export default function RelationEvaluationPage() {
   const statusCfg = status ? STATUS_FROM_GRADE[status] : null;
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa]">
+    <div className="flex flex-col gap-0">
       {/* ── Hero header ── */}
-      <div className="bg-[#062B49] shadow-lg shadow-[#062B49]/30">
-        <div className="mx-auto max-w-[1400px] px-6 pt-5 pb-0">
+      <div className="relative -mx-4 overflow-hidden bg-[#0f2744] shadow-[0_4px_24px_rgba(15,23,42,0.18)] sm:-mx-6">
+        {/* Radial accent — matches PageIntro */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.22),transparent_55%),radial-gradient(ellipse_at_bottom_left,rgba(14,165,233,0.12),transparent_50%)]" />
+        <div className="relative px-4 pt-5 pb-0 sm:px-6">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-[11px] text-blue-300/80">
             <Link
@@ -947,9 +949,9 @@ export default function RelationEvaluationPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1400px] px-6 py-6">
+      <div className="py-6">
         {error && (
-          <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300">
             <svg
               className="mt-0.5 h-4 w-4 shrink-0"
               fill="currentColor"
@@ -965,7 +967,7 @@ export default function RelationEvaluationPage() {
           </div>
         )}
         {saveMsg && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300">
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
               <path
                 fillRule="evenodd"
@@ -1141,8 +1143,8 @@ function InitialSelfAssessmentView({
             onClick={() => toggle(s.key)}
             className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${
               s.ok
-                ? "border-emerald-200 bg-emerald-50"
-                : "border-amber-200 bg-amber-50"
+                ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-900/20"
+                : "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-900/20"
             }`}
           >
             <span
@@ -1170,12 +1172,12 @@ function InitialSelfAssessmentView({
             </span>
             <div>
               <div
-                className={`text-xs font-bold ${s.ok ? "text-emerald-800" : "text-amber-800"}`}
+                className={`text-xs font-bold ${s.ok ? "text-emerald-800 dark:text-emerald-300" : "text-amber-800 dark:text-amber-300"}`}
               >
                 {s.label}
               </div>
               <div
-                className={`text-[10px] ${s.ok ? "text-emerald-600" : "text-amber-600"}`}
+                className={`text-[10px] ${s.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
               >
                 {s.detail}
               </div>
@@ -1199,10 +1201,10 @@ function InitialSelfAssessmentView({
 
       {/* Section 1 — Class Evaluation */}
       {openSection.class && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-3.5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04] px-5 py-3.5">
             <div>
-              <h3 className="text-sm font-bold text-[#062B49]">
+              <h3 className="text-sm font-bold text-[#062B49] dark:text-slate-100">
                 1. Class Evaluation
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1239,10 +1241,10 @@ function InitialSelfAssessmentView({
 
       {/* Section 2 — Operational */}
       {openSection.operational && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-3.5">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04] px-5 py-3.5">
             <div>
-              <h3 className="text-sm font-bold text-[#062B49]">
+              <h3 className="text-sm font-bold text-[#062B49] dark:text-slate-100">
                 2. Operational Evaluation
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1256,9 +1258,9 @@ function InitialSelfAssessmentView({
 
       {/* Section 3 — Decision & Impact */}
       {openSection.decision && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-3.5">
-            <h3 className="text-sm font-bold text-[#062B49]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04] px-5 py-3.5">
+            <h3 className="text-sm font-bold text-[#062B49] dark:text-slate-100">
               3. Decision &amp; Impact
             </h3>
           </div>
@@ -1283,7 +1285,7 @@ function InitialSelfAssessmentView({
 
         {/* Validation warning (incomplete sections) */}
         {validationMsg && (
-          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300">
             <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
@@ -1293,8 +1295,8 @@ function InitialSelfAssessmentView({
 
         {/* API / server error */}
         {error && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            <svg className="mt-0.5 h-4 w-4 shrink-0 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             {error}
@@ -1303,10 +1305,10 @@ function InitialSelfAssessmentView({
 
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-[#062B49]">
+            <p className="text-sm font-semibold text-[#062B49] dark:text-blue-300">
               Submit Initial Self-Assessment
             </p>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">
               This will lock the operational baseline permanently. Class
               evaluation and decisions can still be updated later.
             </p>
@@ -1366,7 +1368,7 @@ function ClassCriteriaBody({
     });
 
   return (
-    <div className="divide-y divide-slate-50">
+    <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
       {CLASS_CRITERIA.map(({ key, label, pldKey }, i) => {
         const val = (form as any)[key] || "";
         const score = val ? (PLD_SCORES[pldKey]?.[val] ?? null) : null;
@@ -1382,15 +1384,15 @@ function ClassCriteriaBody({
           isQualCert && qualCerts.some((c) => c.certification_type === val);
         return (
           <div key={key}>
-            <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#062B49]/10 text-[10px] font-bold text-[#062B49]">
+            <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors dark:hover:bg-white/[0.03]">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#062B49]/10 text-[10px] font-bold text-[#062B49] dark:bg-blue-500/10 dark:text-blue-300">
                 {i + 1}
               </span>
               <div className="w-48 shrink-0">
                 <button
                   type="button"
                   onClick={() => toggleExp(pldKey)}
-                  className="text-left text-sm font-semibold text-[#062B49] hover:underline"
+                  className="text-left text-sm font-semibold text-[#062B49] hover:underline dark:text-blue-300"
                 >
                   {label}
                   <svg
@@ -1514,8 +1516,8 @@ function OperationalBody({
   return (
     <div>
       {avg !== null && (
-        <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 bg-slate-50">
-          <span className="text-xs text-slate-500">
+        <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929]">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Average: <strong>{avg.toFixed(1)}</strong>
           </span>
           {grade && (
@@ -1527,14 +1529,14 @@ function OperationalBody({
           )}
         </div>
       )}
-      <div className="divide-y divide-slate-50">
+      <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
         {OPERATIONAL_CRITERIA.map(({ key, label, minReq }) => {
           const val = form[key] as number | undefined;
           const score = val !== undefined ? val : null;
           const ok = score !== null && score >= minReq;
           return (
             <div key={key} className="flex items-center gap-4 px-5 py-3.5">
-              <div className="w-52 shrink-0 text-sm text-slate-700">
+              <div className="w-52 shrink-0 text-sm text-slate-700 dark:text-slate-300">
                 {label}
               </div>
               <input
@@ -1619,11 +1621,11 @@ function ImpactQuestionsBody({
                     className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                       val === opt
                         ? IMPACT_SCORES[opt] > 0
-                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-900/30 dark:text-emerald-300"
                           : IMPACT_SCORES[opt] < 0
-                            ? "border-red-400 bg-red-50 text-red-700"
-                            : "border-slate-400 bg-slate-100 text-slate-700"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            ? "border-red-400 bg-red-50 text-red-700 dark:border-red-500/50 dark:bg-red-900/30 dark:text-red-300"
+                            : "border-slate-400 bg-slate-100 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/20"
                     }`}
                   >
                     {opt}
@@ -1705,7 +1707,7 @@ function DecisionBody({
               className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-xs transition ${
                 form.panel_decision === opt.value
                   ? "border-[#062B49] bg-[#062B49]/5"
-                  : "border-slate-200 bg-white hover:bg-slate-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:hover:bg-white/[0.04]"
               }`}
             >
               <div
@@ -1876,11 +1878,11 @@ function ClassTab({
       </div>
 
       {/* Criteria list */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04] px-5 py-4">
           <div>
-            <h2 className="text-sm font-bold text-[#062B49]">11 Classification Criteria</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <h2 className="text-sm font-bold text-[#062B49] dark:text-slate-100">11 Classification Criteria</h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {readOnly
                 ? "Read-only — click \"Update criteria\" to modify and track a change."
                 : "Select each criterion — the detail panel opens automatically."}
@@ -1888,7 +1890,7 @@ function ClassTab({
           </div>
           {readOnly ? (
             <button onClick={onRequestEdit}
-              className="flex items-center gap-1.5 rounded-xl border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] shadow-sm transition hover:bg-[#062B49]/5">
+              className="flex items-center gap-1.5 rounded-xl border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] shadow-sm transition hover:bg-[#062B49]/5 dark:border-blue-400/30 dark:bg-white/[0.04] dark:text-blue-300 dark:hover:bg-white/[0.08]">
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
@@ -1896,7 +1898,7 @@ function ClassTab({
             </button>
           ) : extra.baseline_locked && (
             <button onClick={onCancelEdit}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08]">
               Cancel
             </button>
           )}
@@ -1904,7 +1906,7 @@ function ClassTab({
 
         {/* Edit mode warning */}
         {!readOnly && extra.baseline_locked && (
-          <div className="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+          <div className="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/20 dark:text-amber-300">
             <svg className="h-4 w-4 shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
@@ -1917,10 +1919,10 @@ function ClassTab({
           relationId={relationId} readOnly={readOnly} />
 
         {!readOnly && (
-          <div className="flex items-center justify-between border-t border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4">
-            <p className="text-xs text-slate-500">
-              <span className="font-semibold text-[#062B49]">{cs.scores.length}</span> of 11 criteria filled
-              {cs.avg !== null && <> · avg <span className="font-semibold text-[#062B49]">{cs.avg.toFixed(1)}</span></>}
+          <div className="flex items-center justify-between border-t border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4 dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04]">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-[#062B49] dark:text-blue-300">{cs.scores.length}</span> of 11 criteria filled
+              {cs.avg !== null && <> · avg <span className="font-semibold text-[#062B49] dark:text-blue-300">{cs.avg.toFixed(1)}</span></>}
             </p>
             <button onClick={onSave} disabled={saving}
               className="rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#062B49]/20 transition hover:bg-[#0C5381] disabled:opacity-50">
@@ -1987,7 +1989,7 @@ function CriterionDetailPanel({
       {/* Signature date — for LTA, SQMA */}
       {cfg.hasSignatureDate && (
         <div>
-          <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Signature / Agreement date
           </label>
           <input
@@ -2001,7 +2003,7 @@ function CriterionDetailPanel({
 
       {/* Validity start — ALL criteria */}
       <div>
-        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
           Validity start
         </label>
         <input
@@ -2014,7 +2016,7 @@ function CriterionDetailPanel({
 
       {/* Validity end — ALL criteria, auto-calculated where possible */}
       <div>
-        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
           Validity end
           {detail.auto_validity_end_date === true && (
             <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-600">
@@ -2036,7 +2038,7 @@ function CriterionDetailPanel({
       {/* Coverage amount — Prod Lia Ins */}
       {cfg.hasAmountValue && (
         <div>
-          <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Coverage amount
           </label>
           <input
@@ -2052,7 +2054,7 @@ function CriterionDetailPanel({
       {/* Approver email — SQMA */}
       {cfg.hasApproverEmail && (
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Approver email (person who approved the SQMA)
           </label>
           <input
@@ -2067,7 +2069,7 @@ function CriterionDetailPanel({
 
       {/* File upload — ALL criteria */}
       <div className="sm:col-span-2">
-        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
           Supporting document
         </label>
         <div className="flex items-center gap-2">
@@ -2075,7 +2077,7 @@ function CriterionDetailPanel({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08]"
           >
             <svg
               className="h-3.5 w-3.5"
@@ -2116,7 +2118,7 @@ function CriterionDetailPanel({
 
       {/* Notes — ALL criteria */}
       <div className="sm:col-span-4">
-        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <label className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
           Notes
         </label>
         <input
@@ -2158,7 +2160,7 @@ function OperationalTab({
     const baselineGrade = baseline.operational_grade;
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm">
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-900/20">
           <svg
             className="h-4 w-4 shrink-0 text-amber-600"
             fill="currentColor"
@@ -2179,13 +2181,13 @@ function OperationalTab({
           </span>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5 flex items-center justify-between">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-slate-900">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 Self-Assessment Baseline
               </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 Original operational evaluation scores — read-only
               </p>
             </div>
@@ -2204,7 +2206,7 @@ function OperationalTab({
               )}
             </div>
           </div>
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
             {OPERATIONAL_CRITERIA.map(({ key, label, minReq }) => {
               const val = (baseline as any)[key.toString()];
               const score =
@@ -2215,22 +2217,22 @@ function OperationalTab({
                   key={key}
                   className="flex items-center justify-between px-5 py-3.5"
                 >
-                  <div className="min-w-[220px] text-sm text-slate-700">
+                  <div className="min-w-[220px] text-sm text-slate-700 dark:text-slate-300">
                     {label}
                   </div>
                   <div className="flex flex-1 items-center gap-4 mx-6">
-                    <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.08]">
                       <div
                         className={`h-full rounded-full transition-all ${ok ? "bg-emerald-500" : "bg-amber-400"}`}
                         style={{ width: `${Math.min(score ?? 0, 100)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-slate-400 shrink-0">
+                    <span className="text-xs text-slate-400 shrink-0 dark:text-slate-500">
                       Min: {minReq}
                     </span>
                   </div>
                   <span
-                    className={`text-sm font-bold w-12 text-right ${ok ? "text-emerald-700" : "text-amber-700"}`}
+                    className={`text-sm font-bold w-12 text-right ${ok ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}
                   >
                     {score !== null ? score.toFixed(1) : "—"}
                   </span>
@@ -2246,25 +2248,25 @@ function OperationalTab({
   // Editable form (first time)
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-800">
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-800 dark:border-blue-500/30 dark:bg-blue-900/20 dark:text-blue-300">
         <strong>Initial Self-Assessment</strong> — Enter the 8 operational
         scores (0–100) from the supplier self-assessment. Once submitted this
         baseline will be <strong>permanently locked</strong>.
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5 flex items-center justify-between">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               8 Operational Criteria
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Score 0–100 per criterion. Average → Grade A/B/C/D.
             </p>
           </div>
           <div className="flex items-center gap-3">
             {avg !== null && (
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Avg: {avg.toFixed(1)}
               </span>
             )}
@@ -2389,10 +2391,10 @@ function HistoryTab({
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">
       {/* Status history */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
-          <h2 className="text-sm font-bold text-slate-900">Status History</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Status History</h2>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             All grade and status changes for this relation
           </p>
         </div>
@@ -2404,7 +2406,7 @@ function HistoryTab({
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:border-white/[0.06] dark:text-slate-500">
                   {[
                     "Date",
                     "Grade",
@@ -2419,10 +2421,10 @@ function HistoryTab({
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 dark:divide-white/[0.04]">
                 {history.map((entry) => (
-                  <tr key={entry.id_history} className="hover:bg-slate-50">
-                    <td className="px-5 py-3 text-slate-500">
+                  <tr key={entry.id_history} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
                       {fmt(entry.changed_at)}
                     </td>
                     <td className="px-5 py-3">
@@ -2437,7 +2439,7 @@ function HistoryTab({
                         {entry.new_grade &&
                           entry.new_grade !== entry.old_grade && (
                             <>
-                              <span className="text-slate-400">→</span>
+                              <span className="text-slate-400 dark:text-slate-500">→</span>
                               <span
                                 className={`rounded px-1.5 py-0.5 font-semibold ${GRADE_CLR[entry.new_grade] || ""}`}
                               >
@@ -2447,16 +2449,16 @@ function HistoryTab({
                           )}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
+                    <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
                       {entry.new_class ?? "—"}
                     </td>
-                    <td className="px-5 py-3 font-bold text-slate-800">
+                    <td className="px-5 py-3 font-bold text-slate-800 dark:text-slate-100">
                       {entry.new_final_grade || "—"}
                     </td>
-                    <td className="px-5 py-3 text-slate-500 max-w-[180px] truncate">
+                    <td className="px-5 py-3 text-slate-500 max-w-[180px] truncate dark:text-slate-400">
                       {entry.new_status || "—"}
                     </td>
-                    <td className="px-5 py-3 text-slate-400">
+                    <td className="px-5 py-3 text-slate-400 dark:text-slate-500">
                       {entry.changed_by || "—"}
                     </td>
                   </tr>
@@ -2469,12 +2471,12 @@ function HistoryTab({
 
       {/* Documents */}
       <div className="space-y-4">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
-            <h2 className="text-sm font-bold text-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Evaluation Documents
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Reference files for this relation
             </p>
           </div>
@@ -2482,7 +2484,7 @@ function HistoryTab({
             {/* Upload */}
             <div
               onClick={() => fileRef.current?.click()}
-              className="mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-[#062B49]/30 hover:bg-white"
+              className="mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-[#062B49]/30 hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.04]"
             >
               <svg
                 className="h-5 w-5 text-slate-400"
@@ -2523,7 +2525,7 @@ function HistoryTab({
                 {evalDocs.map((doc) => (
                   <div
                     key={doc.id_document}
-                    className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5"
+                    className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 dark:border-white/[0.06] dark:bg-white/[0.03]"
                   >
                     <svg
                       className="h-4 w-4 shrink-0 text-slate-400"
@@ -2539,10 +2541,10 @@ function HistoryTab({
                       />
                     </svg>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-semibold text-slate-800">
+                      <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
                         {doc.document_name}
                       </div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-slate-400 dark:text-slate-500">
                         {doc.document_type === "lta_agreement"
                           ? "LTA"
                           : "Eval ref"}{" "}
@@ -2554,7 +2556,7 @@ function HistoryTab({
                         href={doc.file_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#062B49] transition hover:bg-slate-50"
+                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#062B49] transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-blue-300 dark:hover:bg-white/[0.08]"
                       >
                         View
                       </a>
@@ -2616,13 +2618,13 @@ function DecisionTab({
 
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
       {/* Impact questions */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5 flex items-center justify-between">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Supplier Impact
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               6 strategic impact questions
             </p>
           </div>
@@ -2636,15 +2638,15 @@ function DecisionTab({
             </p>
           </div>
         </div>
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
           {impactKeys.map((key, i) => {
             const val = form[key] as string;
             const score = val ? IMPACT_SCORES[val] : null;
             return (
               <div key={key} className="px-5 py-4">
                 <div className="mb-2 flex items-start justify-between gap-3">
-                  <p className="text-xs font-semibold text-slate-700">
-                    <span className="mr-1.5 inline-block w-5 shrink-0 text-slate-400">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="mr-1.5 inline-block w-5 shrink-0 text-slate-400 dark:text-slate-500">
                       {i + 1}.
                     </span>
                     {IMPACT_QUESTIONS[i]}
@@ -2673,11 +2675,11 @@ function DecisionTab({
                       className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${readOnly ? "cursor-not-allowed opacity-70" : ""} ${
                         val === opt
                           ? IMPACT_SCORES[opt] > 0
-                            ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-900/30 dark:text-emerald-300"
                             : IMPACT_SCORES[opt] < 0
-                              ? "border-red-400 bg-red-50 text-red-700"
-                              : "border-slate-400 bg-slate-100 text-slate-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                              ? "border-red-400 bg-red-50 text-red-700 dark:border-red-500/50 dark:bg-red-900/30 dark:text-red-300"
+                              : "border-slate-400 bg-slate-100 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/20"
                       }`}
                     >
                       {opt}
@@ -2692,12 +2694,12 @@ function DecisionTab({
 
       {/* Decision */}
       <div className="space-y-4">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
-            <h2 className="text-sm font-bold text-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Strategic Mention
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Filled by Avocarbon Purchasing — multiple selections allowed (e.g.
               Strategic + Directed).
             </p>
@@ -2718,8 +2720,8 @@ function DecisionTab({
                     onClick={() => !readOnly && onToggleStrategic(opt.value)}
                     className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${readOnly ? "cursor-not-allowed" : ""} ${
                       active
-                        ? "border-[#062B49] bg-[#062B49] text-white shadow-sm"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                        ? "border-[#062B49] bg-[#062B49] text-white shadow-sm dark:border-blue-500 dark:bg-blue-600"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-white/20"
                     }`}
                   >
                     <span>{opt.label}</span>
@@ -2749,16 +2751,16 @@ function DecisionTab({
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
-            <h2 className="text-sm font-bold text-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
               Committee Decision
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Panel decision — to be validated
             </p>
           </div>
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
             {PANEL_DECISION_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -2767,8 +2769,8 @@ function DecisionTab({
                 onClick={() => !readOnly && setField("panel_decision", opt.value)}
                 className={`flex w-full items-center gap-3 px-5 py-4 text-left text-sm transition ${readOnly ? "cursor-not-allowed" : ""} ${
                   form.panel_decision === opt.value
-                    ? "bg-[#062B49]/5"
-                    : "hover:bg-slate-50"
+                    ? "bg-[#062B49]/5 dark:bg-blue-500/10"
+                    : "hover:bg-slate-50 dark:hover:bg-white/[0.03]"
                 }`}
               >
                 <div
@@ -2793,7 +2795,7 @@ function DecisionTab({
                   )}
                 </div>
                 <span
-                  className={`font-medium ${form.panel_decision === opt.value ? "text-[#062B49]" : "text-slate-700"}`}
+                  className={`font-medium ${form.panel_decision === opt.value ? "text-[#062B49] dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}
                 >
                   {opt.label}
                 </span>
