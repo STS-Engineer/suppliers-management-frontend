@@ -1290,6 +1290,9 @@ class SupplierOnboardingAPI {
       proposed_supplier_name?: string;
       proposed_supplier_id?: number;
       current_price?: number;
+      current_price_n1?: number;
+      current_price_n2?: number;
+      current_price_n3?: number;
       proposed_price?: number;
       proposed_price_n1?: number;
       proposed_price_n2?: number;
@@ -1304,10 +1307,34 @@ class SupplierOnboardingAPI {
       transit_days_after?: number;
       bonus_before?: number;
       bonus_after?: number;
+      consignment_before?: string;
+      consignment_after?: string;
       // STP — costs
       tooling_cost?: number;
       travel_cost?: number;
       qualification_cost?: number;
+      other_cost?: number;
+      // STP — risks
+      stp_risks?: {
+        material_indexation_before?: string;
+        material_indexation_after?: string;
+        exchange_rate_before?: string;
+        exchange_rate_after?: string;
+        local_content_before?: string;
+        local_content_after?: string;
+        quality_before?: string;
+        quality_after?: string;
+        other_before?: string;
+        other_after?: string;
+        material_same_spec?: string;
+        same_tooling?: string;
+        same_dimension?: string;
+      };
+      // STP — benefits
+      stp_benefits?: {
+        if_we_do?: string;
+        if_not?: string;
+      };
       // STP — planning
       phase1_weeks?: number;
       phase2_weeks?: number;
