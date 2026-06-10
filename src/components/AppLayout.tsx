@@ -23,6 +23,7 @@ const CRUMBS: Record<string, Crumb> = {
   "/suppliers/manage": { section: "Lifecycle", page: "Group Management" },
   "/evaluations": { section: "Evaluations", page: "Evaluation Dashboard" },
   "/purchasing-value": { section: "Value Management", page: "Opportunities" },
+  "/purchasing-value/recovery": { section: "Value Management", page: "Recovery Plans" },
   // "/purchasing-value/kpis":         { section: "Value Management",   page: "KPI Dashboard" },
 };
 

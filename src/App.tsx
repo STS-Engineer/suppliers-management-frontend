@@ -16,7 +16,8 @@ import "./styles/onboarding.css";
 // import SuppliersPage from "./pages/SuppliersPage";
 import ActiveSitesPage from "./pages/ActiveSitesPage";
 import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
-// import PurchasingValuePage from "./pages/PurchasingValuePage";
+import PurchasingValuePage from "./pages/PurchasingValuePage";
+import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
 // import PurchasingKpiPage from "./pages/PurchasingKpiPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 
@@ -53,7 +54,10 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <Navigate to="/suppliers" replace /> },
       { path: "/suppliers", element: <ActiveSitesPage /> },
-      { path: "/suppliers/sites-active", element: <Navigate to="/suppliers" replace /> },
+      {
+        path: "/suppliers/sites-active",
+        element: <Navigate to="/suppliers" replace />,
+      },
       {
         path: "/suppliers/development-plans",
         element: <DevelopmentPlansPage />,
@@ -68,7 +72,8 @@ const router = createBrowserRouter([
         path: "/supplier-relations/:relationId/evaluation",
         element: <RelationEvaluationPage />,
       },
-      // { path: "/purchasing-value",                    element: <PurchasingValuePage /> },
+      { path: "/purchasing-value", element: <PurchasingValuePage /> },
+      { path: "/purchasing-value/recovery", element: <PurchasingRecoveryPage /> },
       // { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
       { path: "*", element: <Navigate to="/suppliers" replace /> },

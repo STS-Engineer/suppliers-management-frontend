@@ -1498,12 +1498,26 @@ class SupplierOnboardingAPI {
 
   async setRecovery(
     lineId: number,
-    data: { recovery_status: string; recovery_note?: string; updated_by?: string },
+    data: {
+      recovery_status: string;
+      recovery_note?: string;
+      recovery_target_date?: string;
+      recovery_amount?: number;
+      updated_by?: string;
+    },
   ) {
     return this.request(
       `${this.baseUrl}/purchasing-value/financial-lines/${lineId}/recovery`,
       { method: "PUT", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
       "Failed to update recovery.",
+    );
+  }
+
+  async getRecoveryPlans() {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/recovery-plans`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load recovery plans.",
     );
   }
 
@@ -1607,6 +1621,28 @@ class SupplierOnboardingAPI {
   /** URL for downloading the pre-filled XLSX with all active supplier–plant relations */
   getEvaluationPrefilledTemplateUrl(): string {
     return `${this.baseUrl}/evaluations/template/prefilled`;
+  }
+
+  /**
+   * Download the STP document as a PDF. Uses fetch + blob so the auth header is sent.
+   */
+  async downloadStpPdf(opportunityId: number, phase: 0 | 1, oppName?: string): Promise<void> {
+    const token = localStorage.getItem("auth_token");
+    const response = await fetch(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/export-stp?phase=${phase}`,
+      { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safe = (oppName ?? `opp_${opportunityId}`).replace(/\s+/g, "_").slice(0, 50);
+    a.download = `STP_Phase${phase}_${safe}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
 
   /**

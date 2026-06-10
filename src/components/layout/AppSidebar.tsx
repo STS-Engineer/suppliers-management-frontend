@@ -52,12 +52,15 @@ const PRIMARY_NAV: NavItem[] = [
     icon: ClipboardList,
     subItems: [{ name: "Evaluation Dashboard", path: "/evaluations" }],
   },
-  // {
-  //   name: "Purchasing Value",
-  //   label: "Value Mgmt",
-  //   icon: TrendingUp,
-  //   subItems: [{ name: "Opportunities", path: "/purchasing-value" }],
-  // },
+  {
+    name: "Purchasing Value",
+    label: "Value Mgmt",
+    icon: TrendingUp,
+    subItems: [
+      { name: "Opportunities", path: "/purchasing-value" },
+      { name: "Recovery Plans", path: "/purchasing-value/recovery" },
+    ],
+  },
   // {
   //   name: "Access Management",
   //   label: "Security",
