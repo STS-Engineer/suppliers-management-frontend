@@ -977,23 +977,27 @@ function EditTab({
   const _pldAnnSaving = parseFloat(form.expected_annual_saving || "0") || 0;
   const _pldHasInvData = _pldAnnSaving > 0 || _pldTotalInv > 0;
   const _pldPaybackMonths = _pldAnnSaving > 0 ? _pldTotalInv / (_pldAnnSaving / 12) : _pldTotalInv > 0 ? 999 : 0;
-  const livePScore = !_pldHasInvData ? null
-    : _pldPaybackMonths === 0 ? 1
-    : _pldPaybackMonths <= 2 ? 2
-    : _pldPaybackMonths <= 4 ? 3
-    : _pldPaybackMonths <= 12 ? 4
-    : 5;
+  const livePScore = !isSourced
+    ? (form.payback_score ? Number(form.payback_score) : null)
+    : (!_pldHasInvData ? null
+      : _pldPaybackMonths === 0 ? 1
+      : _pldPaybackMonths <= 2 ? 2
+      : _pldPaybackMonths <= 4 ? 3
+      : _pldPaybackMonths <= 12 ? 4
+      : 5);
   const _pldTotalWeeks =
     (parseInt(form.phase1_weeks || "0") || 0) +
     (parseInt(form.phase2_weeks || "0") || 0) +
     (parseInt(form.phase3_weeks || "0") || 0);
   const _pldLeadMonths = _pldTotalWeeks / 4.33;
-  const liveLScore = _pldTotalWeeks === 0 ? null
-    : _pldLeadMonths < 1 ? 1
-    : _pldLeadMonths < 2 ? 2
-    : _pldLeadMonths < 4 ? 3
-    : _pldLeadMonths < 6 ? 4
-    : 5;
+  const liveLScore = !isSourced
+    ? (form.lead_time_score ? Number(form.lead_time_score) : null)
+    : (_pldTotalWeeks === 0 ? null
+      : _pldLeadMonths < 1 ? 1
+      : _pldLeadMonths < 2 ? 2
+      : _pldLeadMonths < 4 ? 3
+      : _pldLeadMonths < 6 ? 4
+      : 5);
   const liveDScore = form.difficulty_score ? Number(form.difficulty_score) : null;
 
   const pScore =
@@ -1568,7 +1572,7 @@ function EditTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-[10px]">
+        {isSourced && <div className="grid grid-cols-3 gap-2 text-[10px]">
           {/* P */}
           <div className="space-y-1">
             <div className="flex items-center gap-1">
@@ -1645,8 +1649,72 @@ function EditTab({
               ))}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
+      {/* Manual PLD scores — Negotiation and Cash have no STP workbook */}
+      {!isSourced && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            PLD Scores — Manual Entry
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={label}>
+                P — Pay-back
+                <span className="ml-1 font-normal text-slate-400">(1 = quick)</span>
+              </label>
+              <select
+                className={inp}
+                value={form.payback_score ?? ""}
+                onChange={(e) => set("payback_score", e.target.value as unknown as number)}
+              >
+                <option value="">— select —</option>
+                <option value="1">1 — Immediate / &lt;1 mo.</option>
+                <option value="2">2 — ≤2 months</option>
+                <option value="3">3 — ≤4 months</option>
+                <option value="4">4 — ≤12 months</option>
+                <option value="5">5 — &gt;12 months</option>
+              </select>
+            </div>
+            <div>
+              <label className={label}>
+                L — Lead-time
+                <span className="ml-1 font-normal text-slate-400">(1 = fast)</span>
+              </label>
+              <select
+                className={inp}
+                value={form.lead_time_score ?? ""}
+                onChange={(e) => set("lead_time_score", e.target.value as unknown as number)}
+              >
+                <option value="">— select —</option>
+                <option value="1">1 — &lt;1 month</option>
+                <option value="2">2 — &lt;2 months</option>
+                <option value="3">3 — &lt;4 months</option>
+                <option value="4">4 — &lt;6 months</option>
+                <option value="5">5 — ≥6 months</option>
+              </select>
+            </div>
+            <div>
+              <label className={label}>
+                D — Difficulty
+                <span className="ml-1 font-normal text-slate-400">(1 = easy)</span>
+              </label>
+              <select
+                className={inp}
+                value={form.difficulty_score ?? ""}
+                onChange={(e) => set("difficulty_score", e.target.value as unknown as number)}
+              >
+                <option value="">— select —</option>
+                <option value="1">1 — Easy</option>
+                <option value="2">2 — Relatively easy</option>
+                <option value="3">3 — Moderately difficult</option>
+                <option value="4">4 — Difficult</option>
+                <option value="5">5 — Very Difficult</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
       <div>
         <label className={label}>Comments</label>
         <textarea
@@ -2456,7 +2524,20 @@ function GateTab({
             label: "Before/After unit prices required",
           },
         ]
-      : []),
+      : [
+          {
+            ok: !!opp.payback_score,
+            label: "PLD: Payback score (P) is required",
+          },
+          {
+            ok: !!opp.lead_time_score,
+            label: "PLD: Lead-time score (L) is required",
+          },
+          {
+            ok: !!opp.difficulty_score,
+            label: "PLD: Difficulty score (D) is required",
+          },
+        ]),
   ];
   const phase0Missing = phase0Checks.filter((c) => !c.ok);
 
@@ -3197,9 +3278,7 @@ function FinancialTab({
   );
 
   // Gap 3 — cash tracking visible for Cash/Negotiation type
-  const showCash =
-    ["Cash", "Negotiation"].includes(opp.opportunity_type ?? "") &&
-    rows.some((r) => r.cash_expected != null);
+  const showCash = ["Cash", "Negotiation"].includes(opp.opportunity_type ?? "");
 
   async function saveRow(monthId: number) {
     if (!canEditFinancialRows) {
