@@ -2456,7 +2456,6 @@ function GateTab({
   const [showSubmitP1, setShowSubmitP1] = useState(false);
   const [submitP1Form, setSubmitP1Form] = useState({
     to_emails: "",
-    committee_type: "Full Committee",
     message: "",
   });
   // Gate decision
@@ -2542,32 +2541,37 @@ function GateTab({
   const phase0Missing = phase0Checks.filter((c) => !c.ok);
 
   // Phase 1 → Committee: what must be filled
+  // Negotiation / Cash have no STP format — skip all committee pre-checks
   const proj0 = opp.projects[0];
-  const phase1Checks = [
-    {
-      ok: !!proj0?.phase_output_notes,
-      label: "Phase 1 output notes filled (Project tab)",
-    },
-    {
-      ok: !!proj0?.committee_review_date,
-      label: "Committee review date filled (Project tab)",
-    },
-    {
-      ok: !!proj0?.committee_members,
-      label: "Committee members filled (Project tab)",
-    },
-    {
-      ok: opp.opp_documents.some(
-        (d) =>
-          d.phase_label?.includes("STP") || d.phase_label?.includes("Phase 1"),
-      ),
-      label: "STP or Phase 1 document uploaded (Files tab)",
-    },
-    {
-      ok: !!opp.change_mode,
-      label: "Change Mode confirmed (Standard or Silent)",
-    },
-  ];
+  const isNegotiationOrCash = ["Negotiation", "Cash"].includes(opp.opportunity_type ?? "");
+  const phase1Checks = isNegotiationOrCash
+    ? []
+    : [
+        {
+          ok: !!proj0?.phase_output_notes,
+          label: "Phase 1 output notes filled (Project tab)",
+        },
+        {
+          ok: !!proj0?.committee_review_date,
+          label: "Committee review date filled (Project tab)",
+        },
+        {
+          ok: !!proj0?.committee_members,
+          label: "Committee members filled (Project tab)",
+        },
+        {
+          ok: opp.opp_documents.some(
+            (d) =>
+              d.phase_label?.includes("STP") ||
+              d.phase_label?.includes("Phase 1"),
+          ),
+          label: "STP or Phase 1 document uploaded (Files tab)",
+        },
+        {
+          ok: !!opp.change_mode,
+          label: "Change Mode confirmed (Standard or Silent)",
+        },
+      ];
   const phase1Missing = phase1Checks.filter((c) => !c.ok);
 
   const act = async (fn: () => Promise<void>) => {
@@ -2833,7 +2837,6 @@ function GateTab({
                     opp.opportunity_id,
                     {
                       to_emails: emails.length ? emails : undefined,
-                      committee_type: submitP1Form.committee_type,
                       message: submitP1Form.message || undefined,
                       submitted_by: userEmail,
                     },
@@ -2844,41 +2847,21 @@ function GateTab({
               }}
               className="space-y-3"
             >
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Committee emails <span className="font-normal text-slate-400">(optional — PM organises meeting)</span>
-                  </label>
-                  <input
-                    className={inp}
-                    placeholder="ceo@..., coo@..., pm@..."
-                    value={submitP1Form.to_emails}
-                    onChange={(e) =>
-                      setSubmitP1Form((f) => ({
-                        ...f,
-                        to_emails: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Committee type
-                  </label>
-                  <select
-                    className={inp}
-                    value={submitP1Form.committee_type}
-                    onChange={(e) =>
-                      setSubmitP1Form((f) => ({
-                        ...f,
-                        committee_type: e.target.value,
-                      }))
-                    }
-                  >
-                    <option>Full Committee</option>
-                    <option>Restricted Committee</option>
-                  </select>
-                </div>
+              <div>
+                <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                  Committee emails <span className="font-normal text-slate-400">(optional — PM organises meeting)</span>
+                </label>
+                <input
+                  className={inp}
+                  placeholder="ceo@..., coo@..., pm@..."
+                  value={submitP1Form.to_emails}
+                  onChange={(e) =>
+                    setSubmitP1Form((f) => ({
+                      ...f,
+                      to_emails: e.target.value,
+                    }))
+                  }
+                />
               </div>
               <div>
                 <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
