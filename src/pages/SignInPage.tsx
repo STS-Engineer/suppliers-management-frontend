@@ -151,18 +151,18 @@ export default function SignInPage() {
               </button>
             </form>
 
-            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
+            {/* <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                 Starter Accounts
               </p>
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
-                {/* <p>
+              <div className="mt-3 space-y-2 text-sm text-slate-600"> */}
+            {/* <p>
                   Purchasing manager:{" "}
                   <span className="font-semibold">
                     purchasing.manager@avocarbon.local
                   </span>
                 </p> */}
-                <p>
+            {/* <p>
                   Supplier owner:{" "}
                   <span className="font-semibold">
                     supplier.owner@avocarbon.com
@@ -173,7 +173,7 @@ export default function SignInPage() {
                   <span className="font-semibold">ChangeMe123!</span>
                 </p>
               </div>
-            </div>
+            </div>*/}
           </div>
         </section>
       </div>
