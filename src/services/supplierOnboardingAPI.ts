@@ -1,4 +1,5 @@
 import {
+  CarbonFootprintRecord,
   ContactResponse,
   OnboardingRequest,
   OnboardingResponse,
@@ -492,6 +493,11 @@ class SupplierOnboardingAPI {
     evaluation_end?: string;
     purchase_manager?: string;
     plant_manager?: string;
+    scope?: string;
+    family?: string;
+    sub_family?: string;
+    product_line?: string;
+    supplier_name?: string;
   }): Promise<{
     status: string;
     data: {
@@ -519,6 +525,11 @@ class SupplierOnboardingAPI {
       query.set("purchase_manager", params.purchase_manager);
     if (params.plant_manager)
       query.set("plant_manager", params.plant_manager);
+    if (params.scope) query.set("scope", params.scope);
+    if (params.family) query.set("family", params.family);
+    if (params.sub_family) query.set("sub_family", params.sub_family);
+    if (params.product_line) query.set("product_line", params.product_line);
+    if (params.supplier_name) query.set("supplier_name", params.supplier_name);
 
     return this.request(
       `${this.baseUrl}/sites/panel?${query.toString()}`,
@@ -1311,6 +1322,8 @@ class SupplierOnboardingAPI {
       real_start_date?: string;
       // Context
       change_mode?: string;
+      currency?: string;
+      fx_rate_to_eur?: number;
       plant_id?: number;
       supplier_id?: number;
       // Owners
@@ -1363,14 +1376,19 @@ class SupplierOnboardingAPI {
       stp_risks?: {
         material_indexation_before?: string;
         material_indexation_after?: string;
+        material_indexation_desc?: string;
         exchange_rate_before?: string;
         exchange_rate_after?: string;
+        exchange_rate_desc?: string;
         local_content_before?: string;
         local_content_after?: string;
+        local_content_desc?: string;
         quality_before?: string;
         quality_after?: string;
+        quality_desc?: string;
         other_before?: string;
         other_after?: string;
+        other_desc?: string;
         material_same_spec?: string;
         same_tooling?: string;
         same_dimension?: string;
@@ -1390,6 +1408,9 @@ class SupplierOnboardingAPI {
       reason_quality?: boolean;
       reason_capacity?: boolean;
       reason_other?: string;
+      // STP — missing workbook fields (rev 1.2)
+      secondary_plants?: string;
+      gate_conditions?: string;
       changed_by?: string;
     },
   ) {
@@ -1493,6 +1514,31 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/current-supplier-evaluation`,
       { method: "GET", headers: this.getAuthHeaders() },
       "Failed to load supplier evaluation.",
+    );
+  }
+
+  // Per-fiscal-year budgeting (status is derived from validation — read-only)
+  async listBudgetYears(fiscalYear: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/budget-years?fiscal_year=${fiscalYear}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load budget records.",
+    );
+  }
+
+  async assignBudget(
+    fiscalYear: number,
+    decisions: { opportunity_id: number; budget_status: string }[],
+    decidedBy?: string,
+  ) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/budgets/${fiscalYear}/assign`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ decisions, decided_by: decidedBy }),
+      },
+      "Failed to save budget.",
     );
   }
 
@@ -1737,6 +1783,97 @@ class SupplierOnboardingAPI {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
+  }
+
+  // ===========================================================================
+  // Carbon Footprint (SB8)
+  // ===========================================================================
+
+  async listCarbonFootprints(params?: {
+    skip?: number;
+    limit?: number;
+    unit_id?: number;
+    relation_id?: number;
+    year?: number;
+    continent?: string;
+    origin?: string;
+    site_location?: string;
+    supplier_unit_code?: string;
+  }): Promise<{ items: CarbonFootprintRecord[]; total: number; total_all: number; skip: number; limit: number }> {
+    const query = new URLSearchParams();
+    if (params?.skip !== undefined) query.set("skip", String(params.skip));
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    if (params?.unit_id !== undefined) query.set("unit_id", String(params.unit_id));
+    if (params?.relation_id !== undefined) query.set("relation_id", String(params.relation_id));
+    if (params?.year !== undefined) query.set("year", String(params.year));
+    if (params?.continent) query.set("continent", params.continent);
+    if (params?.origin) query.set("origin", params.origin);
+    if (params?.site_location) query.set("site_location", params.site_location);
+    if (params?.supplier_unit_code) query.set("supplier_unit_code", params.supplier_unit_code);
+    const qs = query.toString();
+    const res = await this.request<{ data: { items: CarbonFootprintRecord[]; total: number; total_all: number; skip: number; limit: number } }>(
+      `${this.baseUrl}/suppliers/carbon-footprints${qs ? `?${qs}` : ""}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load carbon footprint data.",
+    );
+    return res.data;
+  }
+
+  async updateCarbonFootprint(
+    id: number,
+    data: Partial<CarbonFootprintRecord>,
+  ): Promise<CarbonFootprintRecord> {
+    const res = await this.request<{ data: CarbonFootprintRecord }>(
+      `${this.baseUrl}/suppliers/carbon-footprints/${id}`,
+      {
+        method: "PATCH",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      "Failed to update carbon footprint record.",
+    );
+    return res.data;
+  }
+
+  async createCarbonFootprint(
+    data: Partial<CarbonFootprintRecord>,
+  ): Promise<CarbonFootprintRecord> {
+    const res = await this.request<{ data: CarbonFootprintRecord }>(
+      `${this.baseUrl}/suppliers/carbon-footprints`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      "Failed to create carbon footprint record.",
+    );
+    return res.data;
+  }
+
+  // ===========================================================================
+  // Certifications Tracking
+  // ===========================================================================
+
+  async listAllCertifications(params?: {
+    skip?: number;
+    limit?: number;
+    standard_type?: string;
+    expired_only?: boolean;
+    expiring_days?: number;
+  }): Promise<{ items: SupplierCertificationResponse[]; total: number; skip: number; limit: number }> {
+    const query = new URLSearchParams();
+    if (params?.skip !== undefined) query.set("skip", String(params.skip));
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    if (params?.standard_type) query.set("standard_type", params.standard_type);
+    if (params?.expired_only) query.set("expired_only", "true");
+    if (params?.expiring_days !== undefined) query.set("expiring_days", String(params.expiring_days));
+    const qs = query.toString();
+    const res = await this.request<{ data: { items: SupplierCertificationResponse[]; total: number; skip: number; limit: number } }>(
+      `${this.baseUrl}/suppliers/certifications${qs ? `?${qs}` : ""}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load certifications data.",
+    );
+    return res.data;
   }
 }
 

@@ -12,6 +12,8 @@ import {
   Download,
   FileText,
   FolderOpen,
+  LayoutGrid,
+  LayoutList,
   Layers,
   Lock,
   Mail,
@@ -25,6 +27,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
@@ -150,6 +153,8 @@ interface Opp {
   val_date?: string;
   study_start_date?: string;
   change_mode?: string;
+  currency?: string;
+  fx_rate_to_eur?: number;
   assumptions_summary?: string;
   payback_score?: number;
   lead_time_score?: number;
@@ -199,18 +204,44 @@ interface Opp {
   other_cost?: number;
   total_investment?: number;
   roi_percent?: number;
+  roi_period_percent?: number;
+  // STP — computed savings (Excel formulas)
+  period_saving?: number;
+  // Estimated saving per year (year N == expected_annual_saving incl. bonus; sum == period_saving)
+  saving_year_n?: number;
+  saving_year_n1?: number;
+  saving_year_n2?: number;
+  saving_year_n3?: number;
+  // Calendar-year prorated estimate {"2026": 1234.56, ...} (start-date aware)
+  saving_by_year?: Record<string, number>;
+  // Per-fiscal-year budget records (budgeting module)
+  budget_years?: {
+    id: number;
+    fiscal_year: number;
+    applicable_amount?: number;
+    portion_kind?: string;
+    suggested_status?: string;
+    budget_status?: string;
+  }[];
+  cash_inventory_gap?: number;
+  cash_ap_gap?: number;
   // STP — risks (JSONB)
   stp_risks?: {
-    material_indexation_before?: string;
-    material_indexation_after?: string;
-    exchange_rate_before?: string;
-    exchange_rate_after?: string;
-    local_content_before?: string;
-    local_content_after?: string;
-    quality_before?: string;
-    quality_after?: string;
-    other_before?: string;
-    other_after?: string;
+    material_indexation_before?: string; // Yes / No
+    material_indexation_after?: string; // Yes / No
+    material_indexation_desc?: string;
+    exchange_rate_before?: string; // Yes / No
+    exchange_rate_after?: string; // Yes / No
+    exchange_rate_desc?: string;
+    local_content_before?: string; // Yes / No
+    local_content_after?: string; // Yes / No
+    local_content_desc?: string;
+    quality_before?: string; // Yes / No
+    quality_after?: string; // Yes / No
+    quality_desc?: string;
+    other_before?: string; // Yes / No
+    other_after?: string; // Yes / No
+    other_desc?: string;
     material_same_spec?: string;
     same_tooling?: string;
     same_dimension?: string;
@@ -229,6 +260,8 @@ interface Opp {
   reason_quality?: boolean;
   reason_capacity?: boolean;
   reason_other?: string;
+  secondary_plants?: string;
+  gate_conditions?: string;
   projects: ProjectRec[];
   financial_lines: FinLine[];
   opp_documents: OppDoc[];
@@ -248,22 +281,33 @@ const PHASES = [
   "Closed",
 ];
 const TYPE_COLORS: Record<string, string> = {
-  Negotiation: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25",
-  Sourcing: "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25",
-  "Technical Productivity": "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
+  Negotiation:
+    "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25",
+  Sourcing:
+    "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25",
+  "Technical Productivity":
+    "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
   Cash: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
 };
 const STATUS_COLORS: Record<string, string> = {
-  Assigned: "bg-slate-100 text-slate-600 dark:bg-slate-700/30 dark:text-slate-300",
-  "Working on it": "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-  "Awaiting Validation": "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  "Under Committee Review": "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300",
-  "Needs Rework": "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
-  Validated: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  Stuck: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  Assigned:
+    "bg-slate-100 text-slate-600 dark:bg-slate-700/30 dark:text-slate-300",
+  "Working on it":
+    "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+  "Awaiting Validation":
+    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  "Under Committee Review":
+    "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300",
+  "Needs Rework":
+    "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  Validated:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  Stuck:
+    "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
   Cancelled: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
   Complete: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
-  "Customer Refusal": "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
+  "Customer Refusal":
+    "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
 };
 const PHASE_CONFIG: Record<string, { color: string; desc: string }> = {
   "Phase 0": {
@@ -280,14 +324,55 @@ const PHASE_CONFIG: Record<string, { color: string; desc: string }> = {
   Closed: { color: "text-slate-400", desc: "Completed or cancelled" },
 };
 
-const fmt = (n?: number | null) =>
-  n == null
-    ? "—"
-    : new Intl.NumberFormat("en-GB", {
-        style: "currency",
-        currency: "EUR",
-        maximumFractionDigits: 0,
-      }).format(n);
+// Currency symbols (RMB/INR aren't always rendered by Intl currency style, so we
+// prefix a symbol ourselves and keep plain grouped numbers).
+const CUR_SYMBOL: Record<string, string> = {
+  EUR: "€",
+  USD: "$",
+  RMB: "¥",
+  INR: "₹",
+};
+const curSym = (currency?: string | null) =>
+  CUR_SYMBOL[currency ?? "EUR"] ?? `${currency} `;
+
+const fmt = (n?: number | null, currency = "EUR") => {
+  if (n == null || (typeof n === "number" && isNaN(n))) return "—";
+  const body = new Intl.NumberFormat("en-GB", {
+    maximumFractionDigits: 0,
+  }).format(Math.abs(n));
+  return `${n < 0 ? "-" : ""}${curSym(currency)}${body}`;
+};
+
+// Thousands separators for number INPUTS (display formatted, store raw digits).
+const groupDigits = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+// Integer field (e.g. annual quantities): "1000000" → "1,000,000"
+const fmtIntInput = (s: string) =>
+  s ? groupDigits(s.replace(/[^\d]/g, "")) : "";
+const stripInt = (s: string) => s.replace(/[^\d]/g, "");
+// Decimal field (e.g. costs): group the integer part, keep the decimal portion
+const fmtDecInput = (s: string) => {
+  if (!s) return "";
+  const cleaned = s.replace(/[^\d.]/g, "");
+  const [intPart, ...rest] = cleaned.split(".");
+  const gi = groupDigits(intPart);
+  return rest.length ? `${gi}.${rest.join("")}` : gi;
+};
+const stripDec = (s: string) => {
+  const c = s.replace(/[^\d.]/g, "");
+  const p = c.split(".");
+  return p.length > 1 ? `${p[0]}.${p.slice(1).join("")}` : c;
+};
+
+// Per-unit prices need decimals (e.g. €0.20), unlike whole-euro totals.
+const fmtPrice = (n?: number | string | null, currency = "EUR") => {
+  if (n == null || n === "") return "—";
+  const v = Number(n);
+  const body = new Intl.NumberFormat("en-GB", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(Math.abs(v));
+  return `${v < 0 ? "-" : ""}${curSym(currency)}${body}`;
+};
 
 const fmtDate = (s?: string | null) =>
   s
@@ -332,7 +417,9 @@ function InfoRow({
       <span className="w-36 shrink-0 pt-0.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
         {label}
       </span>
-      <span className={`break-all text-sm ${valueClassName ?? "text-slate-700 dark:text-slate-200"}`}>
+      <span
+        className={`break-all text-sm ${valueClassName ?? "text-slate-700 dark:text-slate-200"}`}
+      >
         {value}
       </span>
     </div>
@@ -358,9 +445,13 @@ function MetricCard({
         {icon}
         {label}
       </div>
-      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{value}</p>
+      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+        {value}
+      </p>
       {sub && (
-        <p className={`mt-0.5 text-[10px] ${subClassName ?? "text-slate-400 dark:text-slate-500"}`}>
+        <p
+          className={`mt-0.5 text-[10px] ${subClassName ?? "text-slate-400 dark:text-slate-500"}`}
+        >
           {sub}
         </p>
       )}
@@ -431,9 +522,9 @@ function CreateModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const needsPlant = ["Sourcing", "Technical Productivity"].includes(
-    form.opportunity_type,
-  );
+  // Plant is mandatory for every opportunity type — it drives budgeting, supplier
+  // evaluation and per-plant KPI roll-up.
+  const needsPlant = true;
 
   useEffect(() => {
     supplierAPI
@@ -444,8 +535,8 @@ function CreateModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (needsPlant && !form.plant_id) {
-      setError("Plant is required for this opportunity type.");
+    if (!form.plant_id) {
+      setError("Plant is required to create an opportunity.");
       return;
     }
     setLoading(true);
@@ -587,11 +678,12 @@ function CreateModal({
 // ---------------------------------------------------------------------------
 // Detail Drawer tabs
 // ---------------------------------------------------------------------------
-type Tab = "overview" | "edit" | "stp" | "gate" | "financial" | "project" | "files";
+type Tab = "overview" | "edit" | "gate" | "financial" | "project" | "files";
 
 function OverviewTab({ opp }: { opp: Opp }) {
   const pldReady =
     opp.payback_score && opp.lead_time_score && opp.difficulty_score;
+  const cur = opp.currency || "EUR";
   return (
     <div className="space-y-5">
       {opp.description && (
@@ -599,16 +691,23 @@ function OverviewTab({ opp }: { opp: Opp }) {
           {opp.description}
         </p>
       )}
+      {cur !== "EUR" && (
+        <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-700">
+          Amounts are in <strong>{cur}</strong> (rate {opp.fx_rate_to_eur ?? 1}{" "}
+          → EUR). Consolidated reports (Budgeting, Monthly Follow-up) convert to
+          EUR.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <MetricCard
           icon={<TrendingUp size={12} />}
-          label="Est. Annual Saving"
-          value={fmt(opp.expected_annual_saving)}
+          label={`Est. Annual Saving (${cur})`}
+          value={fmt(opp.expected_annual_saving, cur)}
         />
         <MetricCard
           icon={<Banknote size={12} />}
-          label="Cash Impact"
-          value={fmt(opp.cash_impact)}
+          label={`Cash Impact (${cur})`}
+          value={fmt(opp.cash_impact, cur)}
         />
         <MetricCard
           icon={<Clock size={12} />}
@@ -662,7 +761,18 @@ function OverviewTab({ opp }: { opp: Opp }) {
                 : null
           }
         />
+        {opp.secondary_plants && (
+          <InfoRow label="Secondary Plants" value={opp.secondary_plants} />
+        )}
         <InfoRow label="Change Mode" value={opp.change_mode} />
+        <InfoRow
+          label="Currency"
+          value={
+            cur === "EUR"
+              ? "EUR"
+              : `${cur} · rate ${opp.fx_rate_to_eur ?? 1} → EUR`
+          }
+        />
         <InfoRow label="Scope IN" value={opp.scope_in} />
         <InfoRow label="Customers" value={opp.customers} />
         {opp.proposed_supplier_name && (
@@ -674,23 +784,75 @@ function OverviewTab({ opp }: { opp: Opp }) {
         {opp.current_price != null && opp.proposed_price != null && (
           <InfoRow
             label="Price Before→After"
-            value={`€${opp.current_price} → €${opp.proposed_price}`}
+            value={`${fmtPrice(opp.current_price, cur)} → ${fmtPrice(opp.proposed_price, cur)}`}
           />
         )}
         {opp.total_investment != null && (
           <InfoRow
             label="Total Investment"
-            value={`€${opp.total_investment.toLocaleString()} (ROI: ${opp.roi_percent ?? "?"}%)`}
+            value={`${fmt(Number(opp.total_investment), cur)} (ROI: ${opp.roi_percent ?? "?"}%)`}
+          />
+        )}
+        {opp.period_saving != null && (
+          <InfoRow
+            label="Period Saving (Σ Year N…N+3)"
+            value={`${fmt(Number(opp.period_saving), cur)}${opp.roi_period_percent != null ? ` (ROI: ${opp.roi_period_percent}%)` : ""}`}
+          />
+        )}
+        {[
+          ["N", opp.saving_year_n],
+          ["N+1", opp.saving_year_n1],
+          ["N+2", opp.saving_year_n2],
+          ["N+3", opp.saving_year_n3],
+        ].map(([yr, val]) =>
+          val != null ? (
+            <InfoRow
+              key={yr as string}
+              label={`Est. Saving Year ${yr}`}
+              value={fmt(Number(val), cur)}
+            />
+          ) : null,
+        )}
+        {opp.saving_by_year &&
+          Object.entries(opp.saving_by_year)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([yr, val]) => (
+              <InfoRow
+                key={`cy-${yr}`}
+                label={`Est. Saving ${yr}`}
+                value={fmt(Number(val), cur)}
+              />
+            ))}
+        {opp.budget_years && opp.budget_years.length > 0 && (
+          <>
+            {[...opp.budget_years]
+              .sort((a, b) => a.fiscal_year - b.fiscal_year)
+              .map((by) => (
+                <InfoRow
+                  key={`by-${by.id}`}
+                  label={`Budget ${by.fiscal_year} (${by.portion_kind ?? "—"})`}
+                  value={`${fmt(Number(by.applicable_amount ?? 0), cur)} · ${by.budget_status ?? "Empty"} · ${by.suggested_status === "Validate" ? "Validated" : "Forecast"}`}
+                />
+              ))}
+          </>
+        )}
+        {opp.cash_inventory_gap != null && (
+          <InfoRow
+            label="Est. Inventory Gap"
+            value={fmt(Number(opp.cash_inventory_gap), cur)}
+          />
+        )}
+        {opp.cash_ap_gap != null && (
+          <InfoRow
+            label="Est. AP Gap"
+            value={fmt(Number(opp.cash_ap_gap), cur)}
           />
         )}
         <InfoRow
           label="Planned Start"
           value={fmtDate(opp.planned_start_date)}
         />
-        <InfoRow
-          label="Planned End"
-          value={fmtDate(opp.planned_end_date)}
-        />
+        <InfoRow label="Planned End" value={fmtDate(opp.planned_end_date)} />
         <InfoRow
           label="Execution Start (Phase 2)"
           value={fmtDate(opp.execution_start_date)}
@@ -699,7 +861,10 @@ function OverviewTab({ opp }: { opp: Opp }) {
           label="Deployment Start (Phase 3)"
           value={fmtDate(opp.real_start_date)}
         />
-        <InfoRow label="Validation Date (Phase 0 Go)" value={fmtDate(opp.val_date)} />
+        <InfoRow
+          label="Validation Date (Phase 0 Go)"
+          value={fmtDate(opp.val_date)}
+        />
         <InfoRow
           label="Budget Status"
           value={
@@ -722,16 +887,49 @@ function OverviewTab({ opp }: { opp: Opp }) {
   );
 }
 
+// Collapsible card used to group the (long) STP study sub-sections.
+function FormSection({
+  title,
+  defaultOpen = true,
+  accent,
+  children,
+}: {
+  title: React.ReactNode;
+  defaultOpen?: boolean;
+  accent?: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left"
+      >
+        <span
+          className={`text-[10px] font-bold uppercase tracking-widest ${accent ?? "text-slate-400"}`}
+        >
+          {title}
+        </span>
+        <ChevronRight
+          size={14}
+          className={`text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
 function EditTab({
   opp,
   userEmail,
   onRefresh,
-  mode = "general",
 }: {
   opp: Opp;
   userEmail: string;
   onRefresh: (o: Opp) => void;
-  mode?: "general" | "stp";
 }) {
   const [sites, setSites] = useState<SiteOption[]>([]);
   const [suppliersForPlant, setSuppliersForPlant] = useState<SupplierOption[]>(
@@ -779,14 +977,20 @@ function EditTab({
   const goApplied = opp.validation_decision === "Go";
   const stpEditablePhases = ["Assigned", "Phase 0", "Phase 1"];
   const showStpSection = isSourced;
+  // STP inputs become read-only past the editable phases. They are ALSO locked while
+  // the STP is awaiting a gate decision (submitted to a PM / committee) — so the
+  // approved document can't be silently changed out from under the reviewer. A
+  // "Review / Needs Rework" outcome moves status off these values and unlocks editing.
+  const pendingApproval = [
+    "Awaiting Validation",
+    "Under Committee Review",
+  ].includes(opp.status ?? "");
   const stpReadOnly =
-    mode === "stp" && !stpEditablePhases.includes(opp.phase_status ?? "");
-  // Saving locked only once budgeted — modifiable in Phase 1/2/3 until budget is confirmed
+    !stpEditablePhases.includes(opp.phase_status ?? "") || pendingApproval;
+  // Budget status is derived from validation (Validate→Budgeted). The financial
+  // baseline locks once the opportunity is validated/budgeted.
   const isBudgeted = opp.budget_status === "Budgeted";
   const locked = isBudgeted;
-  const budgetYearLocked = isBudgeted && opp.budget_year != null;
-  // Olivier: budget only settable after validation. "tant que c est working on it, on n a pas le droit de le budgeter"
-  const budgetEditable = goApplied;
 
   const phaseNote: Record<string, string> = {
     "Phase 1":
@@ -816,11 +1020,14 @@ function EditTab({
     planned_start_date: opp.planned_start_date ?? "",
     execution_start_date: opp.execution_start_date ?? "",
     real_start_date: opp.real_start_date ?? "",
-    budget_status: opp.budget_status ?? "Outside Budget",
+    budget_status: opp.budget_status ?? "Empty",
     budget_year: opp.budget_year
       ? String(parseInt(String(opp.budget_year)))
       : "",
     change_mode: normalizeChangeMode(opp.change_mode),
+    currency: opp.currency ?? "EUR",
+    fx_rate_to_eur:
+      opp.fx_rate_to_eur != null ? String(opp.fx_rate_to_eur) : "1",
     assumptions_summary: opp.assumptions_summary ?? "",
     comments: opp.comments ?? "",
     purchasing_owner: opp.purchasing_owner ?? "",
@@ -845,9 +1052,7 @@ function EditTab({
     annual_quantity_n4: opp.annual_quantity_n4
       ? String(parseInt(String(opp.annual_quantity_n4)))
       : "",
-    supplier_id: opp.supplier_id
-      ? String(opp.supplier_id)
-      : "",
+    supplier_id: opp.supplier_id ? String(opp.supplier_id) : "",
     proposed_supplier_name: opp.proposed_supplier_name ?? "",
     proposed_supplier_id: opp.proposed_supplier_id
       ? String(parseInt(String(opp.proposed_supplier_id)))
@@ -914,16 +1119,24 @@ function EditTab({
       ? String(parseFloat(String(opp.other_cost)))
       : "",
     // stp_risks — flattened for form inputs, packed back to JSON on submit
-    risk_material_indexation_before: opp.stp_risks?.material_indexation_before ?? "",
-    risk_material_indexation_after: opp.stp_risks?.material_indexation_after ?? "",
+    risk_material_indexation_before:
+      opp.stp_risks?.material_indexation_before ?? "",
+    risk_material_indexation_after:
+      opp.stp_risks?.material_indexation_after ?? "",
+    risk_material_indexation_desc:
+      opp.stp_risks?.material_indexation_desc ?? "",
     risk_exchange_rate_before: opp.stp_risks?.exchange_rate_before ?? "",
     risk_exchange_rate_after: opp.stp_risks?.exchange_rate_after ?? "",
+    risk_exchange_rate_desc: opp.stp_risks?.exchange_rate_desc ?? "",
     risk_local_content_before: opp.stp_risks?.local_content_before ?? "",
     risk_local_content_after: opp.stp_risks?.local_content_after ?? "",
+    risk_local_content_desc: opp.stp_risks?.local_content_desc ?? "",
     risk_quality_before: opp.stp_risks?.quality_before ?? "",
     risk_quality_after: opp.stp_risks?.quality_after ?? "",
+    risk_quality_desc: opp.stp_risks?.quality_desc ?? "",
     risk_other_before: opp.stp_risks?.other_before ?? "",
     risk_other_after: opp.stp_risks?.other_after ?? "",
+    risk_other_desc: opp.stp_risks?.other_desc ?? "",
     material_same_spec: opp.stp_risks?.material_same_spec ?? "",
     same_tooling: opp.stp_risks?.same_tooling ?? "",
     same_dimension: opp.stp_risks?.same_dimension ?? "",
@@ -946,26 +1159,61 @@ function EditTab({
     reason_quality: opp.reason_quality ?? false,
     reason_capacity: opp.reason_capacity ?? false,
     reason_other: opp.reason_other ?? "",
+    secondary_plants: opp.secondary_plants ?? "",
+    gate_conditions: opp.gate_conditions ?? "",
+    plant_id: opp.plant_id ? String(opp.plant_id) : "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
-  const budgetStatusChanged = form.budget_status !== opp.budget_status;
-  const budgetYearRequired =
-    budgetEditable &&
-    form.budget_status === "Budgeted" &&
-    !form.budget_year.trim();
 
   // Live-computed end date: last day of the final month in the period
   // duration=1, start=Oct → 31 Oct | duration=12, start=Oct → 30 Sep next year
   const computedEndDate = (() => {
     const start = form.planned_start_date || opp.planned_start_date;
-    const dur = form.duration_months ? parseInt(form.duration_months) : opp.duration_months ? Number(opp.duration_months) : null;
+    const dur = form.duration_months
+      ? parseInt(form.duration_months)
+      : opp.duration_months
+        ? Number(opp.duration_months)
+        : null;
     if (!start || !dur || dur <= 0) return null;
     const d = new Date(start);
     d.setMonth(d.getMonth() + dur - 1);
     d.setMonth(d.getMonth() + 1, 0);
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  })();
+
+  // Recommended savings start = study/planned anchor + planned phase 1–3 weeks
+  // (study + feasibility + deployment). A suggestion the user can apply to Planned
+  // Start; mirrors the backend recommend_savings_start_date().
+  const recommendedSavingsStart = (() => {
+    const anchor =
+      form.execution_start_date ||
+      opp.execution_start_date ||
+      opp.study_start_date ||
+      form.planned_start_date ||
+      opp.planned_start_date;
+    if (!anchor) return null;
+    const d = new Date(anchor);
+    if (isNaN(d.getTime())) return null;
+    const weeks =
+      (parseInt(form.phase1_weeks || "0") || 0) +
+      (parseInt(form.phase2_weeks || "0") || 0) +
+      (parseInt(form.phase3_weeks || "0") || 0);
+    if (weeks > 0) d.setDate(d.getDate() + weeks * 7);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return {
+      iso,
+      label: d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    };
   })();
 
   // Live PLD computation (component-level so submit handler can use them too)
@@ -976,29 +1224,50 @@ function EditTab({
     (parseFloat(form.other_cost || "0") || 0);
   const _pldAnnSaving = parseFloat(form.expected_annual_saving || "0") || 0;
   const _pldHasInvData = _pldAnnSaving > 0 || _pldTotalInv > 0;
-  const _pldPaybackMonths = _pldAnnSaving > 0 ? _pldTotalInv / (_pldAnnSaving / 12) : _pldTotalInv > 0 ? 999 : 0;
+  const _pldPaybackMonths =
+    _pldAnnSaving > 0
+      ? _pldTotalInv / (_pldAnnSaving / 12)
+      : _pldTotalInv > 0
+        ? 999
+        : 0;
   const livePScore = !isSourced
-    ? (form.payback_score ? Number(form.payback_score) : null)
-    : (!_pldHasInvData ? null
-      : _pldPaybackMonths === 0 ? 1
-      : _pldPaybackMonths <= 2 ? 2
-      : _pldPaybackMonths <= 4 ? 3
-      : _pldPaybackMonths <= 12 ? 4
-      : 5);
+    ? form.payback_score
+      ? Number(form.payback_score)
+      : null
+    : !_pldHasInvData
+      ? null
+      : _pldPaybackMonths === 0
+        ? 1
+        : _pldPaybackMonths <= 2
+          ? 2
+          : _pldPaybackMonths <= 4
+            ? 3
+            : _pldPaybackMonths <= 12
+              ? 4
+              : 5;
   const _pldTotalWeeks =
     (parseInt(form.phase1_weeks || "0") || 0) +
     (parseInt(form.phase2_weeks || "0") || 0) +
     (parseInt(form.phase3_weeks || "0") || 0);
   const _pldLeadMonths = _pldTotalWeeks / 4.33;
   const liveLScore = !isSourced
-    ? (form.lead_time_score ? Number(form.lead_time_score) : null)
-    : (_pldTotalWeeks === 0 ? null
-      : _pldLeadMonths < 1 ? 1
-      : _pldLeadMonths < 2 ? 2
-      : _pldLeadMonths < 4 ? 3
-      : _pldLeadMonths < 6 ? 4
-      : 5);
-  const liveDScore = form.difficulty_score ? Number(form.difficulty_score) : null;
+    ? form.lead_time_score
+      ? Number(form.lead_time_score)
+      : null
+    : _pldTotalWeeks === 0
+      ? null
+      : _pldLeadMonths < 1
+        ? 1
+        : _pldLeadMonths < 2
+          ? 2
+          : _pldLeadMonths < 4
+            ? 3
+            : _pldLeadMonths < 6
+              ? 4
+              : 5;
+  const liveDScore = form.difficulty_score
+    ? Number(form.difficulty_score)
+    : null;
 
   const pScore =
     livePScore && liveLScore && liveDScore
@@ -1013,45 +1282,187 @@ function EditTab({
           ? "Medium"
           : "Low";
 
-  // Auto-calculate expected_annual_saving from prices × qty (when all three are filled)
-  const autoSaving =
-    form.current_price && form.proposed_price && form.annual_quantity_n1
-      ? Math.round(
-          (parseFloat(form.current_price) - parseFloat(form.proposed_price)) *
-            parseInt(form.annual_quantity_n1),
+  // ── STP financials — live, exact formulas from Excel "format STP rev 1.2" ──
+  // Full year (D51) = (E26-G26)*D13 + E30-G30
+  // Period   (D52)  = Σ qty_Nx × (price_before_x − price_after_x) + bonus delta
+  // ROI full (F51)  = (D51-D45)/D51   ROI period (F52) = (D52-D41)/D41
+  // Inventory gap (D55) / AP gap (D56) — blanks count as 0, AVERAGE ignores blanks
+  const num = (v: string) => (v ? parseFloat(v) || 0 : 0);
+  const stpPricesBefore = [
+    num(form.current_price),
+    num(form.current_price_n1),
+    num(form.current_price_n2),
+    num(form.current_price_n3),
+  ];
+  const stpPricesAfter = [
+    num(form.proposed_price),
+    num(form.proposed_price_n1),
+    num(form.proposed_price_n2),
+    num(form.proposed_price_n3),
+  ];
+  const stpQty = [
+    form.annual_quantity_n1,
+    form.annual_quantity_n2,
+    form.annual_quantity_n3,
+    form.annual_quantity_n4,
+  ].map((v) => (v ? parseInt(v) || 0 : null));
+  const bonusDelta = num(form.bonus_before) - num(form.bonus_after);
+  const hasBasePrices = !!form.current_price && !!form.proposed_price;
+  const fullYearSaving =
+    hasBasePrices && stpQty[0]
+      ? (stpPricesBefore[0] - stpPricesAfter[0]) * stpQty[0] + bonusDelta
+      : null;
+  const periodSaving =
+    fullYearSaving != null
+      ? stpQty.reduce(
+          (sum: number, q, i) =>
+            sum + (q ?? 0) * (stpPricesBefore[i] - stpPricesAfter[i]),
+          0,
+        ) + bonusDelta
+      : null;
+  // Estimated saving per year (year N incl. bonus; sum == periodSaving)
+  const savingPerYear =
+    fullYearSaving != null
+      ? stpQty.map(
+          (q, i) =>
+            (q ?? 0) * (stpPricesBefore[i] - stpPricesAfter[i]) +
+            (i === 0 ? bonusDelta : 0),
         )
+      : null;
+  // Calendar-year prorated split — each STP per-year window (gross/12 per month)
+  // streamed from the SAVINGS START (real start, else planned/study start + phases
+  // 1–3), capped at duration_months. Mirrors compute_budget_year_portions backend.
+  const savingByYear = (() => {
+    if (savingPerYear == null) return null;
+    const projectAnchor =
+      opp.study_start_date || form.planned_start_date || opp.planned_start_date;
+    if (!projectAnchor) return null;
+    let start: Date;
+    const realStart = form.real_start_date || opp.real_start_date;
+    if (realStart) {
+      start = new Date(realStart);
+    } else {
+      start = new Date(projectAnchor);
+      if (isNaN(start.getTime())) return null;
+      // Phases 1–3 only — savings flow once deployment ends, before Phase 4 closure.
+      const weeks =
+        (parseInt(form.phase1_weeks || "0") || 0) +
+        (parseInt(form.phase2_weeks || "0") || 0) +
+        (parseInt(form.phase3_weeks || "0") || 0);
+      start.setDate(start.getDate() + weeks * 7);
+    }
+    if (isNaN(start.getTime())) return null;
+    const maxMonths = 12 * savingPerYear.length;
+    const durMonths = parseInt(form.duration_months || "0") || 0;
+    const months = durMonths > 0 ? Math.min(durMonths, maxMonths) : maxMonths;
+    const acc: Record<number, number> = {};
+    for (let t = 0; t < months; t++) {
+      const monthly = savingPerYear[Math.floor(t / 12)] / 12;
+      const yr = new Date(
+        start.getFullYear(),
+        start.getMonth() + t,
+        1,
+      ).getFullYear();
+      acc[yr] = (acc[yr] || 0) + monthly;
+    }
+    return Object.entries(acc)
+      .map(([y, v]) => ({ year: Number(y), amount: v }))
+      .sort((a, b) => a.year - b.year);
+  })();
+  // ROI = gain ÷ TOTAL investment × 100 (purchasing-director rule 17/06/2026)
+  const roiFullYear =
+    fullYearSaving != null && _pldTotalInv > 0
+      ? (fullYearSaving / _pldTotalInv) * 100
+      : null;
+  const roiPeriod =
+    periodSaving != null && _pldTotalInv > 0
+      ? (periodSaving / _pldTotalInv) * 100
+      : null;
+  const presentQty = stpQty.filter((q): q is number => q != null);
+  const avgQty = presentQty.length
+    ? presentQty.reduce((a, b) => a + b, 0) / presentQty.length
+    : null;
+  const inventoryGap =
+    avgQty != null && hasBasePrices
+      ? (form.consignment_before === "Yes"
+          ? 0
+          : ((num(form.transit_days_before) + 14) * avgQty) / 360) *
+          stpPricesBefore[0] -
+        (form.consignment_after === "Yes"
+          ? 0
+          : ((num(form.transit_days_after) + 14) * avgQty) / 360) *
+          stpPricesAfter[0]
+      : null;
+  const apGap =
+    avgQty != null && hasBasePrices
+      ? (-avgQty *
+          (num(form.top_days_before) * stpPricesBefore[0] -
+            num(form.top_days_after) * stpPricesAfter[0])) /
+        360
+      : null;
+  // Chained phase dates (Excel planning: end = start + weeks×7, next phase starts at previous end)
+  const phaseDates = (() => {
+    // Phase 1 start = manual execution_start_date entry, else fall back to study/planned anchor
+    const anchor =
+      form.execution_start_date ||
+      opp.execution_start_date ||
+      opp.study_start_date ||
+      form.planned_start_date ||
+      opp.planned_start_date;
+    const weeks = [
+      form.phase1_weeks,
+      form.phase2_weeks,
+      form.phase3_weeks,
+      form.phase4_weeks,
+    ].map((v) => (v ? parseInt(v) || 0 : 0));
+    if (!anchor || !weeks.some((w) => w > 0)) return null;
+    let cursor = new Date(anchor);
+    if (isNaN(cursor.getTime())) return null;
+    const fmtD = (d: Date) =>
+      d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "2-digit",
+      });
+    return weeks.map((w) => {
+      const start = new Date(cursor);
+      const end = new Date(cursor);
+      end.setDate(end.getDate() + w * 7);
+      cursor = end;
+      return { start: fmtD(start), end: fmtD(end) };
+    });
+  })();
+
+  // EBITDA Period (all fulfilled years) is the STP headline saving; Cash Impact =
+  // Inventory + AP gap. Both auto-calculated & read-only for STP types.
+  const autoSaving = periodSaving != null ? Math.round(periodSaving) : null;
+  const autoCashImpact =
+    inventoryGap != null || apGap != null
+      ? Math.round((inventoryGap ?? 0) + (apGap ?? 0))
       : null;
 
   useEffect(() => {
     if (autoSaving != null && autoSaving > 0 && !locked) {
       setForm((f) =>
         f.expected_annual_saving
-          ? f  // never overwrite a value the user already entered or that was loaded
+          ? f // never overwrite a value the user already entered or that was loaded
           : { ...f, expected_annual_saving: autoSaving.toString() },
       );
     }
-  }, [form.current_price, form.proposed_price, form.annual_quantity_n1]);
+  }, [
+    form.current_price,
+    form.proposed_price,
+    form.annual_quantity_n1,
+    form.bonus_before,
+    form.bonus_after,
+  ]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // Validate: budget confirmation requires an @avocarbon.com email
-    if (
-      form.budget_status === "Budgeted" &&
-      form.budget_status !== opp.budget_status &&
-      !userEmail.toLowerCase().endsWith("@avocarbon.com")
-    ) {
-      setError("Budget confirmation requires an @avocarbon.com email address.");
-      setLoading(false);
-      return;
-    }
-    if (budgetYearRequired) {
-      setError("Enter the Budget Year before saving an opportunity with Budget Status set to Budgeted.");
-      setLoading(false);
-      return;
-    }
+    // Budget status / year are derived from validation — nothing to validate here.
 
     try {
       const res = await supplierAPI.updateOpportunity(opp.opportunity_id, {
@@ -1069,9 +1480,11 @@ function EditTab({
         planned_start_date: form.planned_start_date || undefined,
         execution_start_date: form.execution_start_date || undefined,
         real_start_date: form.real_start_date || undefined,
-        budget_status: form.budget_status || undefined,
-        budget_year: form.budget_year ? parseInt(form.budget_year) : undefined,
         change_mode: form.change_mode || undefined,
+        currency: form.currency || undefined,
+        fx_rate_to_eur: form.fx_rate_to_eur
+          ? parseFloat(form.fx_rate_to_eur)
+          : undefined,
         assumptions_summary: form.assumptions_summary || undefined,
         comments: form.comments || undefined,
         purchasing_owner: form.purchasing_owner || undefined,
@@ -1159,20 +1572,26 @@ function EditTab({
         qualification_cost: form.qualification_cost
           ? parseFloat(form.qualification_cost)
           : undefined,
-        other_cost: form.other_cost
-          ? parseFloat(form.other_cost)
-          : undefined,
+        other_cost: form.other_cost ? parseFloat(form.other_cost) : undefined,
         stp_risks: {
-          material_indexation_before: form.risk_material_indexation_before || undefined,
-          material_indexation_after: form.risk_material_indexation_after || undefined,
+          material_indexation_before:
+            form.risk_material_indexation_before || undefined,
+          material_indexation_after:
+            form.risk_material_indexation_after || undefined,
+          material_indexation_desc:
+            form.risk_material_indexation_desc || undefined,
           exchange_rate_before: form.risk_exchange_rate_before || undefined,
           exchange_rate_after: form.risk_exchange_rate_after || undefined,
+          exchange_rate_desc: form.risk_exchange_rate_desc || undefined,
           local_content_before: form.risk_local_content_before || undefined,
           local_content_after: form.risk_local_content_after || undefined,
+          local_content_desc: form.risk_local_content_desc || undefined,
           quality_before: form.risk_quality_before || undefined,
           quality_after: form.risk_quality_after || undefined,
+          quality_desc: form.risk_quality_desc || undefined,
           other_before: form.risk_other_before || undefined,
           other_after: form.risk_other_after || undefined,
+          other_desc: form.risk_other_desc || undefined,
           material_same_spec: form.material_same_spec || undefined,
           same_tooling: form.same_tooling || undefined,
           same_dimension: form.same_dimension || undefined,
@@ -1197,15 +1616,17 @@ function EditTab({
         reason_quality: form.reason_quality,
         reason_capacity: form.reason_capacity,
         reason_other: form.reason_other || undefined,
+        secondary_plants: form.secondary_plants || undefined,
+        gate_conditions: form.gate_conditions || undefined,
         changed_by: userEmail,
       });
-      // Backend now returns fresh data after commit (R9 rebuild etc.)
-      // Extra GET as safety net for any residual session cache issues
-      const realStartChanged = form.real_start_date && form.real_start_date !== opp.real_start_date;
-      if (realStartChanged) {
+      // Always refetch after save so server-computed fields (period saving, ROI,
+      // cash gaps, total investment, rebuilt monthly profiles) are displayed
+      // consistently — single refresh path regardless of which fields changed.
+      try {
         const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
         onRefresh(fresh.data as Opp);
-      } else {
+      } catch {
         onRefresh(res.data as Opp);
       }
     } catch (err: unknown) {
@@ -1220,7 +1641,7 @@ function EditTab({
   const label = "mb-1 block text-xs font-semibold text-slate-600";
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="flex flex-col gap-4">
       {error && (
         <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
           {error}
@@ -1231,9 +1652,7 @@ function EditTab({
           {phaseNote[opp.phase_status ?? ""]}
         </div>
       )}
-      {mode === "general" && (
-        <>
-      <div>
+      <div className="order-1">
         <label className={label}>Opportunity Name</label>
         <input
           className={inp}
@@ -1241,7 +1660,7 @@ function EditTab({
           onChange={(e) => set("opportunity_name", e.target.value)}
         />
       </div>
-      <div>
+      <div className="order-2">
         <label className={label}>Description</label>
         <textarea
           rows={2}
@@ -1250,1165 +1669,1673 @@ function EditTab({
           onChange={(e) => set("description", e.target.value)}
         />
       </div>
-      {/* ---- FINANCIAL BASELINE (locked once Budgeted) ---- */}
-      <div
-        className={`rounded-xl p-4 space-y-3 ${locked ? "bg-slate-50 border border-slate-200" : ""}`}
-      >
-        {locked && (
-          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-400">
-            <Lock size={10} /> Financial baseline — locked after Phase 0 Go
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={label}>
-              Est. Annual Saving (€)
-              {autoSaving != null && !locked && (
-                <span className="ml-2 text-emerald-600 font-bold">
-                  → auto: €{autoSaving.toLocaleString()}
-                </span>
-              )}
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              disabled={locked}
-              className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-              value={form.expected_annual_saving}
-              onChange={(e) => set("expected_annual_saving", e.target.value)}
-            />
-            {autoSaving != null && !locked && (
-              <p className="text-[10px] text-emerald-600 mt-0.5">
-                Auto-calculated from price difference × quantity
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={label}>
-              Cash Impact (€){" "}
-              <span className="font-normal text-slate-400">
-                — total cash estimate, locked when Budgeted
-              </span>
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              disabled={locked}
-              className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-              value={form.cash_impact}
-              onChange={(e) => set("cash_impact", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={label}>
-              Duration (months){" "}
-              <span className="font-normal text-slate-400">
-                — saving period length
-              </span>
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="120"
-              step="1"
-              disabled={locked}
-              className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-              value={form.duration_months}
-              onChange={(e) => set("duration_months", e.target.value)}
-            />
-            {computedEndDate && (
-              <p className="mt-1 text-[10.5px] text-slate-500">
-                → Planned end: <span className="font-semibold text-slate-700">{computedEndDate}</span>
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={label}>
-              Budget Year{" "}
-              <span className="font-normal text-slate-400">
-                — locked when Budgeted unless missing
-              </span>
-            </label>
-            <input
-              type="number"
-              min="2020"
-              max="2040"
-              disabled={budgetYearLocked}
-              className={`${inp} ${budgetYearLocked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-              value={form.budget_year}
-              onChange={(e) => set("budget_year", e.target.value)}
-            />
-            {isBudgeted && !opp.budget_year && (
-              <p className="mt-1 text-[10.5px] font-medium text-amber-600">
-                Budgeted is already set, but Budget Year is still missing. Enter it here and save.
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={label}>
-              Planned Start{" "}
-              <span className="font-normal text-slate-400">
-                — editable until budgeted; will rebuild profile if changed in Phase 0/1
-              </span>
-            </label>
-            <input
-              type="date"
-              className={inp}
-              value={form.planned_start_date}
-              onChange={(e) => set("planned_start_date", e.target.value)}
-            />
-            {computedEndDate && (
-              <p className="mt-1 text-[10.5px] text-slate-500">
-                → Planned end: <span className="font-semibold text-slate-700">{computedEndDate}</span>
-              </p>
-            )}
-            {form.planned_start_date
-              && form.planned_start_date !== opp.planned_start_date
-              && ["Phase 0", "Phase 1", "Assigned"].includes(opp.phase_status ?? "") && (
-              <p className="mt-1 text-[10.5px] text-amber-600 font-medium">
-                ⚠ Date changed — monthly savings profile will be rebuilt from {form.planned_start_date}
-              </p>
-            )}
-            {form.planned_start_date
-              && form.planned_start_date !== opp.planned_start_date
-              && ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
-              <p className="mt-1 text-[10.5px] text-blue-600 font-medium">
-                ℹ Planned date updated — use Deployment Start Date to rebuild the savings profile.
-              </p>
-            )}
-          </div>
-          {/* Phase 2 date — when execution work began */}
-          {["Phase 2", "Phase 3", "Phase 4"].includes(
-            opp.phase_status ?? "",
-          ) && (
-            <div>
-              <label className={label}>
-                Execution Start Date
-                <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
-                  Phase 2
-                </span>
-                <span className="ml-1 font-normal text-slate-400">
-                  — when work began (tooling, qualification, supplier contacted)
-                </span>
-              </label>
-              <input
-                type="date"
-                className={inp}
-                value={form.execution_start_date}
-                onChange={(e) => set("execution_start_date", e.target.value)}
-              />
+      {/* Other fields (baseline + alerts + PLD) — shown AFTER the STP study */}
+      <div className="order-4 flex flex-col gap-4">
+        {/* ---- FINANCIAL BASELINE (locked once Budgeted) ---- */}
+        <div
+          className={`rounded-xl p-4 space-y-3 ${locked ? "bg-slate-50 border border-slate-200" : ""}`}
+        >
+          {locked && (
+            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-400">
+              <Lock size={10} /> Financial baseline — locked (real start date
+              entered)
             </div>
           )}
-          {/* Phase 3 date — when savings actually started flowing */}
-          {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>
-                Deployment Start Date (Real Savings Start)
-                <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-600">
-                  Phase 3
-                </span>
+                {isSourced ? "EBITDA Period (€)" : "Est. Annual Saving (€)"}
                 <span className="ml-1 font-normal text-slate-400">
-                  — when PPAP validated and Longrun/new parts entered production
+                  {isSourced ? "— auto, all years (N…N+3)" : ""}
                 </span>
               </label>
-              <input
-                type="date"
-                className={inp}
-                value={form.real_start_date}
-                onChange={(e) => set("real_start_date", e.target.value)}
-              />
-              {form.real_start_date &&
-                opp.planned_start_date &&
-                form.real_start_date !== opp.planned_start_date && (
-                  <p className="text-[10px] text-amber-600 mt-0.5">
-                    ⚠ Differs from planned start (
-                    {fmtDate(opp.planned_start_date)}) — saving will
-                    automatically rebuild the monthly profile.
-                  </p>
-                )}
-            </div>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={label}>
-              Budget Status
-              {!budgetEditable && (
-                <span className="ml-1.5 text-[9px] text-amber-600 font-semibold">
-                  (settable after Phase 0 Go)
-                </span>
-              )}
-            </label>
-            {budgetEditable ? (
-              <>
-                <select
-                  className={inp}
-                  value={form.budget_status}
-                  onChange={(e) => set("budget_status", e.target.value)}
+              {isSourced ? (
+                <div
+                  className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
                 >
-                  <option>Outside Budget</option>
-                  <option>Budgeted</option>
-                </select>
-                {opp.budget_confirmed_at && (
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    Last confirmed {fmtDate(opp.budget_confirmed_at)}
-                    {opp.budget_confirmed_by ? ` by ${opp.budget_confirmed_by}` : ""}
+                  {autoSaving != null
+                    ? `€${autoSaving.toLocaleString("en-GB")}`
+                    : opp.expected_annual_saving != null
+                      ? fmt(opp.expected_annual_saving)
+                      : "—"}
+                </div>
+              ) : (
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  disabled={locked}
+                  className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                  value={form.expected_annual_saving}
+                  onChange={(e) =>
+                    set("expected_annual_saving", e.target.value)
+                  }
+                />
+              )}
+              {isSourced && (
+                <p className="text-[10px] text-emerald-600 mt-0.5">
+                  Sum of the EBITDA savings across all fulfilled years (EBITDA
+                  Period).
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={label}>
+                Cash Impact (€){" "}
+                <span className="font-normal text-slate-400">
+                  {isSourced
+                    ? "— auto: Inventory gap + AP gap"
+                    : "— total cash estimate, locked when Budgeted"}
+                </span>
+              </label>
+              {isSourced ? (
+                <div
+                  className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
+                >
+                  {autoCashImpact != null
+                    ? `€${autoCashImpact.toLocaleString("en-GB")}`
+                    : opp.cash_impact != null
+                      ? fmt(opp.cash_impact)
+                      : "—"}
+                </div>
+              ) : (
+                <input
+                  type="number"
+                  step="0.01"
+                  disabled={locked}
+                  className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                  value={form.cash_impact}
+                  onChange={(e) => set("cash_impact", e.target.value)}
+                />
+              )}
+            </div>
+            <div>
+              <label className={label}>
+                Duration (months){" "}
+                <span className="font-normal text-slate-400">
+                  — saving period length
+                </span>
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                step="1"
+                disabled={locked}
+                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                value={form.duration_months}
+                onChange={(e) => set("duration_months", e.target.value)}
+              />
+              {computedEndDate && (
+                <p className="mt-1 text-[10.5px] text-slate-500">
+                  → Planned end:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {computedEndDate}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={label}>
+                Planned Start (estimated savings start){" "}
+                <span className="font-normal text-slate-400">
+                  — when real savings are expected to begin; drives planned end
+                  &amp; the budget split
+                </span>
+              </label>
+              <input
+                type="date"
+                className={inp}
+                value={form.planned_start_date}
+                onChange={(e) => set("planned_start_date", e.target.value)}
+              />
+              {computedEndDate && (
+                <p className="mt-1 text-[10.5px] text-slate-500">
+                  → Planned end:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {computedEndDate}
+                  </span>
+                </p>
+              )}
+              {recommendedSavingsStart &&
+                recommendedSavingsStart.iso !== form.planned_start_date && (
+                  <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-blue-600">
+                    <span>
+                      Recommended (study start + Phase 1–3 weeks):{" "}
+                      <span className="font-semibold">
+                        {recommendedSavingsStart.label}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        set("planned_start_date", recommendedSavingsStart.iso)
+                      }
+                      className="rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      Apply
+                    </button>
                   </p>
                 )}
-                {form.budget_status === "Budgeted" && (
-                  <p
-                    className={`mt-1 text-[10.5px] font-medium ${
-                      budgetYearRequired ? "text-amber-600" : "text-emerald-600"
-                    }`}
-                  >
-                    {budgetYearRequired
-                      ? "Enter Budget Year before saving this opportunity as Budgeted."
-                      : `Budgeted for ${form.budget_year}.`}
+              {form.planned_start_date &&
+                form.planned_start_date !== opp.planned_start_date &&
+                ["Phase 0", "Phase 1", "Phase 2", "Assigned"].includes(
+                  opp.phase_status ?? "",
+                ) && (
+                  <p className="mt-1 text-[10.5px] text-amber-600 font-medium">
+                    ⚠ Date changed — monthly savings profile will be rebuilt
+                    from {form.planned_start_date}
                   </p>
                 )}
-                {form.budget_status !== opp.budget_status && (
+              {form.planned_start_date &&
+                form.planned_start_date !== opp.planned_start_date &&
+                ["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
                   <p className="mt-1 text-[10.5px] text-blue-600 font-medium">
-                    ℹ Change will be timestamped automatically on save.
+                    ℹ Savings have started — use Deployment Start Date (real) to
+                    rebuild the profile.
                   </p>
                 )}
-              </>
-            ) : (
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                Budget status can only be set after Phase 0 Go validation.
+            </div>
+            {/* Phase 2 date — when execution work began */}
+            {["Phase 2", "Phase 3", "Phase 4"].includes(
+              opp.phase_status ?? "",
+            ) && (
+              <div>
+                <label className={label}>
+                  Execution Start Date
+                  <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
+                    Phase 2
+                  </span>
+                  <span className="ml-1 font-normal text-slate-400">
+                    — when work began (tooling, qualification, supplier
+                    contacted)
+                  </span>
+                </label>
+                <input
+                  type="date"
+                  className={inp}
+                  value={form.execution_start_date}
+                  onChange={(e) => set("execution_start_date", e.target.value)}
+                />
+              </div>
+            )}
+            {/* Phase 3 date — when savings actually started flowing */}
+            {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
+              <div>
+                <label className={label}>
+                  Deployment Start Date (Real Savings Start)
+                  <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-600">
+                    Phase 3
+                  </span>
+                  <span className="ml-1 font-normal text-slate-400">
+                    — when PPAP validated and Longrun/new parts entered
+                    production
+                  </span>
+                </label>
+                <input
+                  type="date"
+                  className={inp}
+                  value={form.real_start_date}
+                  onChange={(e) => set("real_start_date", e.target.value)}
+                />
+                {form.real_start_date &&
+                  opp.planned_start_date &&
+                  form.real_start_date !== opp.planned_start_date && (
+                    <p className="text-[10px] text-amber-600 mt-0.5">
+                      ⚠ Differs from planned start (
+                      {fmtDate(opp.planned_start_date)}) — saving will
+                      automatically rebuild the monthly profile.
+                    </p>
+                  )}
+                {/* R9 data-loss warning — rebuilding from a later start deletes the
+                  months before it, including any actuals already entered there. */}
+                {form.real_start_date &&
+                  form.real_start_date !== (opp.real_start_date ?? "") &&
+                  (() => {
+                    const newStart = form.real_start_date.slice(0, 7);
+                    const droppedActuals = (
+                      opp.financial_lines[0]?.monthly_financials ?? []
+                    ).filter(
+                      (m) =>
+                        m.period_month != null &&
+                        m.actual_saving != null &&
+                        m.period_month.slice(0, 7) < newStart,
+                    );
+                    return droppedActuals.length > 0 ? (
+                      <p className="mt-1 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-[10px] font-semibold text-red-700">
+                        ⚠ {droppedActuals.length} month
+                        {droppedActuals.length !== 1 ? "s" : ""} before the new
+                        start already{" "}
+                        {droppedActuals.length !== 1 ? "have" : "has"} actual
+                        savings entered. Changing the real start will DELETE
+                        those months and their realized savings. Record/export
+                        them before saving.
+                      </p>
+                    ) : null;
+                  })()}
               </div>
             )}
           </div>
-          <div>
-            <label className={label}>
-              Change Mode{" "}
-              <span className="font-normal text-slate-400">
-                — confirmed in Phase 1 by PM
-              </span>
-            </label>
-            <select
-              className={inp}
-              value={normalizeChangeMode(form.change_mode)}
-              onChange={(e) => set("change_mode", e.target.value)}
-            >
-              <option value="">— To be confirmed in Phase 1 —</option>
-              <option>Standard</option>
-              <option>Silent</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div>
-        <label className={label}>Assumptions Summary</label>
-        <textarea
-          rows={3}
-          className={`${inp} resize-none`}
-          placeholder="Volumes, prices, timing, etc."
-          value={form.assumptions_summary}
-          onChange={(e) => set("assumptions_summary", e.target.value)}
-        />
-      </div>
-      {/* Alert recipients — required for delay alerts and escalations */}
-      {(!form.purchasing_owner || !form.conversion_owner) && (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700 flex items-start gap-2">
-          <span className="shrink-0 mt-0.5">⚠</span>
-          <span>
-            <strong>Purchasing Owner and Conversion Owner are required</strong>{" "}
-            to receive missing data alerts and escalation emails.
-          </span>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={label}>
-            Purchasing Owner
-            <span className="ml-1 text-red-400">*</span>
-            <span className="ml-1.5 font-normal text-slate-400">
-              — receives tracking alerts
-            </span>
-          </label>
-          <input
-            type="email"
-            className={`${inp} ${!form.purchasing_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-            placeholder="purchasing.manager@avocarbon.com"
-            value={form.purchasing_owner}
-            onChange={(e) => set("purchasing_owner", e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={label}>
-            Conversion Owner
-            <span className="ml-1 text-red-400">*</span>
-            <span className="ml-1.5 font-normal text-slate-400">
-              — enters monthly actuals
-            </span>
-          </label>
-          <input
-            type="email"
-            className={`${inp} ${!form.conversion_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-            placeholder="buyer@avocarbon.com"
-            value={form.conversion_owner}
-            onChange={(e) => set("conversion_owner", e.target.value)}
-          />
-        </div>
-      </div>
-      {/* PLD scoring — compact */}
-      <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">PLD</span>
-          <div className="flex items-center gap-1.5 text-[11px]">
-            {livePScore != null && <span className="text-slate-500">P=<b className="text-slate-700">{livePScore}</b></span>}
-            {liveLScore != null && <span className="text-slate-400">× L=<b className="text-slate-700">{liveLScore}</b></span>}
-            {liveDScore != null && <span className="text-slate-400">× D=<b className="text-slate-700">{liveDScore}</b></span>}
-            {pScore != null ? (
-              <>
-                <span className="text-slate-400">=</span>
-                <span className="font-black text-blue-700 text-sm">{pScore}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}>{pCat}</span>
-              </>
-            ) : (
-              <span className="text-slate-300 text-[10px]">incomplete</span>
-            )}
-          </div>
-        </div>
-
-        {isSourced && <div className="grid grid-cols-3 gap-2 text-[10px]">
-          {/* P */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1">
-              <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">P</span>
-              <span className="text-slate-500 font-medium">Pay-back</span>
-            </div>
-            <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-              {_pldHasInvData ? (
-                <span className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}>
-                  {_pldPaybackMonths === 0 ? "0 mo." : _pldPaybackMonths >= 999 ? "∞" : `${_pldPaybackMonths.toFixed(1)} mo.`}
-                  {livePScore != null && <span className="ml-1 text-slate-400">→ {livePScore}</span>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>
+                Change Mode{" "}
+                <span className="font-normal text-slate-400">
+                  — confirmed in Phase 1 by PM
                 </span>
+              </label>
+              <select
+                className={inp}
+                value={normalizeChangeMode(form.change_mode)}
+                onChange={(e) => set("change_mode", e.target.value)}
+              >
+                <option value="">— To be confirmed in Phase 1 —</option>
+                <option>Standard</option>
+                <option>Silent</option>
+              </select>
+            </div>
+            <div>
+              <label className={label}>Currency</label>
+              <select
+                className={inp}
+                value={form.currency}
+                onChange={(e) => {
+                  const c = e.target.value;
+                  set("currency", c);
+                  // EUR has no conversion — reset the rate so a stale non-1 value from a
+                  // previous currency can't be saved against EUR.
+                  if (c === "EUR") set("fx_rate_to_eur", "1");
+                }}
+              >
+                {["EUR", "USD", "RMB", "INR"].map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={label}>
+                FX rate → EUR{" "}
+                <span className="font-normal text-slate-400">
+                  — {form.currency || "EUR"} amount × rate = EUR (for group
+                  reporting)
+                </span>
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                disabled={form.currency === "EUR"}
+                className={`${inp} ${form.currency === "EUR" ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                value={form.currency === "EUR" ? "1" : form.fx_rate_to_eur}
+                onChange={(e) => set("fx_rate_to_eur", e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        {/* Alert recipients — required for delay alerts and escalations */}
+        {!isPhase0 && (!form.purchasing_owner || !form.conversion_owner) && (
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700 flex items-start gap-2">
+            <span className="shrink-0 mt-0.5">⚠</span>
+            <span>
+              <strong>
+                Purchasing Owner and Conversion Owner are required
+              </strong>{" "}
+              to receive missing data alerts and escalation emails.
+            </span>
+          </div>
+        )}
+        {!isPhase0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>
+                Purchasing Owner
+                <span className="ml-1 text-red-400">*</span>
+                <span className="ml-1.5 font-normal text-slate-400">
+                  — receives tracking alerts
+                </span>
+              </label>
+              <input
+                type="email"
+                className={`${inp} ${!form.purchasing_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
+                placeholder="purchasing.manager@avocarbon.com"
+                value={form.purchasing_owner}
+                onChange={(e) => set("purchasing_owner", e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={label}>
+                Conversion Owner
+                <span className="ml-1 text-red-400">*</span>
+                <span className="ml-1.5 font-normal text-slate-400">
+                  — enters monthly actuals
+                </span>
+              </label>
+              <input
+                type="email"
+                className={`${inp} ${!form.conversion_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
+                placeholder="buyer@avocarbon.com"
+                value={form.conversion_owner}
+                onChange={(e) => set("conversion_owner", e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+        {/* PLD scoring — compact */}
+        <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
+              PLD
+            </span>
+            <div className="flex items-center gap-1.5 text-[11px]">
+              {livePScore != null && (
+                <span className="text-slate-500">
+                  P=<b className="text-slate-700">{livePScore}</b>
+                </span>
+              )}
+              {liveLScore != null && (
+                <span className="text-slate-400">
+                  × L=<b className="text-slate-700">{liveLScore}</b>
+                </span>
+              )}
+              {liveDScore != null && (
+                <span className="text-slate-400">
+                  × D=<b className="text-slate-700">{liveDScore}</b>
+                </span>
+              )}
+              {pScore != null ? (
+                <>
+                  <span className="text-slate-400">=</span>
+                  <span className="font-black text-blue-700 text-sm">
+                    {pScore}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}
+                  >
+                    {pCat}
+                  </span>
+                </>
               ) : (
-                <span className="text-slate-300">fill costs + saving</span>
+                <span className="text-slate-300 text-[10px]">incomplete</span>
               )}
             </div>
-            <div className="text-[9px] text-slate-400 space-y-0.5">
-              {([["0 mo.", "1 ★"], ["≤2 mo.", "2"], ["≤4 mo.", "3"], ["≤12 mo.", "4"], [">12 mo.", "5"]] as [string, string][]).map(([v, s]) => (
-                <div key={s} className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★","") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}>
-                  <span>{v}</span><span>{s}</span>
-                </div>
-              ))}
-            </div>
           </div>
 
-          {/* L */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1">
-              <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">L</span>
-              <span className="text-slate-500 font-medium">Lead-time</span>
-            </div>
-            <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-              {_pldTotalWeeks > 0 ? (
-                <span className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}>
-                  {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
-                  {liveLScore != null && <span className="ml-1 text-slate-400">→ {liveLScore}</span>}
-                </span>
-              ) : (
-                <span className="text-slate-300">fill phase weeks</span>
-              )}
-            </div>
-            <div className="text-[9px] text-slate-400 space-y-0.5">
-              {([["<1m", "1 ★"], ["<2m", "2"], ["<4m", "3"], ["<6m", "4"], ["≥6m", "5"]] as [string, string][]).map(([v, s]) => (
-                <div key={s} className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★","") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}>
-                  <span>{v}</span><span>{s}</span>
+          {isSourced && (
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              {/* P */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                    P
+                  </span>
+                  <span className="text-slate-500 font-medium">Pay-back</span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                  {_pldHasInvData ? (
+                    <span
+                      className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                    >
+                      {_pldPaybackMonths === 0
+                        ? "0 mo."
+                        : _pldPaybackMonths >= 999
+                          ? "∞"
+                          : `${_pldPaybackMonths.toFixed(1)} mo.`}
+                      {livePScore != null && (
+                        <span className="ml-1 text-slate-400">
+                          → {livePScore}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">fill costs + saving</span>
+                  )}
+                </div>
+                <div className="text-[9px] text-slate-400 space-y-0.5">
+                  {(
+                    [
+                      ["0 mo.", "1 ★"],
+                      ["≤2 mo.", "2"],
+                      ["≤4 mo.", "3"],
+                      ["≤12 mo.", "4"],
+                      [">12 mo.", "5"],
+                    ] as [string, string][]
+                  ).map(([v, s]) => (
+                    <div
+                      key={s}
+                      className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                    >
+                      <span>{v}</span>
+                      <span>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          {/* D */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1">
-              <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">D</span>
-              <span className="text-slate-500 font-medium">Difficulty</span>
-            </div>
-            <select
-              className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
-              value={liveDScore ?? ""}
-              onChange={e => set("difficulty_score", e.target.value as unknown as number)}
-            >
-              <option value="">— select —</option>
-              <option value="1">1 — Easy</option>
-              <option value="2">2 — Relatively easy</option>
-              <option value="3">3 — Moderately difficult</option>
-              <option value="4">4 — Difficult</option>
-              <option value="5">5 — Very Difficult</option>
-            </select>
-            <div className="text-[9px] text-slate-400 space-y-0.5">
-              {([["Easy", "1 ★"], ["Rel. easy", "2"], ["Moderate", "3"], ["Difficult", "4"], ["Very diff.", "5"]] as [string, string][]).map(([v, s]) => (
-                <div key={s} className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★","") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}>
-                  <span>{v}</span><span>{s}</span>
+              {/* L */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                    L
+                  </span>
+                  <span className="text-slate-500 font-medium">Lead-time</span>
                 </div>
-              ))}
+                <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                  {_pldTotalWeeks > 0 ? (
+                    <span
+                      className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                    >
+                      {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
+                      {liveLScore != null && (
+                        <span className="ml-1 text-slate-400">
+                          → {liveLScore}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">fill phase weeks</span>
+                  )}
+                </div>
+                <div className="text-[9px] text-slate-400 space-y-0.5">
+                  {(
+                    [
+                      ["<1m", "1 ★"],
+                      ["<2m", "2"],
+                      ["<4m", "3"],
+                      ["<6m", "4"],
+                      ["≥6m", "5"],
+                    ] as [string, string][]
+                  ).map(([v, s]) => (
+                    <div
+                      key={s}
+                      className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                    >
+                      <span>{v}</span>
+                      <span>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* D */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                    D
+                  </span>
+                  <span className="text-slate-500 font-medium">Difficulty</span>
+                </div>
+                <select
+                  className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
+                  value={liveDScore ?? ""}
+                  onChange={(e) =>
+                    set("difficulty_score", e.target.value as unknown as number)
+                  }
+                >
+                  <option value="">— select —</option>
+                  <option value="1">1 — Easy</option>
+                  <option value="2">2 — Relatively easy</option>
+                  <option value="3">3 — Moderately difficult</option>
+                  <option value="4">4 — Difficult</option>
+                  <option value="5">5 — Very Difficult</option>
+                </select>
+                <div className="text-[9px] text-slate-400 space-y-0.5">
+                  {(
+                    [
+                      ["Easy", "1 ★"],
+                      ["Rel. easy", "2"],
+                      ["Moderate", "3"],
+                      ["Difficult", "4"],
+                      ["Very diff.", "5"],
+                    ] as [string, string][]
+                  ).map(([v, s]) => (
+                    <div
+                      key={s}
+                      className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                    >
+                      <span>{v}</span>
+                      <span>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>}
-      </div>
-      {/* Manual PLD scores — Negotiation and Cash have no STP workbook */}
-      {!isSourced && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            PLD Scores — Manual Entry
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className={label}>
-                P — Pay-back
-                <span className="ml-1 font-normal text-slate-400">(1 = quick)</span>
-              </label>
-              <select
-                className={inp}
-                value={form.payback_score ?? ""}
-                onChange={(e) => set("payback_score", e.target.value as unknown as number)}
-              >
-                <option value="">— select —</option>
-                <option value="1">1 — Immediate / &lt;1 mo.</option>
-                <option value="2">2 — ≤2 months</option>
-                <option value="3">3 — ≤4 months</option>
-                <option value="4">4 — ≤12 months</option>
-                <option value="5">5 — &gt;12 months</option>
-              </select>
-            </div>
-            <div>
-              <label className={label}>
-                L — Lead-time
-                <span className="ml-1 font-normal text-slate-400">(1 = fast)</span>
-              </label>
-              <select
-                className={inp}
-                value={form.lead_time_score ?? ""}
-                onChange={(e) => set("lead_time_score", e.target.value as unknown as number)}
-              >
-                <option value="">— select —</option>
-                <option value="1">1 — &lt;1 month</option>
-                <option value="2">2 — &lt;2 months</option>
-                <option value="3">3 — &lt;4 months</option>
-                <option value="4">4 — &lt;6 months</option>
-                <option value="5">5 — ≥6 months</option>
-              </select>
-            </div>
-            <div>
-              <label className={label}>
-                D — Difficulty
-                <span className="ml-1 font-normal text-slate-400">(1 = easy)</span>
-              </label>
-              <select
-                className={inp}
-                value={form.difficulty_score ?? ""}
-                onChange={(e) => set("difficulty_score", e.target.value as unknown as number)}
-              >
-                <option value="">— select —</option>
-                <option value="1">1 — Easy</option>
-                <option value="2">2 — Relatively easy</option>
-                <option value="3">3 — Moderately difficult</option>
-                <option value="4">4 — Difficult</option>
-                <option value="5">5 — Very Difficult</option>
-              </select>
-            </div>
-          </div>
+          )}
         </div>
-      )}
-      <div>
-        <label className={label}>Comments</label>
-        <textarea
-          rows={2}
-          className={`${inp} resize-none`}
-          value={form.comments}
-          onChange={(e) => set("comments", e.target.value)}
-        />
+        {/* Manual PLD scores — Negotiation and Cash have no STP workbook */}
+        {!isSourced && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              PLD Scores — Manual Entry
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={label}>
+                  P — Pay-back
+                  <span className="ml-1 font-normal text-slate-400">
+                    (1 = quick)
+                  </span>
+                </label>
+                <select
+                  className={inp}
+                  value={form.payback_score ?? ""}
+                  onChange={(e) =>
+                    set("payback_score", e.target.value as unknown as number)
+                  }
+                >
+                  <option value="">— select —</option>
+                  <option value="1">1 — Immediate / &lt;1 mo.</option>
+                  <option value="2">2 — ≤2 months</option>
+                  <option value="3">3 — ≤4 months</option>
+                  <option value="4">4 — ≤12 months</option>
+                  <option value="5">5 — &gt;12 months</option>
+                </select>
+              </div>
+              <div>
+                <label className={label}>
+                  L — Lead-time
+                  <span className="ml-1 font-normal text-slate-400">
+                    (1 = fast)
+                  </span>
+                </label>
+                <select
+                  className={inp}
+                  value={form.lead_time_score ?? ""}
+                  onChange={(e) =>
+                    set("lead_time_score", e.target.value as unknown as number)
+                  }
+                >
+                  <option value="">— select —</option>
+                  <option value="1">1 — &lt;1 month</option>
+                  <option value="2">2 — &lt;2 months</option>
+                  <option value="3">3 — &lt;4 months</option>
+                  <option value="4">4 — &lt;6 months</option>
+                  <option value="5">5 — ≥6 months</option>
+                </select>
+              </div>
+              <div>
+                <label className={label}>
+                  D — Difficulty
+                  <span className="ml-1 font-normal text-slate-400">
+                    (1 = easy)
+                  </span>
+                </label>
+                <select
+                  className={inp}
+                  value={form.difficulty_score ?? ""}
+                  onChange={(e) =>
+                    set("difficulty_score", e.target.value as unknown as number)
+                  }
+                >
+                  <option value="">— select —</option>
+                  <option value="1">1 — Easy</option>
+                  <option value="2">2 — Relatively easy</option>
+                  <option value="3">3 — Moderately difficult</option>
+                  <option value="4">4 — Difficult</option>
+                  <option value="5">5 — Very Difficult</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+        <div>
+          <label className={label}>Comments</label>
+          <textarea
+            rows={2}
+            className={`${inp} resize-none`}
+            value={form.comments}
+            onChange={(e) => set("comments", e.target.value)}
+          />
+        </div>
       </div>
-        </>
-      )}
 
-      {/* STP section — only Phase 0 / Phase 1, based on STP workbook structure */}
-      {mode === "stp" && showStpSection && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
+      {/* STP study — only for Sourcing / Technical Productivity, same form & save */}
+      {showStpSection && (
+        <div className="order-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-            <FileText size={11} /> STP — Sourcing and Technical Productivity
+            <FileText size={11} /> STP Study — Sourcing &amp; Technical
+            Productivity
           </p>
           <p className="text-[11px] text-slate-500">
-            Workbook-aligned STP inputs for Phase 0 and Phase 1 only.
+            Workbook-aligned inputs. Prices &amp; quantities below drive the
+            savings estimate shown in the Financial baseline above.
           </p>
+
           {stpReadOnly && (
             <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              STP stays visible in this phase, but it is read-only after Phase 1.
+              {pendingApproval ? (
+                <>
+                  <strong>STP awaiting a gate decision.</strong> It has been
+                  submitted for review, so it is locked to keep it identical to
+                  the version the reviewer received. It unlocks if the gate
+                  returns it for rework.
+                </>
+              ) : (
+                <>
+                  <strong>STP locked.</strong> Prices, quantities and the
+                  savings baseline can be filled and revised in Phase 0–1. From
+                  Phase 2 onward the opportunity is committed to execution, so
+                  the STP is read-only here.
+                  {isBudgeted &&
+                    " Changing a committed baseline requires a reviewed Revise, not a silent edit."}
+                </>
+              )}
             </div>
           )}
           <fieldset
             disabled={stpReadOnly}
             className={stpReadOnly ? "space-y-4 opacity-80" : "space-y-4"}
           >
-
-          {/* Why checkboxes */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-              Why
-            </label>
-            <div className="flex flex-wrap gap-3">
-              {[
-                ["reason_productivity", "Productivity"],
-                ["reason_quality", "Quality"],
-                ["reason_capacity", "Capacity"],
-              ].map(([k, lbl]) => (
-                <label
-                  key={k}
-                  className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    className="accent-blue-600"
-                    checked={form[k as keyof typeof form] as boolean}
-                    onChange={(e) =>
-                      set(k, e.target.checked as unknown as string)
-                    }
-                  />
-                  {lbl}
-                </label>
-              ))}
-              <input
-                className={`${inp} flex-1 min-w-[120px]`}
-                placeholder="Other..."
-                value={form.reason_other}
-                onChange={(e) => set("reason_other", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>Scope IN (part numbers)</label>
-              <input
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                placeholder="27102500010"
-                value={form.scope_in}
-                onChange={(e) => set("scope_in", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>Scope OUT</label>
-              <input
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                placeholder="NA"
-                value={form.scope_out}
-                onChange={(e) => set("scope_out", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>Customers</label>
-              <input
-                className={inp}
-                placeholder="Valeo, Multipe..."
-                value={form.customers}
-                onChange={(e) => set("customers", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>
-                Annual Qty N1{" "}
-                <span className="font-normal text-slate-400">
-                  — used to auto-calc saving
-                </span>
-              </label>
-              <input
-                type="number"
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.annual_quantity_n1}
-                onChange={(e) => set("annual_quantity_n1", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>Annual Qty N2</label>
-              <input
-                type="number"
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.annual_quantity_n2}
-                onChange={(e) => set("annual_quantity_n2", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>Annual Qty N3</label>
-              <input
-                type="number"
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.annual_quantity_n3}
-                onChange={(e) => set("annual_quantity_n3", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>Annual Qty N4</label>
-              <input
-                type="number"
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.annual_quantity_n4}
-                onChange={(e) => set("annual_quantity_n4", e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Initial Step */}
-          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Initial Step
-            </p>
-            <p className="text-[11px] text-slate-500">
-              Has the current supplier been formally given a chance to decrease
-              the price?
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={label}>Answer</label>
-                <select
-                  className={inp}
-                  value={form.supplier_asked}
-                  onChange={(e) => set("supplier_asked", e.target.value)}
-                >
-                  <option value="">— Select —</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-              <div>
-                <label className={label}>Result / explanation</label>
+            {/* Why checkboxes */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Why
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ["reason_productivity", "Productivity"],
+                  ["reason_quality", "Quality"],
+                  ["reason_capacity", "Capacity"],
+                ].map(([k, lbl]) => (
+                  <label
+                    key={k}
+                    className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-blue-600"
+                      checked={form[k as keyof typeof form] as boolean}
+                      onChange={(e) =>
+                        set(k, e.target.checked as unknown as string)
+                      }
+                    />
+                    {lbl}
+                  </label>
+                ))}
                 <input
-                  className={inp}
-                  placeholder="e.g. Declined to match price"
-                  value={form.supplier_asked_result}
-                  onChange={(e) => set("supplier_asked_result", e.target.value)}
+                  className={`${inp} flex-1 min-w-[120px]`}
+                  placeholder="Other..."
+                  value={form.reason_other}
+                  onChange={(e) => set("reason_other", e.target.value)}
                 />
               </div>
             </div>
-          </div>
 
-          {/* Current supplier class evaluation — read from existing DB (PldClassEvaluationInput) */}
-          {currentSupplierEval && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
-                Current Supplier — Latest Class Evaluation (from panel)
+            {/* Scope, customers, plants & annual quantities */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Scope &amp; Customers
               </p>
-              <p className="text-[10px] text-emerald-500">
-                This data is read from the existing supplier evaluation — no
-                need to re-enter it.
-              </p>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
-                {[
-                  ["Supplier status", "supplier_status"],
-                  ["Class", "class_value_relation"],
-                  ["Operational grade", "operational_grade"],
-                  ["Final grade", "final_grade"],
-                  ["Panel decision", "panel_decision"],
-                  ["TOP (payment terms)", "top"],
-                  ["LTA", "lta"],
-                  ["Competitiveness", "competitiveness"],
-                  ["SQMA", "sqma"],
-                  ["Financial health", "financial_health"],
-                  ["Geo coverage", "geo_coverage"],
-                  ["Family coverage", "family_coverage"],
-                ].map(([lbl, key]) =>
-                  currentSupplierEval[key] != null ? (
-                    <div key={key} className="flex items-center gap-2">
-                      <span className="text-slate-400 w-36 shrink-0">
-                        {lbl}
-                      </span>
-                      <span className="font-semibold text-slate-700">
-                        {String(currentSupplierEval[key])}
-                      </span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Scope IN (part numbers)</label>
+                  <input
+                    disabled={locked}
+                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    placeholder="27102500010"
+                    value={form.scope_in}
+                    onChange={(e) => set("scope_in", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={label}>Scope OUT</label>
+                  <input
+                    disabled={locked}
+                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    placeholder="NA"
+                    value={form.scope_out}
+                    onChange={(e) => set("scope_out", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={label}>Customers</label>
+                  <input
+                    className={inp}
+                    placeholder="Valeo, Multipe..."
+                    value={form.customers}
+                    onChange={(e) => set("customers", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={label}>Main Avocarbon Plant</label>
+                  <select
+                    className={inp}
+                    value={form.plant_id}
+                    onChange={(e) => set("plant_id", e.target.value)}
+                  >
+                    <option value="">— Select plant —</option>
+                    {sites.map((s) => (
+                      <option key={s.id_site} value={s.id_site}>
+                        {s.site_name}
+                        {s.city ? ` · ${s.city}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={label}>Secondary plants</label>
+                  <input
+                    className={inp}
+                    placeholder="Kunshan, Tianjin..."
+                    value={form.secondary_plants}
+                    onChange={(e) => set("secondary_plants", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <p className={label}>
+                  Annual Quantities{" "}
+                  <span className="font-normal text-slate-400">
+                    — N1 is used to auto-calc the first-year saving
+                  </span>
+                </p>
+                <div className="grid grid-cols-4 gap-3">
+                  {(
+                    [
+                      ["annual_quantity_n1", "N1"],
+                      ["annual_quantity_n2", "N2"],
+                      ["annual_quantity_n3", "N3"],
+                      ["annual_quantity_n4", "N4"],
+                    ] as [string, string][]
+                  ).map(([k, lbl]) => (
+                    <div key={k}>
+                      <label className={label}>{lbl}</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        disabled={locked}
+                        className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                        value={fmtIntInput(
+                          form[k as keyof typeof form] as string,
+                        )}
+                        onChange={(e) => set(k, stripInt(e.target.value))}
+                      />
                     </div>
-                  ) : null,
-                )}
+                  ))}
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Supplier before/after — full STP comparison */}
-          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Supplier Comparison (Before → After)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={label}>Current Supplier — Before</label>
-                {isPhase0 ? (
-                  <>
-                    <select
-                      className={inp}
-                      value={form.supplier_id}
-                      onChange={(e) => set("supplier_id", e.target.value)}
-                    >
-                      <option value="">— Select current supplier —</option>
-                      {suppliersForPlant.map((s) => (
-                        <option key={s.id_supplier_unit} value={s.id_supplier_unit}>
-                          {[s.group_name, s.supplier_code, s.city].filter(Boolean).join(" · ")}
-                        </option>
-                      ))}
-                    </select>
-                    {suppliersForPlant.length === 0 && opp.plant_id && (
-                      <p className="text-[10px] text-amber-500 mt-1">No suppliers linked to this plant yet.</p>
-                    )}
-                  </>
-                ) : (
-                  (() => {
-                    const before = suppliersForPlant.find(
-                      (s) => s.id_supplier_unit === (opp.supplier_id ?? parseInt(form.supplier_id || "0")),
-                    );
-                    return (
-                      <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 min-h-[28px]">
-                        {before
-                          ? [before.group_name, before.supplier_code, before.city].filter(Boolean).join(" · ")
-                          : opp.supplier_id ? `ID ${opp.supplier_id}` : "—"}
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
-              <div>
-                <label className={label}>Proposed New Supplier — After</label>
-                {isPhase0 ? (
-                  <>
-                    <input
-                      className={inp}
-                      placeholder="Longrun, Haihe... (free text in Phase 0)"
-                      value={form.proposed_supplier_name}
-                      onChange={(e) =>
-                        set("proposed_supplier_name", e.target.value)
-                      }
-                    />
-                    <p className="text-[9.5px] text-slate-400 mt-0.5">
-                      Free text in Phase 0 — link to panel from Phase 1
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <select
-                      className={inp}
-                      value={form.proposed_supplier_id}
-                      onChange={(e) =>
-                        set("proposed_supplier_id", e.target.value)
-                      }
-                    >
-                      <option value="">— Select from panel —</option>
-                      {suppliersForPlant.map((s) => (
-                        <option key={s.id_supplier_unit} value={s.id_supplier_unit}>
-                          {[s.group_name, s.supplier_code, s.city]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </option>
-                      ))}
-                    </select>
-                    {opp.proposed_supplier_name && (
-                      <p className="text-[9.5px] text-slate-400 mt-0.5">
-                        Phase 0 candidate:{" "}
-                        <span className="font-medium text-slate-600">
-                          {opp.proposed_supplier_name}
-                        </span>
-                      </p>
-                    )}
-                    {suppliersForPlant.length === 0 && opp.plant_id && (
-                      <p className="text-[10px] text-amber-500 mt-1">
-                        No suppliers linked to this plant yet.
-                      </p>
-                    )}
-                  </>
-                )}
+            {/* Initial Step */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Initial Step
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Has the current supplier been formally given a chance to
+                decrease the price?
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Answer</label>
+                  <select
+                    className={inp}
+                    value={form.supplier_asked}
+                    onChange={(e) => set("supplier_asked", e.target.value)}
+                  >
+                    <option value="">— Select —</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={label}>Result / explanation</label>
+                  <input
+                    className={inp}
+                    placeholder="e.g. Declined to match price"
+                    value={form.supplier_asked_result}
+                    onChange={(e) =>
+                      set("supplier_asked_result", e.target.value)
+                    }
+                  />
+                </div>
               </div>
             </div>
-            {/* Logistics: Before / After table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50">
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500 w-1/3">
-                      Field
-                    </th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">
-                      Before
-                    </th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">
-                      After
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Country — Before is derived from the selected supplier (form.supplier_id) */}
-                  {(() => {
-                    const currentSupplierCountry =
-                      suppliersForPlant.find(
-                        (s) => s.id_supplier_unit === (parseInt(form.supplier_id || "0") || opp.supplier_id),
-                      )?.city ?? null;
-                    return (
-                      <tr className="border-t border-slate-100">
+
+            {/* Current supplier class evaluation — read from existing DB (PldClassEvaluationInput) */}
+            {currentSupplierEval && (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                  Current Supplier — Latest Class Evaluation (from panel)
+                </p>
+                <p className="text-[10px] text-emerald-500">
+                  This data is read from the existing supplier evaluation — no
+                  need to re-enter it.
+                </p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+                  {[
+                    ["Supplier status", "supplier_status"],
+                    ["Class", "class_value_relation"],
+                    ["Operational grade", "operational_grade"],
+                    ["Final grade", "final_grade"],
+                    ["Panel decision", "panel_decision"],
+                    ["TOP (payment terms)", "top"],
+                    ["LTA", "lta"],
+                    ["Competitiveness", "competitiveness"],
+                    ["SQMA", "sqma"],
+                    ["Financial health", "financial_health"],
+                    ["Geo coverage", "geo_coverage"],
+                    ["Family coverage", "family_coverage"],
+                  ].map(([lbl, key]) =>
+                    currentSupplierEval[key] != null ? (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="text-slate-400 w-36 shrink-0">
+                          {lbl}
+                        </span>
+                        <span className="font-semibold text-slate-700">
+                          {String(currentSupplierEval[key])}
+                        </span>
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Supplier before/after — full STP comparison */}
+            <FormSection
+              title="Supplier Comparison (Before → After)"
+              defaultOpen={true}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Current Supplier — Before</label>
+                  {isPhase0 ? (
+                    <>
+                      <select
+                        className={inp}
+                        value={form.supplier_id}
+                        onChange={(e) => set("supplier_id", e.target.value)}
+                      >
+                        <option value="">— Select current supplier —</option>
+                        {suppliersForPlant.map((s) => (
+                          <option
+                            key={s.id_supplier_unit}
+                            value={s.id_supplier_unit}
+                          >
+                            {[s.group_name, s.supplier_code, s.city]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </option>
+                        ))}
+                      </select>
+                      {suppliersForPlant.length === 0 && opp.plant_id && (
+                        <p className="text-[10px] text-amber-500 mt-1">
+                          No suppliers linked to this plant yet.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    (() => {
+                      const before = suppliersForPlant.find(
+                        (s) =>
+                          s.id_supplier_unit ===
+                          (opp.supplier_id ??
+                            parseInt(form.supplier_id || "0")),
+                      );
+                      return (
+                        <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 min-h-[28px]">
+                          {before
+                            ? [
+                                before.group_name,
+                                before.supplier_code,
+                                before.city,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : opp.supplier_id
+                              ? `ID ${opp.supplier_id}`
+                              : "—"}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+                <div>
+                  <label className={label}>Proposed New Supplier — After</label>
+                  {isPhase0 ? (
+                    <>
+                      <input
+                        className={inp}
+                        placeholder="Longrun, Haihe... (free text in Phase 0)"
+                        value={form.proposed_supplier_name}
+                        onChange={(e) =>
+                          set("proposed_supplier_name", e.target.value)
+                        }
+                      />
+                      <p className="text-[9.5px] text-slate-400 mt-0.5">
+                        Free text in Phase 0 — link to panel from Phase 1
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <select
+                        className={inp}
+                        value={form.proposed_supplier_id}
+                        onChange={(e) =>
+                          set("proposed_supplier_id", e.target.value)
+                        }
+                      >
+                        <option value="">— Select from panel —</option>
+                        {suppliersForPlant.map((s) => (
+                          <option
+                            key={s.id_supplier_unit}
+                            value={s.id_supplier_unit}
+                          >
+                            {[s.group_name, s.supplier_code, s.city]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </option>
+                        ))}
+                      </select>
+                      {opp.proposed_supplier_name && (
+                        <p className="text-[9.5px] text-slate-400 mt-0.5">
+                          Phase 0 candidate:{" "}
+                          <span className="font-medium text-slate-600">
+                            {opp.proposed_supplier_name}
+                          </span>
+                        </p>
+                      )}
+                      {suppliersForPlant.length === 0 && opp.plant_id && (
+                        <p className="text-[10px] text-amber-500 mt-1">
+                          No suppliers linked to this plant yet.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+              {/* Logistics: Before / After table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-1/3">
+                        Field
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                        Before
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                        After
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Country — Before is derived from the selected supplier (form.supplier_id) */}
+                    {(() => {
+                      const currentSupplierCountry =
+                        suppliersForPlant.find(
+                          (s) =>
+                            s.id_supplier_unit ===
+                            (parseInt(form.supplier_id || "0") ||
+                              opp.supplier_id),
+                        )?.city ?? null;
+                      return (
+                        <tr className="border-t border-slate-100">
+                          <td className="px-3 py-1.5 font-semibold text-slate-500">
+                            Country
+                          </td>
+                          <td className="px-3 py-1.5">
+                            {currentSupplierCountry ? (
+                              <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700">
+                                {currentSupplierCountry}{" "}
+                                <span className="font-normal text-emerald-500">
+                                  (from panel)
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-[10px]">
+                                Select supplier above
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              placeholder="China"
+                              value={form.country_after}
+                              onChange={(e) =>
+                                set("country_after", e.target.value)
+                              }
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                    {(
+                      [
+                        [
+                          "incoterms_before",
+                          "incoterms_after",
+                          "Incoterms",
+                          "DDP",
+                          "EXW",
+                        ],
+                        [
+                          "top_days_before",
+                          "top_days_after",
+                          "TOP (days)",
+                          "45",
+                          "105",
+                        ],
+                        [
+                          "transit_days_before",
+                          "transit_days_after",
+                          "Transit time (days)",
+                          "3",
+                          "6",
+                        ],
+                        [
+                          "bonus_before",
+                          "bonus_after",
+                          "Bonus / business link",
+                          "0",
+                          "0",
+                        ],
+                      ] as [string, string, string, string, string][]
+                    ).map(([kb, ka, lbl, ph1, ph2]) => (
+                      <tr key={kb} className="border-t border-slate-100">
                         <td className="px-3 py-1.5 font-semibold text-slate-500">
-                          Country
+                          {lbl}
                         </td>
                         <td className="px-3 py-1.5">
-                          {currentSupplierCountry ? (
-                            <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700">
-                              {currentSupplierCountry}{" "}
-                              <span className="font-normal text-emerald-500">
-                                (from panel)
-                              </span>
-                            </span>
+                          <input
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                            placeholder={ph1}
+                            value={form[kb as keyof typeof form] as string}
+                            onChange={(e) => set(kb, e.target.value)}
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                            placeholder={ph2}
+                            value={form[ka as keyof typeof form] as string}
+                            onChange={(e) => set(ka, e.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
+                    <tr className="border-t border-slate-100">
+                      <td className="px-3 py-1.5 font-semibold text-slate-500">
+                        Consignment
+                      </td>
+                      {(
+                        ["consignment_before", "consignment_after"] as const
+                      ).map((k) => (
+                        <td key={k} className="px-3 py-1.5">
+                          <select
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                            value={form[k as keyof typeof form] as string}
+                            onChange={(e) => set(k, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </td>
+                      ))}
+                    </tr>
+                    {(
+                      [
+                        [
+                          "current_price",
+                          "proposed_price",
+                          "Price (€/unit)",
+                          "0.4000",
+                          "0.1300",
+                        ],
+                        [
+                          "current_price_n1",
+                          "proposed_price_n1",
+                          "Price N+1",
+                          "0.3880",
+                          "0.1261",
+                        ],
+                        [
+                          "current_price_n2",
+                          "proposed_price_n2",
+                          "Price N+2",
+                          "0.3762",
+                          "0.1223",
+                        ],
+                        [
+                          "current_price_n3",
+                          "proposed_price_n3",
+                          "Price N+3",
+                          "0.3650",
+                          "0.1186",
+                        ],
+                      ] as [string, string, string, string, string][]
+                    ).map(([kb, ka, lbl, ph1, ph2]) => (
+                      <tr key={ka} className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 font-semibold text-slate-500">
+                          {lbl}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {kb ? (
+                            <input
+                              type="number"
+                              step="0.000001"
+                              disabled={locked}
+                              className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
+                              placeholder={ph1}
+                              value={form[kb as keyof typeof form] as string}
+                              onChange={(e) => set(kb, e.target.value)}
+                            />
                           ) : (
                             <span className="text-slate-300 text-[10px]">
-                              Select supplier above
+                              —
                             </span>
                           )}
                         </td>
                         <td className="px-3 py-1.5">
                           <input
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                            placeholder="China"
-                            value={form.country_after}
-                            onChange={(e) =>
-                              set("country_after", e.target.value)
-                            }
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })()}
-                  {(
-                    [
-                      [
-                        "incoterms_before",
-                        "incoterms_after",
-                        "Incoterms",
-                        "DDP",
-                        "EXW",
-                      ],
-                      [
-                        "top_days_before",
-                        "top_days_after",
-                        "TOP (days)",
-                        "45",
-                        "105",
-                      ],
-                      [
-                        "transit_days_before",
-                        "transit_days_after",
-                        "Transit time (days)",
-                        "3",
-                        "6",
-                      ],
-                      [
-                        "bonus_before",
-                        "bonus_after",
-                        "Bonus / business link",
-                        "0",
-                        "0",
-                      ],
-                    ] as [string, string, string, string, string][]
-                  ).map(([kb, ka, lbl, ph1, ph2]) => (
-                    <tr key={kb} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-semibold text-slate-500">
-                        {lbl}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <input
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                          placeholder={ph1}
-                          value={form[kb as keyof typeof form] as string}
-                          onChange={(e) => set(kb, e.target.value)}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <input
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                          placeholder={ph2}
-                          value={form[ka as keyof typeof form] as string}
-                          onChange={(e) => set(ka, e.target.value)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                  {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
-                  <tr className="border-t border-slate-100">
-                    <td className="px-3 py-1.5 font-semibold text-slate-500">
-                      Consignment
-                    </td>
-                    {(["consignment_before", "consignment_after"] as const).map((k) => (
-                      <td key={k} className="px-3 py-1.5">
-                        <select
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                          value={form[k as keyof typeof form] as string}
-                          onChange={(e) => set(k, e.target.value)}
-                        >
-                          <option value="">—</option>
-                          <option value="Yes">Yes</option>
-                          <option value="No">No</option>
-                        </select>
-                      </td>
-                    ))}
-                  </tr>
-                  {(
-                    [
-                      [
-                        "current_price",
-                        "proposed_price",
-                        "Price (€/unit)",
-                        "0.4000",
-                        "0.1300",
-                      ],
-                      ["current_price_n1", "proposed_price_n1", "Price N+1", "0.3880", "0.1261"],
-                      ["current_price_n2", "proposed_price_n2", "Price N+2", "0.3762", "0.1223"],
-                      ["current_price_n3", "proposed_price_n3", "Price N+3", "0.3650", "0.1186"],
-                    ] as [string, string, string, string, string][]
-                  ).map(([kb, ka, lbl, ph1, ph2]) => (
-                    <tr key={ka} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-semibold text-slate-500">
-                        {lbl}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        {kb ? (
-                          <input
                             type="number"
                             step="0.000001"
                             disabled={locked}
                             className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
-                            placeholder={ph1}
-                            value={form[kb as keyof typeof form] as string}
-                            onChange={(e) => set(kb, e.target.value)}
+                            placeholder={ph2}
+                            value={form[ka as keyof typeof form] as string}
+                            onChange={(e) => set(ka, e.target.value)}
                           />
-                        ) : (
-                          <span className="text-slate-300 text-[10px]">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <input
-                          type="number"
-                          step="0.000001"
-                          disabled={locked && kb === "current_price"}
-                          className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked && kb === "current_price" ? "bg-slate-100" : ""}`}
-                          placeholder={ph2}
-                          value={form[ka as keyof typeof form] as string}
-                          onChange={(e) => set(ka, e.target.value)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!locked &&
-                form.current_price &&
-                form.proposed_price &&
-                form.annual_quantity_n1 && (
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!locked && fullYearSaving != null && (
                   <p className="mt-1 text-[10px] text-emerald-600 font-semibold px-3">
                     Auto-calculated saving: (€
                     {parseFloat(form.current_price).toFixed(4)} − €
                     {parseFloat(form.proposed_price).toFixed(4)}) ×{" "}
-                    {parseInt(form.annual_quantity_n1).toLocaleString()} ={" "}
-                    <strong>€{autoSaving?.toLocaleString()}/year</strong>
+                    {parseInt(form.annual_quantity_n1).toLocaleString("en-GB")}
+                    {bonusDelta !== 0 && (
+                      <>
+                        {" "}
+                        {bonusDelta > 0 ? "+" : "−"} €
+                        {Math.abs(bonusDelta).toLocaleString("en-GB")} bonus
+                      </>
+                    )}{" "}
+                    ={" "}
+                    <strong>€{autoSaving?.toLocaleString("en-GB")}/year</strong>
                   </p>
                 )}
-            </div>
-          </div>
+              </div>
+            </FormSection>
 
-          {/* Risks */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              Risks
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50">
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500 w-1/3">Risk</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">Before</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">After</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {([
-                    ["risk_material_indexation_before", "risk_material_indexation_after", "Material indexation"],
-                    ["risk_exchange_rate_before", "risk_exchange_rate_after", "Exchange rate"],
-                    ["risk_local_content_before", "risk_local_content_after", "Local content"],
-                    ["risk_quality_before", "risk_quality_after", "Quality"],
-                    ["risk_other_before", "risk_other_after", "Other"],
-                  ] as [string, string, string][]).map(([kb, ka, lbl]) => (
-                    <tr key={kb} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-semibold text-slate-500">{lbl}</td>
-                      <td className="px-3 py-1.5">
-                        <input
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                          placeholder="e.g. 5%"
-                          value={form[kb as keyof typeof form] as string}
-                          onChange={(e) => set(kb, e.target.value)}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <input
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                          placeholder="e.g. hedged"
-                          value={form[ka as keyof typeof form] as string}
-                          onChange={(e) => set(ka, e.target.value)}
-                        />
+            {/* Risks */}
+            <FormSection title="Risks">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[22%]">
+                        Risk
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
+                        Before
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
+                        After
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                        Description / Mitigation approach
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      [
+                        [
+                          "risk_material_indexation_before",
+                          "risk_material_indexation_after",
+                          "risk_material_indexation_desc",
+                          "Material indexation",
+                        ],
+                        [
+                          "risk_exchange_rate_before",
+                          "risk_exchange_rate_after",
+                          "risk_exchange_rate_desc",
+                          "Exchange rate",
+                        ],
+                        [
+                          "risk_local_content_before",
+                          "risk_local_content_after",
+                          "risk_local_content_desc",
+                          "Local content",
+                        ],
+                        [
+                          "risk_quality_before",
+                          "risk_quality_after",
+                          "risk_quality_desc",
+                          "Quality",
+                        ],
+                        [
+                          "risk_other_before",
+                          "risk_other_after",
+                          "risk_other_desc",
+                          "Other",
+                        ],
+                      ] as [string, string, string, string][]
+                    ).map(([kb, ka, kd, lbl]) => (
+                      <tr key={kb} className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 font-semibold text-slate-500">
+                          {lbl}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <select
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                            value={form[kb as keyof typeof form] as string}
+                            onChange={(e) => set(kb, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <select
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                            value={form[ka as keyof typeof form] as string}
+                            onChange={(e) => set(ka, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                            placeholder="If needed — describe risk or mitigation..."
+                            value={form[kd as keyof typeof form] as string}
+                            onChange={(e) => set(kd, e.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Divider before spec questions */}
+                    <tr>
+                      <td colSpan={4} className="px-3 pt-3 pb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Specification Assumptions
+                        </span>
                       </td>
                     </tr>
-                  ))}
-                  {([
-                    ["material_same_spec", "Will material spec & appearance be the same?"],
-                    ["same_tooling", "Same tooling?"],
-                    ["same_dimension", "Same dimensions & appearance?"],
-                  ] as [string, string][]).map(([k, lbl]) => (
-                    <tr key={k} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-semibold text-slate-500 col-span-2">{lbl}</td>
-                      <td className="px-3 py-1.5" colSpan={2}>
-                        <select
-                          className="w-40 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                          value={form[k as keyof typeof form] as string}
-                          onChange={(e) => set(k, e.target.value)}
+                    {(
+                      [
+                        [
+                          "material_same_spec",
+                          "Will material spec & appearance be the same?",
+                        ],
+                        ["same_tooling", "Same tooling?"],
+                        ["same_dimension", "Same dimensions & appearance?"],
+                      ] as [string, string][]
+                    ).map(([k, lbl]) => (
+                      <tr key={k} className="border-t border-slate-100">
+                        <td
+                          className="px-3 py-1.5 font-semibold text-slate-500"
+                          colSpan={2}
                         >
-                          <option value="">—</option>
-                          <option value="Yes">Yes</option>
-                          <option value="No">No</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                          {lbl}
+                        </td>
+                        <td className="px-3 py-1.5" colSpan={2}>
+                          <select
+                            className="w-36 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                            value={form[k as keyof typeof form] as string}
+                            onChange={(e) => set(k, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </FormSection>
 
-          {/* Benefits */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              Benefits
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={label}>If we do</label>
-                <textarea
-                  rows={2}
-                  className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
-                  placeholder="Expected benefits if we proceed..."
-                  value={form.benefit_if_we_do}
-                  onChange={(e) => set("benefit_if_we_do", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={label}>If we don't</label>
-                <textarea
-                  rows={2}
-                  className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
-                  placeholder="Risk of not proceeding..."
-                  value={form.benefit_if_not}
-                  onChange={(e) => set("benefit_if_not", e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Investment costs */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              Investment Costs
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <label className={label}>Tooling (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className={inp}
-                  value={form.tooling_cost}
-                  onChange={(e) => set("tooling_cost", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={label}>Travel (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className={inp}
-                  value={form.travel_cost}
-                  onChange={(e) => set("travel_cost", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={label}>Qualification (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className={inp}
-                  value={form.qualification_cost}
-                  onChange={(e) => set("qualification_cost", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={label}>Other (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className={inp}
-                  value={form.other_cost}
-                  onChange={(e) => set("other_cost", e.target.value)}
-                />
-              </div>
-            </div>
-            {opp.total_investment != null && (
-              <div className="mt-2 flex items-center gap-3 text-xs">
-                <span className="text-slate-500">
-                  Total investment:{" "}
-                  <strong>€{opp.total_investment.toLocaleString()}</strong>
-                </span>
-                {opp.roi_percent != null && (
-                  <span className="text-emerald-600 font-bold">
-                    ROI: {opp.roi_percent}%
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Planning */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              Estimated Planning (weeks)
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                ["phase1_weeks", "Phase 1"],
-                ["phase2_weeks", "Phase 2"],
-                ["phase3_weeks", "Phase 3"],
-                ["phase4_weeks", "Phase 4"],
-              ].map(([k, lbl]) => (
-                <div key={k}>
-                  <label className={label}>{lbl}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className={inp}
-                    value={form[k as keyof typeof form] as string}
-                    onChange={(e) => set(k, e.target.value)}
+            {/* Benefits */}
+            <FormSection title="Benefits">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>If we do</label>
+                  <textarea
+                    rows={2}
+                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
+                    placeholder="Expected benefits if we proceed..."
+                    value={form.benefit_if_we_do}
+                    onChange={(e) => set("benefit_if_we_do", e.target.value)}
                   />
                 </div>
-              ))}
+                <div>
+                  <label className={label}>If we don't</label>
+                  <textarea
+                    rows={2}
+                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
+                    placeholder="Risk of not proceeding..."
+                    value={form.benefit_if_not}
+                    onChange={(e) => set("benefit_if_not", e.target.value)}
+                  />
+                </div>
+              </div>
+            </FormSection>
+
+            {/* Investment costs */}
+            <FormSection title="Investment Costs">
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <label className={label}>Tooling (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={inp}
+                    value={fmtDecInput(form.tooling_cost)}
+                    onChange={(e) =>
+                      set("tooling_cost", stripDec(e.target.value))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={label}>Travel (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={inp}
+                    value={fmtDecInput(form.travel_cost)}
+                    onChange={(e) =>
+                      set("travel_cost", stripDec(e.target.value))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={label}>Qualification (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={inp}
+                    value={fmtDecInput(form.qualification_cost)}
+                    onChange={(e) =>
+                      set("qualification_cost", stripDec(e.target.value))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={label}>Other (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={inp}
+                    value={fmtDecInput(form.other_cost)}
+                    onChange={(e) =>
+                      set("other_cost", stripDec(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+              {_pldTotalInv > 0 && (
+                <div className="mt-2 text-xs text-slate-500">
+                  Total investment:{" "}
+                  <strong>€{_pldTotalInv.toLocaleString("en-GB")}</strong>
+                </div>
+              )}
+            </FormSection>
+
+            {/* EBITDA & Cash savings — live, Excel "format STP rev 1.2" formulas */}
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                EBITDA &amp; Cash Savings — auto-calculated (STP rev 1.2
+                formulas)
+              </p>
+              <p className="text-[10px] text-emerald-500">
+                Computed live from prices, quantities, bonus, costs and
+                logistics — same formulas as the STP workbook.
+              </p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                {(
+                  [
+                    ["EBITDA Full year (1st)", fullYearSaving, "€", ""],
+                    ["EBITDA Period (N1–N4)", periodSaving, "€", ""],
+                    ["ROI Full year", roiFullYear, "", "%"],
+                    ["ROI Period", roiPeriod, "", "%"],
+                    ["Est. Inventory gap", inventoryGap, "€", ""],
+                    ["Est. AP gap", apGap, "€", ""],
+                  ] as [string, number | null, string, string][]
+                ).map(([lbl, val, pre, suf]) => {
+                  // Snap negative-zero / sub-cent values to 0 so they don't render as "-0"
+                  const shown = val != null && Math.abs(val) < 0.005 ? 0 : val;
+                  return (
+                    <div
+                      key={lbl}
+                      className="flex items-center justify-between gap-2 border-b border-emerald-100/60 pb-1"
+                    >
+                      <span className="text-slate-500">{lbl}</span>
+                      <span
+                        className={`font-bold ${shown != null && shown < 0 ? "text-red-600" : "text-slate-700"}`}
+                      >
+                        {shown != null
+                          ? `${pre}${shown.toLocaleString("en-GB", { maximumFractionDigits: 2 })}${suf}`
+                          : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {savingPerYear != null && (
+                <div className="pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
+                    Est. Saving per year
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    {(["N", "N+1", "N+2", "N+3"] as const).map((yr, i) => (
+                      <div
+                        key={yr}
+                        className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
+                      >
+                        <div className="text-[10px] text-slate-400">
+                          Year {yr}
+                        </div>
+                        <div
+                          className={`font-bold ${savingPerYear[i] < 0 ? "text-red-600" : "text-slate-700"}`}
+                        >
+                          €
+                          {savingPerYear[i].toLocaleString("en-GB", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {savingByYear != null && savingByYear.length > 0 && (
+                <div className="pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
+                    Est. Saving by calendar year (from savings start)
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {savingByYear.map(({ year, amount }) => (
+                      <div
+                        key={year}
+                        className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
+                      >
+                        <div className="text-[10px] text-slate-400">{year}</div>
+                        <div
+                          className={`font-bold ${amount < 0 ? "text-red-600" : "text-slate-700"}`}
+                        >
+                          €
+                          {amount.toLocaleString("en-GB", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+
+            {/* Planning */}
+            <FormSection title="Estimated Planning (weeks)">
+              <div>
+                <label className={label}>Phase 1 Starting Date</label>
+                <input
+                  type="date"
+                  className={inp}
+                  value={form.execution_start_date}
+                  onChange={(e) => set("execution_start_date", e.target.value)}
+                />
+                <p className="text-[9.5px] text-slate-400 mt-0.5">
+                  All phase dates chain from this. Defaults to study start if
+                  not set.
+                </p>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  ["phase1_weeks", "Phase 1 (weeks)"],
+                  ["phase2_weeks", "Phase 2 (weeks)"],
+                  ["phase3_weeks", "Phase 3 (weeks)"],
+                  ["phase4_weeks", "Phase 4 (weeks)"],
+                ].map(([k, lbl]) => (
+                  <div key={k}>
+                    <label className={label}>{lbl}</label>
+                    <input
+                      type="number"
+                      min="1"
+                      className={inp}
+                      value={form[k as keyof typeof form] as string}
+                      onChange={(e) => set(k, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+              {phaseDates && (
+                <div className="grid grid-cols-4 gap-2 text-[10px] text-slate-500">
+                  {phaseDates.map((p, i) => (
+                    <div key={i}>
+                      {p ? (
+                        <>
+                          {p.start} →{" "}
+                          <span className="font-semibold">{p.end}</span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                  ))}
+                  <p className="col-span-4 text-emerald-600 font-semibold">
+                    Tentative date for start of savings (start of Phase 3):{" "}
+                    {phaseDates[2]?.start ?? "—"}
+                  </p>
+                </div>
+              )}
+            </FormSection>
           </fieldset>
         </div>
       )}
 
-      {mode === "stp" && !showStpSection && (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          STP is available only for Sourcing or Technical Productivity opportunities.
-        </div>
-      )}
+      {/* STP completeness bar — shown near Save so user sees it before submitting */}
+      {showStpSection &&
+        (() => {
+          const stpSections = [
+            { label: "Scope", ok: !!(form.scope_in && form.customers) },
+            {
+              label: "Quantities",
+              ok: !!(
+                form.annual_quantity_n1 && parseInt(form.annual_quantity_n1) > 0
+              ),
+            },
+            {
+              label: "Prices",
+              ok: !!(
+                form.current_price &&
+                parseFloat(form.current_price) > 0 &&
+                form.proposed_price &&
+                parseFloat(form.proposed_price) > 0
+              ),
+            },
+            {
+              label: "Logistics",
+              ok: !!(
+                form.incoterms_before &&
+                form.incoterms_after &&
+                form.country_after
+              ),
+            },
+            {
+              label: "Risks",
+              ok: !!(
+                form.risk_material_indexation_before &&
+                form.risk_material_indexation_after
+              ),
+            },
+            {
+              label: "Benefits",
+              ok: !!(form.benefit_if_we_do || form.benefit_if_not),
+            },
+            {
+              label: "Planning",
+              ok: !!(form.phase1_weeks && parseInt(form.phase1_weeks) > 0),
+            },
+          ];
+          const done = stpSections.filter((s) => s.ok).length;
+          const total = stpSections.length;
+          const pct = Math.round((done / total) * 100);
+          const incomplete = stpSections.filter((s) => !s.ok);
+          const allDone = done === total;
+          const barColor = allDone
+            ? "bg-emerald-500"
+            : done >= 5
+              ? "bg-blue-400"
+              : done >= 3
+                ? "bg-amber-400"
+                : "bg-slate-300";
+          return (
+            <div
+              className={`order-4 rounded-xl border px-4 py-3 space-y-2 ${allDone ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  STP Completeness
+                </span>
+                <span
+                  className={`text-[11px] font-semibold tabular-nums ${allDone ? "text-emerald-600" : "text-amber-700"}`}
+                >
+                  {done}/{total} sections filled
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${barColor}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {stpSections.map((s) => (
+                  <span
+                    key={s.label}
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${s.ok ? "bg-emerald-100 text-emerald-700" : "bg-white border border-amber-200 text-amber-600"}`}
+                  >
+                    {s.ok ? "✓" : "○"} {s.label}
+                  </span>
+                ))}
+              </div>
+              {!allDone && (
+                <p className="text-[10.5px] text-amber-600">
+                  {incomplete.map((s) => s.label).join(", ")} — save first, then
+                  complete before Gate review.
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
-      <div className="pt-2">
+      <div className="order-5 pt-2">
         {error && (
           <div className="mb-3 flex justify-end">
             <p className="max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 shadow-sm">
@@ -2417,14 +3344,14 @@ function EditTab({
           </div>
         )}
         <div className="flex justify-end gap-3">
-        <button
-          type="submit"
-          disabled={loading || (mode === "stp" && stpReadOnly)}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          {loading && <RefreshCw size={13} className="animate-spin" />} Save
-          Changes
-        </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {loading && <RefreshCw size={13} className="animate-spin" />} Save
+            Changes
+          </button>
         </div>
       </div>
     </form>
@@ -2486,6 +3413,51 @@ function GateTab({
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
 
+  // ── STP section completeness (saved values on opp) ─────────────────
+  const isStpType = !["Negotiation", "Cash"].includes(
+    opp.opportunity_type ?? "",
+  );
+  const stpGateSections = isStpType
+    ? [
+        {
+          label: "Scope (Scope IN + Customers)",
+          ok: !!(opp.scope_in && opp.customers),
+        },
+        {
+          label: "Quantities (Annual N1)",
+          ok: !!(opp.annual_quantity_n1 && opp.annual_quantity_n1 > 0),
+        },
+        {
+          label: "Prices (Before/After)",
+          ok: !!(opp.current_price && opp.proposed_price),
+        },
+        {
+          label: "Logistics (Incoterms + Country after)",
+          ok: !!(
+            opp.incoterms_before &&
+            opp.incoterms_after &&
+            opp.country_after
+          ),
+        },
+        {
+          label: "Risks (Material indexation Before/After)",
+          ok: !!(
+            opp.stp_risks?.material_indexation_before &&
+            opp.stp_risks?.material_indexation_after
+          ),
+        },
+        {
+          label: "Benefits (If we do)",
+          ok: !!(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not),
+        },
+        {
+          label: "Planning (Phase 1 weeks)",
+          ok: !!(opp.phase1_weeks && opp.phase1_weeks > 0),
+        },
+      ]
+    : [];
+  const stpGateMissing = stpGateSections.filter((s) => !s.ok);
+
   // ── Pre-submission validation checks ──────────────────────────────
   // Phase 0 → PM validation: what must be filled
   const phase0Checks = [
@@ -2498,15 +3470,6 @@ function GateTab({
       label: "Duration (months) is required",
     },
     { ok: !!opp.planned_start_date, label: "Planned Start Date is required" },
-    { ok: !!opp.assumptions_summary, label: "Assumptions Summary is required" },
-    {
-      ok: !!opp.purchasing_owner,
-      label: "Purchasing Owner required (needed for alerts)",
-    },
-    {
-      ok: !!opp.conversion_owner,
-      label: "Conversion Owner required (needed for alerts)",
-    },
     ...(!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")
       ? [
           {
@@ -2522,6 +3485,7 @@ function GateTab({
             ok: !!opp.current_price && !!opp.proposed_price,
             label: "Before/After unit prices required",
           },
+          ...stpGateMissing,
         ]
       : [
           {
@@ -2543,22 +3507,12 @@ function GateTab({
   // Phase 1 → Committee: what must be filled
   // Negotiation / Cash have no STP format — skip all committee pre-checks
   const proj0 = opp.projects[0];
-  const isNegotiationOrCash = ["Negotiation", "Cash"].includes(opp.opportunity_type ?? "");
+  const isNegotiationOrCash = ["Negotiation", "Cash"].includes(
+    opp.opportunity_type ?? "",
+  );
   const phase1Checks = isNegotiationOrCash
     ? []
     : [
-        {
-          ok: !!proj0?.phase_output_notes,
-          label: "Phase 1 output notes filled (Project tab)",
-        },
-        {
-          ok: !!proj0?.committee_review_date,
-          label: "Committee review date filled (Project tab)",
-        },
-        {
-          ok: !!proj0?.committee_members,
-          label: "Committee members filled (Project tab)",
-        },
         {
           ok: opp.opp_documents.some(
             (d) =>
@@ -2650,7 +3604,7 @@ function GateTab({
                 );
                 onRefresh(res.data as Opp);
                 const updatedOpp = res.data as Opp;
-                onNavigate(["Sourcing", "Technical Productivity"].includes(updatedOpp.opportunity_type ?? "") ? "stp" : "edit");
+                onNavigate("edit");
               })
             }
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
@@ -2702,8 +3656,8 @@ function GateTab({
             </button>
           </div>
           <p className="text-[11px] text-amber-600">
-            Sends the Opportunity Study to the Purchasing Manager for Go / No Go
-            / Review gate decision.
+            Sends the Opportunity Study to the Purchasing Manager and plant
+            manager for Go / No Go / Review gate decision.
           </p>
           {opp.validation_request_sent_at && (
             <p className="text-[10px] text-amber-500">
@@ -2737,7 +3691,7 @@ function GateTab({
             >
               <div>
                 <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Purchasing Manager email(s) *
+                  Plant Manager, Purchasing Manager email(s) *
                 </label>
                 <input
                   required
@@ -2767,7 +3721,7 @@ function GateTab({
               </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || phase0Missing.length > 0}
                 className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
               >
                 {loading ? (
@@ -2849,7 +3803,10 @@ function GateTab({
             >
               <div>
                 <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Committee emails <span className="font-normal text-slate-400">(optional — PM organises meeting)</span>
+                  Committee emails{" "}
+                  <span className="font-normal text-slate-400">
+                    (optional — PM organises meeting)
+                  </span>
                 </label>
                 <input
                   className={inp}
@@ -2947,6 +3904,27 @@ function GateTab({
               Click "Apply decision" to record Go / No Go / Review.
             </p>
           )}
+          {showGate && isStpType && stpGateMissing.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+              <p className="text-[10.5px] font-bold text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle size={11} /> STP incomplete —{" "}
+                {stpGateMissing.length} section
+                {stpGateMissing.length > 1 ? "s" : ""} missing:
+              </p>
+              {stpGateMissing.map((s, i) => (
+                <p
+                  key={i}
+                  className="flex items-start gap-1.5 text-[11px] text-amber-600"
+                >
+                  <span className="shrink-0 text-amber-400">✗</span> {s.label}
+                </p>
+              ))}
+              <p className="text-[10.5px] text-amber-500 pt-0.5">
+                Go back to the STP Study tab, fill these sections and save
+                before applying a Go decision.
+              </p>
+            </div>
+          )}
           {showGate && (
             <form
               onSubmit={(e) => {
@@ -2966,8 +3944,14 @@ function GateTab({
                   setPm("");
                   const updated = res.data as Opp;
                   if (decision === "Go") {
-                    if (updated.phase_status === "Phase 1") onNavigate("project");
-                    else if (["Phase 2", "Phase 3", "Phase 4"].includes(updated.phase_status ?? "")) onNavigate("financial");
+                    if (updated.phase_status === "Phase 1")
+                      onNavigate("project");
+                    else if (
+                      ["Phase 2", "Phase 3", "Phase 4"].includes(
+                        updated.phase_status ?? "",
+                      )
+                    )
+                      onNavigate("financial");
                   } else if (decision === "No Go") {
                     onNavigate("overview");
                   }
@@ -3063,7 +4047,10 @@ function GateTab({
               </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={
+                  loading ||
+                  (decision === "Go" && isStpType && stpGateMissing.length > 0)
+                }
                 className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-60 ${decision === "Go" ? "bg-emerald-600 hover:bg-emerald-700" : decision === "No Go" ? "bg-red-500 hover:bg-red-600" : "bg-amber-500 hover:bg-amber-600"}`}
               >
                 {loading && <RefreshCw size={13} className="animate-spin" />}{" "}
@@ -3105,6 +4092,13 @@ const OUTCOME_CONFIG: Record<string, { label: string; color: string }> = {
   Escalate: { label: "Escalate", color: "bg-red-100 text-red-700" },
 };
 
+// Manual Revise-Baseline tool is hidden for now (client hasn't requested it). The
+// backend capability and this UI are kept intact — flip to `true` to re-enable.
+// Note: expected-saving changes BEFORE actuals exist are already handled automatically
+// (the monthly grid regenerates on save); this tool is only needed to re-baseline a
+// line that ALREADY has entered actuals while preserving them.
+const REVISE_BASELINE_ENABLED = false;
+
 // Phase-aware context for the financial tab
 const FINANCIAL_PHASE_CONTEXT: Record<
   string,
@@ -3118,9 +4112,9 @@ const FINANCIAL_PHASE_CONTEXT: Record<
 > = {
   "Phase 0": {
     color: "blue",
-    title: "Baseline Created",
+    title: "Not Started",
     guidance:
-      "Financial line just created. No actuals expected yet — implementation has not started.",
+      "No financial line yet — it is created automatically when Phase 2 is validated (Go to deployment).",
     canRevise: false,
     showActuals: false,
   },
@@ -3128,17 +4122,17 @@ const FINANCIAL_PHASE_CONTEXT: Record<
     color: "blue",
     title: "Feasibility Phase",
     guidance:
-      "No actuals expected yet. If the committee validates a revised saving figure, update the baseline below — monthly expected profile will rebuild.",
-    canRevise: true,
+      "No financial line yet — created at Phase 2 Go. Adjust the estimated annual saving on the opportunity form if the committee revises the figure.",
+    canRevise: false,
     showActuals: false,
   },
   "Phase 2": {
     color: "indigo",
-    title: "Execution Phase",
+    title: "Line Created",
     guidance:
-      "Execution is in progress. Prepare the deployment timing here, but monthly actuals stay read-only until Phase 3 starts.",
+      "Financial line created. The monthly tracking grid is generated once you enter the Real Start Date in Phase 3 (deployment).",
     canRevise: false,
-    showActuals: true,
+    showActuals: false,
   },
   "Phase 3": {
     color: "purple",
@@ -3199,7 +4193,14 @@ function FinancialTab({
   const phaseCtx =
     FINANCIAL_PHASE_CONTEXT[opp.phase_status ?? ""] ??
     FINANCIAL_PHASE_CONTEXT["Phase 3"];
-  const canEditFinancialRows = opp.phase_status === "Phase 3";
+  // Mirror the backend rule: actuals are editable while the financial line is Active
+  // and the opportunity has reached execution (Phase 3+), including Phase 4 (LLC) and
+  // closure-period realization — not only during Phase 3.
+  const canEditFinancialRows =
+    opp.financial_lines[0]?.status === "Active" &&
+    !["Assigned", "Phase 0", "Phase 1", "Phase 2"].includes(
+      opp.phase_status ?? "",
+    );
   const todayFirstOfMonth = new Date(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -3216,7 +4217,7 @@ function FinancialTab({
           No financial line yet
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          Created automatically when Phase 0 Go is applied.
+          Created automatically when Phase 2 is validated (Go to deployment).
         </p>
       </div>
     );
@@ -3265,7 +4266,9 @@ function FinancialTab({
 
   async function saveRow(monthId: number) {
     if (!canEditFinancialRows) {
-      setError("Monthly financial rows can only be edited in Phase 3.");
+      setError(
+        "Monthly actuals can only be edited while the financial line is Active and the opportunity has reached execution (Phase 3+).",
+      );
       return;
     }
     setLoading(true);
@@ -3292,7 +4295,10 @@ function FinancialTab({
       // Auto-prompt recovery form when outcome = Recover and no plan yet
       if (rowForm.monthly_outcome === "Recover") {
         const updatedLine = (res.data as Opp).financial_lines[0];
-        if (!updatedLine?.recovery_status || updatedLine.recovery_status === "Done") {
+        if (
+          !updatedLine?.recovery_status ||
+          updatedLine.recovery_status === "Done"
+        ) {
           setPendingRecoveryPrompt(true);
           setShowRecovery(true);
           setShowEscalate(false);
@@ -3439,99 +4445,107 @@ function FinancialTab({
         <p className={`mt-1 text-${phaseCtx.color}-600`}>{phaseCtx.guidance}</p>
         {!canEditFinancialRows && (
           <p className={`mt-2 font-semibold text-${phaseCtx.color}-700`}>
-            Monthly financial rows are read-only outside Phase 3.
+            Monthly actuals are editable once the line is active and the
+            opportunity reaches deployment (Phase 3+).
           </p>
         )}
       </div>
 
-      {/* Phase 1 or Phase 3 (after deployment start confirmed): revise baseline saving */}
-      {(phaseCtx.canRevise || (opp.phase_status === "Phase 3" && opp.real_start_date)) && !isCompleted && !isBudgeted && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-blue-700">
-                Revise Baseline Saving
-              </p>
-              <p className="text-[11px] text-blue-500 mt-0.5">
-                Current baseline:{" "}
-                <strong>{fmt(line.expected_annual_saving)}/year</strong> ·
-                Budget: <strong>{fmt(line.budget_value)}/year</strong> (locked)
-              </p>
-              <p className="text-[10px] text-blue-400 mt-0.5">
-                {opp.phase_status === "Phase 3"
-                  ? "Deployment started — revise the expected saving if the actual trajectory differs. Monthly profile will rebuild from the deployment start date."
-                  : "If the committee validated a revised figure, enter it here. Monthly expected profile will rebuild. Budget value stays unchanged."}
-              </p>
-            </div>
-            <button
-              onClick={() => setShowRevise((s) => !s)}
-              className="ml-3 shrink-0 text-[11px] font-semibold text-blue-600 hover:underline"
-            >
-              {showRevise ? "Cancel" : "Revise →"}
-            </button>
-          </div>
-          {showRevise && (
-            <form onSubmit={saveRevision} className="mt-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Revised Annual Saving (€) *
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={inp}
-                    placeholder={line.expected_annual_saving?.toString()}
-                    value={revisedSaving}
-                    onChange={(e) => setRevisedSaving(e.target.value)}
-                  />
-                  {revisedSaving && line.expected_annual_saving && (
-                    <p
-                      className={`text-[10px] mt-0.5 ${parseFloat(revisedSaving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
-                    >
-                      {parseFloat(revisedSaving) <
-                      Number(line.expected_annual_saving)
-                        ? "▼"
-                        : "▲"}{" "}
-                      Change: €
-                      {Math.abs(
-                        parseFloat(revisedSaving) -
-                          Number(line.expected_annual_saving),
-                      ).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Reason for revision *
-                  </label>
-                  <input
-                    required
-                    className={inp}
-                    placeholder="e.g. Tooling higher than estimated"
-                    value={reviseNote}
-                    onChange={(e) => setReviseNote(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[10.5px] text-amber-700">
-                ⚠ This will delete and rebuild all monthly expected rows. Rows
-                that already have actuals entered will be preserved.
+      {/* Revise baseline saving — only in Phase 3 once the real start is set and the
+          monthly grid exists (rebuild preserves entered actuals). Not available before
+          rows exist; adjust the estimate on the opportunity form in earlier phases. */}
+      {REVISE_BASELINE_ENABLED &&
+        opp.phase_status === "Phase 3" &&
+        opp.real_start_date &&
+        rows.length > 0 &&
+        !isCompleted && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-blue-700">
+                  Revise Baseline Saving
+                </p>
+                <p className="text-[11px] text-blue-500 mt-0.5">
+                  Current baseline:{" "}
+                  <strong>{fmt(line.expected_annual_saving)}/year</strong> ·
+                  Budget: <strong>{fmt(line.budget_value)}/year</strong>{" "}
+                  (locked)
+                </p>
+                <p className="text-[10px] text-blue-400 mt-0.5">
+                  {opp.phase_status === "Phase 3"
+                    ? "Deployment started — revise the expected saving if the actual trajectory differs. Monthly profile will rebuild from the deployment start date."
+                    : "If the committee validated a revised figure, enter it here. Monthly expected profile will rebuild. Budget value stays unchanged."}
+                </p>
               </div>
               <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={() => setShowRevise((s) => !s)}
+                className="ml-3 shrink-0 text-[11px] font-semibold text-blue-600 hover:underline"
               >
-                {loading && <RefreshCw size={12} className="animate-spin" />}{" "}
-                Confirm Revision
+                {showRevise ? "Cancel" : "Revise →"}
               </button>
-            </form>
-          )}
-        </div>
-      )}
+            </div>
+            {showRevise && (
+              <form onSubmit={saveRevision} className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                      Revised Annual Saving (€) *
+                    </label>
+                    <input
+                      required
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={inp}
+                      placeholder={line.expected_annual_saving?.toString()}
+                      value={revisedSaving}
+                      onChange={(e) => setRevisedSaving(e.target.value)}
+                    />
+                    {revisedSaving && line.expected_annual_saving && (
+                      <p
+                        className={`text-[10px] mt-0.5 ${parseFloat(revisedSaving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
+                      >
+                        {parseFloat(revisedSaving) <
+                        Number(line.expected_annual_saving)
+                          ? "▼"
+                          : "▲"}{" "}
+                        Change: €
+                        {Math.abs(
+                          parseFloat(revisedSaving) -
+                            Number(line.expected_annual_saving),
+                        ).toLocaleString("en-GB")}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                      Reason for revision *
+                    </label>
+                    <input
+                      required
+                      className={inp}
+                      placeholder="e.g. Tooling higher than estimated"
+                      value={reviseNote}
+                      onChange={(e) => setReviseNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[10.5px] text-amber-700">
+                  ⚠ This will delete and rebuild all monthly expected rows. Rows
+                  that already have actuals entered will be preserved.
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {loading && <RefreshCw size={12} className="animate-spin" />}{" "}
+                  Confirm Revision
+                </button>
+              </form>
+            )}
+          </div>
+        )}
 
       {/* Escalation banner */}
       {line.is_escalated && (
@@ -3570,10 +4584,14 @@ function FinancialTab({
             </p>
             <div className="flex items-center gap-3 text-[11px] text-amber-600">
               {line.recovery_amount != null && (
-                <span>Target: <strong>{fmt(line.recovery_amount)}</strong></span>
+                <span>
+                  Target: <strong>{fmt(line.recovery_amount)}</strong>
+                </span>
               )}
               {line.recovery_target_date && (
-                <span>By: <strong>{fmtDate(line.recovery_target_date)}</strong></span>
+                <span>
+                  By: <strong>{fmtDate(line.recovery_target_date)}</strong>
+                </span>
               )}
             </div>
           </div>
@@ -3640,14 +4658,20 @@ function FinancialTab({
       <div className="grid grid-cols-3 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 text-xs">
         <div>
           <span className="block font-semibold text-slate-400">
-            Expected Annual
+            {["Sourcing", "Technical Productivity"].includes(
+              opp.opportunity_type ?? "",
+            )
+              ? "Expected (period total)"
+              : "Expected Annual"}
           </span>
           <p className="font-bold text-slate-800">
             {fmt(line.expected_annual_saving)}
           </p>
         </div>
         <div>
-          <span className="block font-semibold text-slate-400">Actual YTD</span>
+          <span className="block font-semibold text-slate-400">
+            Actual (cumulative, all-time)
+          </span>
           <p
             className={`font-bold ${(line.cumulated_real_saving ?? 0) >= (line.expected_annual_saving ?? Infinity) ? "text-emerald-700" : "text-slate-800"}`}
           >
@@ -3720,7 +4744,7 @@ function FinancialTab({
             <RefreshCw size={11} />{" "}
             {line.recovery_status ? "Update Recovery" : "Set Recovery Plan"}
           </button>
-          {opp.phase_status === "Phase 3" && (
+          {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
             <button
               onClick={handleComplete}
               disabled={loading}
@@ -3817,7 +4841,9 @@ function FinancialTab({
             <div className="flex items-center gap-4 rounded-lg bg-white border border-amber-100 px-3 py-2 text-xs">
               <div>
                 <span className="text-slate-400">Current gap (Delta YTD) </span>
-                <span className={`font-bold ${(line.delta_vs_expected_ytd ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                <span
+                  className={`font-bold ${(line.delta_vs_expected_ytd ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}`}
+                >
                   {fmt(line.delta_vs_expected_ytd)}
                 </span>
               </div>
@@ -3825,10 +4851,14 @@ function FinancialTab({
                 <button
                   type="button"
                   className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200"
-                  onClick={() => setRecoveryForm((f) => ({
-                    ...f,
-                    recovery_amount: Math.abs(line.delta_vs_expected_ytd ?? 0).toString(),
-                  }))}
+                  onClick={() =>
+                    setRecoveryForm((f) => ({
+                      ...f,
+                      recovery_amount: Math.abs(
+                        line.delta_vs_expected_ytd ?? 0,
+                      ).toString(),
+                    }))
+                  }
                 >
                   Use as amount ↗
                 </button>
@@ -3845,7 +4875,10 @@ function FinancialTab({
                 className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none"
                 value={recoveryForm.recovery_status}
                 onChange={(e) =>
-                  setRecoveryForm((f) => ({ ...f, recovery_status: e.target.value }))
+                  setRecoveryForm((f) => ({
+                    ...f,
+                    recovery_status: e.target.value,
+                  }))
                 }
               >
                 <option>Planned</option>
@@ -3862,7 +4895,10 @@ function FinancialTab({
                 className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm outline-none"
                 value={recoveryForm.recovery_target_date}
                 onChange={(e) =>
-                  setRecoveryForm((f) => ({ ...f, recovery_target_date: e.target.value }))
+                  setRecoveryForm((f) => ({
+                    ...f,
+                    recovery_target_date: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -3879,7 +4915,10 @@ function FinancialTab({
               placeholder="e.g. 5000"
               value={recoveryForm.recovery_amount}
               onChange={(e) =>
-                setRecoveryForm((f) => ({ ...f, recovery_amount: e.target.value }))
+                setRecoveryForm((f) => ({
+                  ...f,
+                  recovery_amount: e.target.value,
+                }))
               }
             />
           </div>
@@ -3893,7 +4932,10 @@ function FinancialTab({
               placeholder="e.g. Renegotiate volume commitment to recover Q3 gap by November…"
               value={recoveryForm.recovery_note}
               onChange={(e) =>
-                setRecoveryForm((f) => ({ ...f, recovery_note: e.target.value }))
+                setRecoveryForm((f) => ({
+                  ...f,
+                  recovery_note: e.target.value,
+                }))
               }
             />
           </div>
@@ -3903,11 +4945,15 @@ function FinancialTab({
               disabled={loading}
               className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
             >
-              {loading && <RefreshCw size={11} className="animate-spin" />} Save Recovery Plan
+              {loading && <RefreshCw size={11} className="animate-spin" />} Save
+              Recovery Plan
             </button>
             <button
               type="button"
-              onClick={() => { setShowRecovery(false); setPendingRecoveryPrompt(false); }}
+              onClick={() => {
+                setShowRecovery(false);
+                setPendingRecoveryPrompt(false);
+              }}
               className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
             >
               {pendingRecoveryPrompt ? "Skip for now" : "Cancel"}
@@ -3917,19 +4963,42 @@ function FinancialTab({
           {/* History timeline */}
           {line.recovery_history && (
             <div className="border-t border-amber-100 pt-3 space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">History</p>
-              {line.recovery_history.split("\n").filter(Boolean).reverse().map((entry, i) => (
-                <p key={i} className="text-[10.5px] text-slate-500 font-mono leading-relaxed">
-                  {entry}
-                </p>
-              ))}
+              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+                History
+              </p>
+              {line.recovery_history
+                .split("\n")
+                .filter(Boolean)
+                .reverse()
+                .map((entry, i) => (
+                  <p
+                    key={i}
+                    className="text-[10.5px] text-slate-500 font-mono leading-relaxed"
+                  >
+                    {entry}
+                  </p>
+                ))}
             </div>
           )}
         </form>
       )}
 
+      {/* Line exists but no tracking grid yet — rows are built from the real start. */}
+      {rows.length === 0 && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-center">
+          <p className="text-xs font-semibold text-blue-700">
+            No monthly tracking rows yet
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Enter the <strong>Real Start Date</strong> in deployment (Phase 3)
+            to generate the monthly grid. Rows are built once, from the date
+            savings actually start flowing — there is no rebuild.
+          </p>
+        </div>
+      )}
+
       {/* Phase 0/1: show expected profile as read-only preview, no actuals entry */}
-      {!phaseCtx.showActuals && (
+      {rows.length > 0 && !phaseCtx.showActuals && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center">
           <p className="text-xs font-semibold text-slate-500">
             Expected Monthly Profile (read-only)
@@ -3988,8 +5057,18 @@ function FinancialTab({
                   </th>
                 )}
                 <th className="px-3 py-2 font-semibold">Outcome</th>
-                <th className="px-3 py-2 font-semibold text-blue-600" title="Why did the EOY forecast change?">Forecast note</th>
-                <th className="px-3 py-2 font-semibold" title="What happened this month?">Monthly note</th>
+                <th
+                  className="px-3 py-2 font-semibold text-blue-600"
+                  title="Why did the EOY forecast change?"
+                >
+                  Forecast note
+                </th>
+                <th
+                  className="px-3 py-2 font-semibold"
+                  title="What happened this month?"
+                >
+                  Monthly note
+                </th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -4014,12 +5093,12 @@ function FinancialTab({
                 const rowBg = isEdit
                   ? "bg-blue-50"
                   : isMissing
-                  ? "bg-red-50/40"
-                  : row.monthly_outcome === "Recover"
-                  ? "bg-amber-50/50"
-                  : row.monthly_outcome === "Escalate"
-                  ? "bg-red-50/30"
-                  : "hover:bg-slate-50/60";
+                    ? "bg-red-50/40"
+                    : row.monthly_outcome === "Recover"
+                      ? "bg-amber-50/50"
+                      : row.monthly_outcome === "Escalate"
+                        ? "bg-red-50/30"
+                        : "hover:bg-slate-50/60";
                 return (
                   <tr
                     key={row.monthly_financial_id}
@@ -4080,21 +5159,28 @@ function FinancialTab({
                             className={`w-24 rounded border px-1.5 py-1 text-xs ${
                               rowForm.forecast_eoy_saving &&
                               row.cumulated_actual != null &&
-                              parseFloat(rowForm.forecast_eoy_saving) < row.cumulated_actual
+                              parseFloat(rowForm.forecast_eoy_saving) <
+                                row.cumulated_actual
                                 ? "border-red-400 bg-red-50"
                                 : "border-blue-300"
                             }`}
                             value={rowForm.forecast_eoy_saving}
-                            onChange={(e) => setRowForm((f) => ({ ...f, forecast_eoy_saving: e.target.value }))}
+                            onChange={(e) =>
+                              setRowForm((f) => ({
+                                ...f,
+                                forecast_eoy_saving: e.target.value,
+                              }))
+                            }
                             placeholder="0"
                           />
                           {rowForm.forecast_eoy_saving &&
                             row.cumulated_actual != null &&
-                            parseFloat(rowForm.forecast_eoy_saving) < row.cumulated_actual && (
+                            parseFloat(rowForm.forecast_eoy_saving) <
+                              row.cumulated_actual && (
                               <p className="text-[9px] text-red-500 mt-0.5 w-24">
                                 Must be ≥ {fmt(row.cumulated_actual)}
                               </p>
-                          )}
+                            )}
                         </div>
                       ) : row.forecast_eoy_saving != null ? (
                         fmt(row.forecast_eoy_saving)
@@ -4156,52 +5242,71 @@ function FinancialTab({
                           >
                             {outcomeCfg.label}
                           </span>
-                          {row.monthly_outcome === "Recover" && line.recovery_status && (
-                            <span className={`rounded px-1.5 py-0.5 text-[8.5px] font-semibold ${
-                              line.recovery_status === "Done"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : line.recovery_status === "In Progress"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-amber-100 text-amber-700"
-                            }`}>
-                              Plan: {line.recovery_status}
-                            </span>
-                          )}
+                          {row.monthly_outcome === "Recover" &&
+                            line.recovery_status && (
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[8.5px] font-semibold ${
+                                  line.recovery_status === "Done"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : line.recovery_status === "In Progress"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                Plan: {line.recovery_status}
+                              </span>
+                            )}
                         </div>
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
                     {/* Forecast note — why did EOY forecast change? */}
-                    <td className="max-w-[120px] truncate px-3 py-2 text-blue-500 text-[11px]"
-                        title={row.forecast_comment || ""}>
+                    <td
+                      className="max-w-[120px] truncate px-3 py-2 text-blue-500 text-[11px]"
+                      title={row.forecast_comment || ""}
+                    >
                       {isEdit ? (
                         <input
                           className="w-28 rounded border border-blue-300 px-1.5 py-1 text-xs"
                           value={rowForm.forecast_comment}
-                          onChange={(e) => setRowForm((f) => ({ ...f, forecast_comment: e.target.value }))}
+                          onChange={(e) =>
+                            setRowForm((f) => ({
+                              ...f,
+                              forecast_comment: e.target.value,
+                            }))
+                          }
                           placeholder="Why forecast changed…"
                         />
+                      ) : row.forecast_comment ? (
+                        <span className="text-blue-500">
+                          {row.forecast_comment}
+                        </span>
                       ) : (
-                        row.forecast_comment
-                          ? <span className="text-blue-500">{row.forecast_comment}</span>
-                          : <span className="text-slate-300">—</span>
+                        <span className="text-slate-300">—</span>
                       )}
                     </td>
                     {/* Monthly note — what happened this month? */}
-                    <td className="max-w-[120px] truncate px-3 py-2 text-slate-400 text-[11px]"
-                        title={row.comment || ""}>
+                    <td
+                      className="max-w-[120px] truncate px-3 py-2 text-slate-400 text-[11px]"
+                      title={row.comment || ""}
+                    >
                       {isEdit ? (
                         <input
                           className="w-28 rounded border border-slate-300 px-1.5 py-1 text-xs"
                           value={rowForm.comment}
-                          onChange={(e) => setRowForm((f) => ({ ...f, comment: e.target.value }))}
+                          onChange={(e) =>
+                            setRowForm((f) => ({
+                              ...f,
+                              comment: e.target.value,
+                            }))
+                          }
                           placeholder="What happened…"
                         />
+                      ) : row.comment ? (
+                        <span>{row.comment}</span>
                       ) : (
-                        row.comment
-                          ? <span>{row.comment}</span>
-                          : <span className="text-slate-200">—</span>
+                        <span className="text-slate-200">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -4484,29 +5589,11 @@ const PHASE_OUTPUT_DEF: Record<
     deliverable: "Feasibility dossier (STP document)",
     fields: [
       {
-        key: "phase_output_notes",
-        label: "Output summary (gain · planning · risks · investment)",
-        type: "textarea",
-        hint: "Gain confirmed €, timeline weeks, key risks, total investment €",
-      },
-      {
-        key: "committee_review_date",
-        label: "Committee review date",
-        type: "date",
-      },
-      {
-        key: "committee_members",
-        label: "Committee members",
-        type: "text",
-        hint: "CEO, COO, Plant Manager, CDP, Achats",
-      },
-      {
         key: "status",
         label: "Project status",
         type: "select",
         options: ["On time", "Late", "On hold"],
       },
-      { key: "planned_end_date", label: "Planned end date", type: "date" },
     ],
   },
   "Phase 2": {
@@ -4515,24 +5602,11 @@ const PHASE_OUTPUT_DEF: Record<
     deliverable: "Execution package + off-tool first validation",
     fields: [
       {
-        key: "phase_output_notes",
-        label: "Output notes (objectives achieved, change mode confirmed)",
-        type: "textarea",
-        hint: "What was achieved vs Phase 1 plan. Silent or Standard confirmed.",
-      },
-      {
-        key: "off_tool_date",
-        label: "Off-tool date (first validation)",
-        type: "date",
-        hint: "Date of first off-tool part presentation",
-      },
-      {
         key: "status",
         label: "Project status",
         type: "select",
         options: ["On time", "Late", "On hold"],
       },
-      { key: "planned_end_date", label: "Planned end date", type: "date" },
     ],
   },
   "Phase 3": {
@@ -4889,7 +5963,11 @@ function StpDownloadButton({
     setLoading(true);
     setError(false);
     try {
-      await supplierAPI.downloadStpPdf(opportunityId, phase, oppName ?? undefined);
+      await supplierAPI.downloadStpPdf(
+        opportunityId,
+        phase,
+        oppName ?? undefined,
+      );
     } catch {
       setError(true);
       setTimeout(() => setError(false), 3000);
@@ -4941,8 +6019,9 @@ function DetailDrawer({
     const st = o.status ?? "";
     if (st === "Assigned") return "edit";
     if (ps === "Phase 0" && ["Working on it", "Needs Rework"].includes(st))
-      return ["Sourcing", "Technical Productivity"].includes(o.opportunity_type ?? "") ? "stp" : "edit";
-    if (st === "Awaiting Validation" || st === "Under Committee Review") return "gate";
+      return "edit";
+    if (st === "Awaiting Validation" || st === "Under Committee Review")
+      return "gate";
     if (ps === "Phase 1") return "project";
     if (["Phase 2", "Phase 3", "Phase 4"].includes(ps)) return "financial";
     if (ps === "Closed") return "overview";
@@ -4994,13 +6073,16 @@ function DetailDrawer({
   const docCount = opp.opp_documents?.length ?? 0;
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Overview", icon: <Layers size={11} /> },
-    { id: "edit", label: "Edit", icon: <FileText size={11} /> },
-    ...(showStpTab
-      ? [{ id: "stp" as Tab, label: "STP Study", icon: <FileText size={11} /> }]
-      : []),
+    // One editing tab — labelled "STP Study" for Sourcing/Tech-Productivity
+    // (general + STP in one form), "Edit" for Negotiation/Cash (general only).
+    {
+      id: "edit",
+      label: showStpTab ? "STP Study" : "Edit",
+      icon: <FileText size={11} />,
+    },
+    { id: "gate", label: "Gate", icon: <CheckCircle2 size={11} /> },
     { id: "project", label: "Project", icon: <FolderOpen size={11} /> },
     { id: "financial", label: "Financial", icon: <BarChart2 size={11} /> },
-    { id: "gate", label: "Gate", icon: <CheckCircle2 size={11} /> },
     {
       id: "files",
       label: `Files${docCount ? ` (${docCount})` : ""}`,
@@ -5067,7 +6149,9 @@ function DetailDrawer({
           </div>
           <div className="ml-3 flex shrink-0 items-center gap-1">
             {/* Download STP — only for Sourcing / Technical Productivity */}
-            {["Sourcing", "Technical Productivity"].includes(opp.opportunity_type ?? "") && (
+            {["Sourcing", "Technical Productivity"].includes(
+              opp.opportunity_type ?? "",
+            ) && (
               <div className="flex gap-1 mr-2">
                 {([0, 1] as const).map((ph) => (
                   <StpDownloadButton
@@ -5130,17 +6214,13 @@ function DetailDrawer({
               onRefresh={onRefresh}
             />
           )}
-          {tab === "stp" && (
-            <EditTab
-              key={`stp-${opp.opportunity_id}-${opp.updated_at ?? ""}-${opp.phase_status ?? ""}`}
+          {tab === "gate" && (
+            <GateTab
               opp={opp}
               userEmail={userEmail}
               onRefresh={onRefresh}
-              mode="stp"
+              onNavigate={setTab}
             />
-          )}
-          {tab === "gate" && (
-            <GateTab opp={opp} userEmail={userEmail} onRefresh={onRefresh} onNavigate={setTab} />
           )}
           {tab === "financial" && (
             <FinancialTab
@@ -5170,17 +6250,56 @@ function OppCard({
   onClick,
   onRefresh,
   userEmail,
+  compact = false,
 }: {
   opp: Opp;
   onClick: () => void;
   onRefresh?: (o: Opp) => void;
   userEmail?: string;
+  compact?: boolean;
 }) {
   const typeClass =
     TYPE_COLORS[opp.opportunity_type ?? ""] ??
     "bg-slate-100 text-slate-600 border-slate-200";
   const hasFinancial = opp.financial_lines.length > 0;
   const line = opp.financial_lines[0];
+
+  if (compact) {
+    return (
+      <div
+        onClick={onClick}
+        className="group flex cursor-pointer items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2 transition-all hover:border-blue-200 hover:bg-blue-50/40 dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]"
+      >
+        <span
+          className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${typeClass}`}
+        >
+          {opp.opportunity_type?.slice(0, 3)}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-slate-800 dark:text-slate-100">
+          {opp.opportunity_name}
+        </p>
+        {opp.expected_annual_saving && (
+          <span className="shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+            {fmt(opp.expected_annual_saving)}
+          </span>
+        )}
+        <span
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_COLORS[opp.status ?? ""] ?? "bg-slate-100 text-slate-500"}`}
+        >
+          {opp.status === "Awaiting Validation"
+            ? "Awaiting"
+            : opp.status === "Under Committee Review"
+              ? "Committee"
+              : opp.status === "Working on it"
+                ? "Working"
+                : opp.status === "Needs Rework"
+                  ? "Rework"
+                  : opp.status}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={onClick}
@@ -5195,7 +6314,9 @@ function OppCard({
           className="mt-0.5 shrink-0 text-slate-300 group-hover:text-blue-400 dark:text-slate-600 dark:group-hover:text-blue-400"
         />
       </div>
-      <p className="mb-2 text-[10.5px] text-slate-400 dark:text-slate-500">{opp.idea_owner}</p>
+      <p className="mb-2 text-[10.5px] text-slate-400 dark:text-slate-500">
+        {opp.idea_owner}
+      </p>
       <div className="flex flex-wrap gap-1 mb-2">
         <span
           className={`rounded-full border px-2 py-0.5 text-[9.5px] font-bold ${typeClass}`}
@@ -5279,12 +6400,14 @@ function PhaseColumn({
   onSelect,
   onRefresh,
   userEmail,
+  compact = false,
 }: {
   phase: string;
   opps: Opp[];
   onSelect: (o: Opp) => void;
   onRefresh?: (o: Opp) => void;
   userEmail?: string;
+  compact?: boolean;
 }) {
   const cfg = PHASE_CONFIG[phase] ?? { color: "text-slate-500", desc: "" };
   return (
@@ -5292,14 +6415,18 @@ function PhaseColumn({
       <div className="mb-3 flex items-center gap-2 px-1">
         <CircleDot size={13} className={cfg.color} />
         <div className="min-w-0">
-          <p className="text-[12.5px] font-bold text-slate-800 dark:text-slate-100">{phase}</p>
-          <p className="truncate text-[10px] text-slate-400 dark:text-slate-500">{cfg.desc}</p>
+          <p className="text-[12.5px] font-bold text-slate-800 dark:text-slate-100">
+            {phase}
+          </p>
+          <p className="truncate text-[10px] text-slate-400 dark:text-slate-500">
+            {cfg.desc}
+          </p>
         </div>
         <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600 dark:bg-white/[0.08] dark:text-slate-300">
           {opps.length}
         </span>
       </div>
-      <div className="space-y-2.5">
+      <div className="max-h-[calc(100vh-280px)] overflow-y-auto space-y-1.5 pr-0.5 [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent] dark:[scrollbar-color:rgba(255,255,255,0.1)_transparent]">
         {opps.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-[11px] text-slate-400 dark:border-white/[0.1] dark:text-slate-600">
             Empty
@@ -5312,6 +6439,7 @@ function PhaseColumn({
               onClick={() => onSelect(o)}
               onRefresh={onRefresh}
               userEmail={userEmail}
+              compact={compact}
             />
           ))
         )}
@@ -5388,6 +6516,7 @@ export default function PurchasingValuePage() {
   const [filterEscalated, setFilterEscalated] = useState(false);
   const [filterValidation, setFilterValidation] = useState("All");
   const [showClosed, setShowClosed] = useState(false);
+  const [compact, setCompact] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -5405,6 +6534,23 @@ export default function PurchasingValuePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep-link: open a specific opportunity's detail when navigated from Budgeting
+  const location = useLocation();
+  const navigate = useNavigate();
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    const id = (location.state as { openOpportunityId?: number } | null)
+      ?.openOpportunityId;
+    if (id && !deepLinkDone.current && opportunities.length) {
+      const found = opportunities.find((o) => o.opportunity_id === id);
+      if (found) {
+        setSelected(found);
+        deepLinkDone.current = true;
+        navigate(location.pathname, { replace: true, state: null });
+      }
+    }
+  }, [location, opportunities, navigate]);
 
   // Derive dropdown options from loaded data
   const plantOptions = [
@@ -5464,11 +6610,14 @@ export default function PurchasingValuePage() {
       String(o.budget_year) !== filterBudgetYear
     )
       return false;
-    if (
-      filterValidation !== "All" &&
-      o.validation_decision !== filterValidation
-    )
-      return false;
+    if (filterValidation !== "All") {
+      // "Pending" = no gate decision recorded yet (validation_decision is null).
+      if (filterValidation === "Pending") {
+        if (o.validation_decision != null) return false;
+      } else if (o.validation_decision !== filterValidation) {
+        return false;
+      }
+    }
     if (filterEscalated && !o.financial_lines.some((l) => l.is_escalated))
       return false;
     if (!showClosed && o.phase_status === "Closed") return false;
@@ -5519,8 +6668,22 @@ export default function PurchasingValuePage() {
     return acc;
   }, {});
 
-  // KPIs
-  const budgetedOpps = opportunities.filter((o) => o.budget_status === "Budgeted");
+  // KPIs — budget source of truth is OpportunityBudgetYear (director commitment),
+  // not opp.budget_status (execution-maturity flag).
+  const currentYear = new Date().getFullYear();
+  const committedOppIds = new Set(
+    opportunities
+      .filter((o) =>
+        o.budget_years?.some(
+          (by) =>
+            by.fiscal_year === currentYear && by.budget_status === "Budgeted",
+        ),
+      )
+      .map((o) => o.opportunity_id),
+  );
+  const budgetedOpps = opportunities.filter((o) =>
+    committedOppIds.has(o.opportunity_id),
+  );
   const budgetedSaving = budgetedOpps.reduce(
     (s, o) => s + toNum(o.expected_annual_saving),
     0,
@@ -5530,14 +6693,16 @@ export default function PurchasingValuePage() {
     .reduce((s, l) => s + toNum(l.cumulated_real_saving), 0);
   const budgeted = budgetedOpps.length;
   const overBudgetLines = opportunities
+    .filter((o) => committedOppIds.has(o.opportunity_id))
     .flatMap((o) => o.financial_lines)
     .filter(
       (l) =>
-        l.budget_status === "Budgeted" &&
         toNum(l.budget_value) > 0 &&
         toNum(l.forecast_eoy_current) > toNum(l.budget_value),
     );
-  const overBudgetCount = new Set(overBudgetLines.map((l) => l.financial_line_id)).size;
+  const overBudgetCount = new Set(
+    overBudgetLines.map((l) => l.financial_line_id),
+  ).size;
   const overBudgetAmount = overBudgetLines.reduce(
     (s, l) => s + (toNum(l.forecast_eoy_current) - toNum(l.budget_value)),
     0,
@@ -5581,6 +6746,18 @@ export default function PurchasingValuePage() {
               Refresh
             </button>
             <button
+              onClick={() => setCompact((c) => !c)}
+              title={compact ? "Full cards" : "Compact cards"}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                compact
+                  ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-slate-300 dark:hover:bg-white/[0.09]"
+              }`}
+            >
+              {compact ? <LayoutGrid size={12} /> : <LayoutList size={12} />}
+              {compact ? "Full" : "Compact"}
+            </button>
+            <button
               onClick={() => setShowCreate(true)}
               className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
@@ -5611,12 +6788,13 @@ export default function PurchasingValuePage() {
               color: "violet",
             },
             {
-              icon: <AlertTriangle size={12} />,
-              label: "Over Budget",
-              val: overBudgetCount > 0
-                ? `${overBudgetCount} · +${fmt(overBudgetAmount)}`
-                : "0",
-              color: overBudgetCount > 0 ? "red" : "slate",
+              icon: <TrendingUp size={12} />,
+              label: "Over-Delivery vs Budget",
+              val:
+                overBudgetCount > 0
+                  ? `${overBudgetCount} · +${fmt(overBudgetAmount)}`
+                  : "0",
+              color: overBudgetCount > 0 ? "emerald" : "slate",
             },
             ...(stuck
               ? [
@@ -5672,7 +6850,7 @@ export default function PurchasingValuePage() {
             label="Budget"
             value={filterBudget}
             onChange={setFilterBudget}
-            options={["All", "Budgeted", "Outside Budget"]}
+            options={["All", "Budgeted", "Empty"]}
           />
           <Sep />
           <div className="flex items-center gap-1.5">
@@ -5843,6 +7021,7 @@ export default function PurchasingValuePage() {
                   onSelect={setSelected}
                   onRefresh={handleRefresh}
                   userEmail={userEmail}
+                  compact={compact}
                 />
                 {i < visiblePhases.length - 1 && (
                   <ArrowRight
