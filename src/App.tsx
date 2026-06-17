@@ -18,8 +18,13 @@ import ActiveSitesPage from "./pages/ActiveSitesPage";
 import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
 import PurchasingValuePage from "./pages/PurchasingValuePage";
 import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
+import BudgetingPage from "./pages/BudgetingPage";
+import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
 // import PurchasingKpiPage from "./pages/PurchasingKpiPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
+import CarbonFootprintPage from "./pages/CarbonFootprintPage";
+import CertificationsTrackingPage from "./pages/CertificationsTrackingPage";
+import DocumentsValidityPage from "./pages/DocumentsValidityPage";
 
 function ProtectedShell() {
   const location = useLocation();
@@ -74,8 +79,13 @@ const router = createBrowserRouter([
       },
       { path: "/purchasing-value", element: <PurchasingValuePage /> },
       { path: "/purchasing-value/recovery", element: <PurchasingRecoveryPage /> },
+      { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
+      { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
       // { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
+      { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },
+      { path: "/suppliers/certifications", element: <CertificationsTrackingPage /> },
+      { path: "/suppliers/documents-validity", element: <DocumentsValidityPage /> },
       { path: "*", element: <Navigate to="/suppliers" replace /> },
     ],
   },

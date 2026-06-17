@@ -6,7 +6,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ClipboardList,
+  FileCheck,
   GitBranchPlus,
+  Leaf,
   PanelLeft,
   TrendingUp,
 } from "lucide-react";
@@ -34,7 +36,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: GitBranchPlus,
     subItems: [
       { name: "New Supplier Master", path: "/suppliers/onboarding" },
-      { name: "Existing Group Management", path: "/suppliers/manage" },
+      { name: "Group Management (SB9)", path: "/suppliers/manage" },
     ],
   },
   {
@@ -42,15 +44,20 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Portfolio",
     icon: Building2,
     subItems: [
-      { name: "Supplier Panel", path: "/suppliers" },
-      { name: "Development Plans", path: "/suppliers/development-plans" },
+      { name: "Supplier Panel (SB1)", path: "/suppliers" },
+      { name: "Development Plans (SB22)", path: "/suppliers/development-plans" },
+      { name: "Carbon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
+      { name: "Documents & Validity (SB1+SB6)", path: "/suppliers/documents-validity" },
     ],
   },
   {
     name: "Evaluations",
     label: "Evaluations",
     icon: ClipboardList,
-    subItems: [{ name: "Evaluation Dashboard", path: "/evaluations" }],
+    subItems: [
+      { name: "Evaluation Dashboard", path: "/evaluations" },
+      { name: "Certifications Tracker", path: "/suppliers/certifications" },
+    ],
   },
   {
     name: "Purchasing Value",
@@ -58,6 +65,8 @@ const PRIMARY_NAV: NavItem[] = [
     icon: TrendingUp,
     subItems: [
       { name: "Opportunities", path: "/purchasing-value" },
+      { name: "Monthly Follow-up", path: "/purchasing-value/monthly" },
+      { name: "Budgeting", path: "/purchasing-value/budgeting" },
       { name: "Recovery Plans", path: "/purchasing-value/recovery" },
     ],
   },
