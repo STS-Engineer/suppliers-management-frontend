@@ -22,6 +22,7 @@ import BudgetingPage from "./pages/BudgetingPage";
 import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
 // import PurchasingKpiPage from "./pages/PurchasingKpiPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
+import GateApprovalPage from "./pages/GateApprovalPage";
 // import CarbonFootprintPage from "./pages/CarbonFootprintPage";
 // import CertificationsTrackingPage from "./pages/CertificationsTrackingPage";
 // import DocumentsValidityPage from "./pages/DocumentsValidityPage";
@@ -53,6 +54,10 @@ const router = createBrowserRouter([
   {
     path: "/signin",
     element: <SignInPage />,
+  },
+  {
+    path: "/approve/:token",
+    element: <GateApprovalPage />,
   },
   {
     element: <ProtectedShell />,

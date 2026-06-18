@@ -1697,6 +1697,49 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async requestGateApproval(
+    opportunityId: number,
+    data: { plant_manager_email: string; purchasing_manager_emails?: string[]; message?: string },
+  ) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/request`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
+      "Failed to submit gate approval request.",
+    );
+  }
+
+  async getGateApprovalStatus(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load gate approval status.",
+    );
+  }
+
+  // Public — no auth
+  async getVoteForm(token: string) {
+    const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const msg = body?.detail?.message || body?.message || "Approval link not found or expired.";
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+
+  async submitVote(token: string, data: { decision: string; comment?: string; project_manager_email?: string }) {
+    const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.detail?.message || body?.message || "Failed to submit decision.");
+    }
+    return res.json();
+  }
+
   async completeFinancialLine(
     lineId: number,
     data: { completed_by?: string; comments?: string },
