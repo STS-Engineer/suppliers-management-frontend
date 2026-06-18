@@ -45,9 +45,9 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Building2,
     subItems: [
       { name: "Supplier Panel (SB1)", path: "/suppliers" },
-      { name: "Development Plans (SB22)", path: "/suppliers/development-plans" },
-      { name: "Carbon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
-      { name: "Documents & Validity (SB1+SB6)", path: "/suppliers/documents-validity" },
+      // { name: "Development Plans (SB22)", path: "/suppliers/development-plans" },
+      // { name: "Carbon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
+      // { name: "Documents & Validity (SB1+SB6)", path: "/suppliers/documents-validity" },
     ],
   },
   {
@@ -56,7 +56,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: ClipboardList,
     subItems: [
       { name: "Evaluation Dashboard", path: "/evaluations" },
-      { name: "Certifications Tracker", path: "/suppliers/certifications" },
+      // { name: "Certifications Tracker", path: "/suppliers/certifications" },
     ],
   },
   {
