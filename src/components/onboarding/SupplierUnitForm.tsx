@@ -122,6 +122,24 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
         />
 
         <FormInput
+          label="Continent"
+          name="continent"
+          value={data.continent}
+          onChange={(e) => onChange("continent", e.target.value)}
+          placeholder="e.g., Asia, Europe"
+          error={errors.continent}
+        />
+
+        <FormInput
+          label="Area / Region"
+          name="area"
+          value={data.area}
+          onChange={(e) => onChange("area", e.target.value)}
+          placeholder="e.g., Greater China, Central Europe"
+          error={errors.area}
+        />
+
+        <FormInput
           label="Website"
           name="website"
           type="url"
@@ -130,6 +148,37 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
           placeholder="https://supplier.com"
           error={errors.website}
         />
+
+        <FormInput
+          label="Supplier Email"
+          name="supplier_email"
+          type="email"
+          value={data.supplier_email}
+          onChange={(e) => onChange("supplier_email", e.target.value)}
+          placeholder="contact@supplier.com"
+          error={errors.supplier_email}
+        />
+
+        <FormInput
+          label="Commodity Responsible"
+          name="commodity_responsible"
+          value={data.commodity_responsible}
+          onChange={(e) => onChange("commodity_responsible", e.target.value)}
+          placeholder="e.g., John Smith"
+          error={errors.commodity_responsible}
+        />
+
+        <div className="col-span-2">
+          <FormInput
+            label="Main Plants (Avocarbon)"
+            name="main_plants"
+            value={data.main_plants}
+            onChange={(e) => onChange("main_plants", e.target.value)}
+            placeholder="e.g., FR01, DE03 (comma-separated)"
+            helperText="Avocarbon plants this unit primarily supplies"
+            error={errors.main_plants}
+          />
+        </div>
       </div>
 
       {/* ── Product classification ── */}
@@ -239,6 +288,70 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
           placeholder="e.g., Ferrites, Chokes, Wire coils…"
           helperText="Product categories supplied by this unit"
         />
+      </div>
+
+      {/* ── GHG Data ── */}
+      <div className="col-span-2 mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+        <h3 className="text-base font-semibold text-emerald-900">GHG Emissions Data</h3>
+        <p className="mt-1 text-sm text-emerald-700">
+          Greenhouse gas footprint reported by the supplier.
+        </p>
+      </div>
+
+      <div className="form-grid mt-4">
+        <FormInput
+          label="Scope 1 GHG"
+          name="scope1_ghg"
+          type="number"
+          value={data.scope1_ghg}
+          onChange={(e) => onChange("scope1_ghg", e.target.value)}
+          placeholder="0.00"
+          suffix="tCO₂e"
+          helperText="Direct emissions (Scope 1)"
+          error={errors.scope1_ghg}
+        />
+
+        <FormInput
+          label="Scope 2 GHG"
+          name="scope2_ghg"
+          type="number"
+          value={data.scope2_ghg}
+          onChange={(e) => onChange("scope2_ghg", e.target.value)}
+          placeholder="0.00"
+          suffix="tCO₂e"
+          helperText="Indirect energy emissions (Scope 2)"
+          error={errors.scope2_ghg}
+        />
+
+        <FormInput
+          label="GHG Requested Date"
+          name="ghg_requested_date"
+          type="date"
+          value={data.ghg_requested_date}
+          onChange={(e) => onChange("ghg_requested_date", e.target.value)}
+          error={errors.ghg_requested_date}
+        />
+
+        <FormInput
+          label="GHG Completion %"
+          name="ghg_completion_pct"
+          value={data.ghg_completion_pct}
+          onChange={(e) => onChange("ghg_completion_pct", e.target.value)}
+          placeholder="e.g., 75%"
+          helperText="Data collection completion percentage"
+          error={errors.ghg_completion_pct}
+        />
+
+        <div className="col-span-2">
+          <label className="mb-1 block text-sm font-semibold text-slate-700">GHG Comments</label>
+          <textarea
+            value={data.ghg_comments}
+            onChange={(e) => onChange("ghg_comments", e.target.value)}
+            rows={3}
+            placeholder="Notes on emissions data collection, methodology, or status…"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-gray-800 dark:text-white resize-none"
+          />
+        </div>
       </div>
 
       {/* ── Group contacts reference ── */}

@@ -93,8 +93,18 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
+  const [continent, setContinent] = useState("");
+  const [area, setArea] = useState("");
   const [productType, setProductType] = useState("");
   const [productCategory, setProductCategory] = useState("");
+  const [supplierEmail, setSupplierEmail] = useState("");
+  const [commodityResponsible, setCommodityResponsible] = useState("");
+  const [mainPlants, setMainPlants] = useState("");
+  const [scope1Ghg, setScope1Ghg] = useState("");
+  const [scope2Ghg, setScope2Ghg] = useState("");
+  const [ghgComments, setGhgComments] = useState("");
+  const [ghgRequestedDate, setGhgRequestedDate] = useState("");
+  const [ghgCompletionPct, setGhgCompletionPct] = useState("");
 
   // Contacts
   const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
@@ -231,8 +241,18 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
           address_line: address || undefined,
           city: city || undefined,
           country: country || undefined,
+          continent: continent || undefined,
+          area: area || undefined,
           product_type: productType || undefined,
           product_category: productCategory || undefined,
+          supplier_email: supplierEmail || undefined,
+          commodity_responsible: commodityResponsible || undefined,
+          main_plants: mainPlants || undefined,
+          scope1_ghg: scope1Ghg ? scope1Ghg : undefined,
+          scope2_ghg: scope2Ghg ? scope2Ghg : undefined,
+          ghg_comments: ghgComments || undefined,
+          ghg_requested_date: ghgRequestedDate || undefined,
+          ghg_completion_pct: ghgCompletionPct || undefined,
         },
         contacts,
         certifications,
@@ -289,6 +309,14 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
               <input className={cx()} placeholder="Country"
                 value={country} onChange={(e) => setCountry(e.target.value)} />
             </Field>
+            <Field label="Continent">
+              <input className={cx()} placeholder="e.g. Asia, Europe"
+                value={continent} onChange={(e) => setContinent(e.target.value)} />
+            </Field>
+            <Field label="Area / Region">
+              <input className={cx()} placeholder="e.g. Greater China"
+                value={area} onChange={(e) => setArea(e.target.value)} />
+            </Field>
             <Field label="Product Type">
               <input className={cx()} placeholder="e.g. Electronics"
                 value={productType} onChange={(e) => setProductType(e.target.value)} />
@@ -296,6 +324,38 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
             <Field label="Product Category">
               <input className={cx()} placeholder="e.g. Semiconductors"
                 value={productCategory} onChange={(e) => setProductCategory(e.target.value)} />
+            </Field>
+            <Field label="Supplier Email">
+              <input className={cx()} type="email" placeholder="contact@supplier.com"
+                value={supplierEmail} onChange={(e) => setSupplierEmail(e.target.value)} />
+            </Field>
+            <Field label="Commodity Responsible">
+              <input className={cx()} placeholder="e.g. John Smith"
+                value={commodityResponsible} onChange={(e) => setCommodityResponsible(e.target.value)} />
+            </Field>
+            <Field label="Main Plants" span={2}>
+              <input className={cx()} placeholder="e.g. FR01, DE03 (comma-separated)"
+                value={mainPlants} onChange={(e) => setMainPlants(e.target.value)} />
+            </Field>
+            <Field label="Scope 1 GHG (tCO₂e)">
+              <input className={cx()} type="number" placeholder="0.00"
+                value={scope1Ghg} onChange={(e) => setScope1Ghg(e.target.value)} />
+            </Field>
+            <Field label="Scope 2 GHG (tCO₂e)">
+              <input className={cx()} type="number" placeholder="0.00"
+                value={scope2Ghg} onChange={(e) => setScope2Ghg(e.target.value)} />
+            </Field>
+            <Field label="GHG Requested Date">
+              <input className={cx()} type="date"
+                value={ghgRequestedDate} onChange={(e) => setGhgRequestedDate(e.target.value)} />
+            </Field>
+            <Field label="GHG Completion %">
+              <input className={cx()} placeholder="e.g. 75%"
+                value={ghgCompletionPct} onChange={(e) => setGhgCompletionPct(e.target.value)} />
+            </Field>
+            <Field label="GHG Comments" span={2}>
+              <textarea className={cx() + " resize-none"} rows={2} placeholder="Notes on GHG data collection…"
+                value={ghgComments} onChange={(e) => setGhgComments(e.target.value)} />
             </Field>
           </div>
         </Section>

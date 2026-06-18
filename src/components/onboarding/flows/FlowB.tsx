@@ -100,6 +100,18 @@ export const FlowB: React.FC<FlowBProps> = ({
   );
   const [supplierScope] = useState(groupScope ?? "local");
 
+  // SB1 logistics fields (optional)
+  const [transportMode, setTransportMode] = useState("");
+  const [transitDays, setTransitDays] = useState("");
+  const [incotermPlace, setIncotermPlace] = useState("");
+  const [realApDays, setRealApDays] = useState("");
+  const [deliveryStatus, setDeliveryStatus] = useState("");
+  const [dataValidity, setDataValidity] = useState("");
+  const [qualityCertRequired, setQualityCertRequired] = useState("");
+  const [reqApDate, setReqApDate] = useState("");
+  const [consignment, setConsignment] = useState(false);
+  const [preferredDevSupplier, setPreferredDevSupplier] = useState(false);
+
   // Contact step
   const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
@@ -216,6 +228,16 @@ export const FlowB: React.FC<FlowBProps> = ({
       const relRes = await supplierAPI.linkUnitToSite(unitId, siteId, {
         supplier_owner: supplierOwner,
         supplier_scope: supplierScope,
+        transport_mode: transportMode || undefined,
+        transit_days: transitDays ? parseInt(transitDays) : undefined,
+        incoterm_place: incotermPlace || undefined,
+        real_ap_days: realApDays ? parseInt(realApDays) : undefined,
+        delivery_status: deliveryStatus || undefined,
+        data_validity: dataValidity || undefined,
+        quality_cert_required: qualityCertRequired || undefined,
+        req_ap_date: reqApDate || undefined,
+        consignment: consignment || undefined,
+        preferred_dev_supplier: preferredDevSupplier || undefined,
       });
 
       const relationId: number | undefined =
@@ -618,6 +640,57 @@ export const FlowB: React.FC<FlowBProps> = ({
                 Using the global owner configured on the supplier group.
               </div>
             )}
+
+            {/* SB1 logistics (optional) */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Logistics (SB1) — Optional
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <FieldWrap label="Transport Mode">
+                  <input className={inputCls} placeholder="e.g. Sea, Air, Road"
+                    value={transportMode} onChange={(e) => setTransportMode(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Transit Days">
+                  <input className={inputCls} type="number" placeholder="e.g. 30"
+                    value={transitDays} onChange={(e) => setTransitDays(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Incoterm / Place">
+                  <input className={inputCls} placeholder="e.g. FOB Shanghai"
+                    value={incotermPlace} onChange={(e) => setIncotermPlace(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Real AP Days">
+                  <input className={inputCls} type="number" placeholder="e.g. 45"
+                    value={realApDays} onChange={(e) => setRealApDays(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Delivery Status">
+                  <input className={inputCls} placeholder="e.g. On time"
+                    value={deliveryStatus} onChange={(e) => setDeliveryStatus(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Data Validity">
+                  <input className={inputCls} placeholder="e.g. Up to date"
+                    value={dataValidity} onChange={(e) => setDataValidity(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Quality Cert Required">
+                  <input className={inputCls} placeholder="e.g. IATF 16949"
+                    value={qualityCertRequired} onChange={(e) => setQualityCertRequired(e.target.value)} />
+                </FieldWrap>
+                <FieldWrap label="Requested AP Date">
+                  <input className={inputCls} type="date"
+                    value={reqApDate} onChange={(e) => setReqApDate(e.target.value)} />
+                </FieldWrap>
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <input type="checkbox" id="consignment" checked={consignment} onChange={(e) => setConsignment(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                  <label htmlFor="consignment" className="text-sm text-slate-700 cursor-pointer">Consignment</label>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <input type="checkbox" id="preferred_dev" checked={preferredDevSupplier} onChange={(e) => setPreferredDevSupplier(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                  <label htmlFor="preferred_dev" className="text-sm text-slate-700 cursor-pointer">Preferred Dev Supplier</label>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

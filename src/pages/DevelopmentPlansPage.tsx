@@ -1819,6 +1819,9 @@ function ViewDetailsModal({
   const [form, setForm] = useState({
     plan_title: plan.plan_title ?? "",
     plan_status: plan.plan_status ?? "",
+    decision: plan.decision ?? "",
+    commodity: plan.commodity ?? "",
+    plant: plan.plant ?? "",
     internal_comments: plan.internal_comments ?? "",
     supplier_comments: plan.supplier_comments ?? "",
   });
@@ -1900,6 +1903,9 @@ function ViewDetailsModal({
         {
           plan_title: form.plan_title.trim() || undefined,
           plan_status: form.plan_status || undefined,
+          decision: form.decision.trim() || undefined,
+          commodity: form.commodity.trim() || undefined,
+          plant: form.plant.trim() || undefined,
           internal_comments: form.internal_comments.trim() || undefined,
           supplier_comments: form.supplier_comments.trim() || undefined,
           sync_relation_hold_status: false,
@@ -1953,6 +1959,20 @@ function ViewDetailsModal({
                 </select>
               </div>
             )}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Decision (SB22)</label>
+                <input value={form.decision} onChange={(e) => setField("decision", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. Approved" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Commodity</label>
+                <input value={form.commodity} onChange={(e) => setField("commodity", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. Casting" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Plant</label>
+                <input value={form.plant} onChange={(e) => setField("plant", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. FR01" />
+              </div>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Internal Notes</label>
               <textarea value={form.internal_comments} onChange={(e) => setField("internal_comments", e.target.value)} rows={4} className={`${inputCls} resize-none`} disabled={isClosed} placeholder="Internal team notes…" />
@@ -3079,6 +3099,25 @@ export default function DevelopmentPlansPage() {
                             )}
                           </div>
                           {dp.plan_title && <PlanTitleTooltip title={dp.plan_title} />}
+                          {(dp.decision || dp.commodity || dp.plant) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {dp.decision && (
+                                <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                  {dp.decision}
+                                </span>
+                              )}
+                              {dp.commodity && (
+                                <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                                  {dp.commodity}
+                                </span>
+                              )}
+                              {dp.plant && (
+                                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                  {dp.plant}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {dp.approved_by && (
                             <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
                               <CheckCircle2 className="h-3 w-3" /> {dp.approved_by}

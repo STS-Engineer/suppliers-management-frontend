@@ -7,13 +7,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowRight,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   Edit2,
   Globe,
   Plus,
   RefreshCw,
   Save,
   Search,
-  Settings,
   Shield,
   Sliders,
   TrendingDown,
@@ -456,6 +457,15 @@ function SkeletonCard() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 24; // cards per page
+
+const SCOPE_OPTIONS = [
+  { value: "", label: "All scopes" },
+  { value: "global", label: "Global" },
+  { value: "strategic", label: "Strategic" },
+  { value: "local", label: "Local" },
+];
+
 export const SupplierManagementPage = () => {
   const { groupId } = useParams<{ groupId?: string }>();
   const navigate = useNavigate();
@@ -464,16 +474,19 @@ export const SupplierManagementPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(null);
   const [directGroup, setDirectGroup] = useState<SupplierGroupSummary | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    supplierAPI.listSupplierGroups(0, 200).then((res) => {
+    supplierAPI.listSupplierGroups(0, 1000).then((res) => {
       if (cancelled) return;
       const items: SupplierGroupSummary[] = res.data?.items || [];
       setGroups(items);
@@ -490,14 +503,49 @@ export const SupplierManagementPage = () => {
     return () => { cancelled = true; };
   }, [groupId, reloadTick]);
 
+  // Reset page on filter/search change
+  useEffect(() => { setPage(0); }, [search, scopeFilter, categoryFilter]);
+
   const filtered = useMemo(() => {
+    let list = groups;
+    if (scopeFilter) {
+      list = list.filter((g) => (g.supplier_scope ?? "").toLowerCase() === scopeFilter);
+    }
+    if (categoryFilter) {
+      const kw = categoryFilter.toLowerCase();
+      list = list.filter((g) =>
+        (g.supplier_type ?? "").toLowerCase().includes(kw)
+      );
+    }
     const kw = search.trim().toLowerCase();
-    if (!kw) return groups;
-    return groups.filter((g) =>
-      [g.nom, g.supplier_scope, g.supplier_type, g.group_code]
-        .filter(Boolean).some((v) => String(v).toLowerCase().includes(kw))
-    );
-  }, [groups, search]);
+    if (kw) {
+      list = list.filter((g) =>
+        [g.nom, g.supplier_scope, g.supplier_type, g.group_code]
+          .filter(Boolean).some((v) => String(v).toLowerCase().includes(kw))
+      );
+    }
+    return list;
+  }, [groups, search, scopeFilter, categoryFilter]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const hasFilters = !!(search || scopeFilter || categoryFilter);
+  const clearFilters = () => { setSearch(""); setScopeFilter(""); setCategoryFilter(""); };
+
+  // All categories from loaded groups
+  const allCategories = useMemo(() => {
+    const set = new Set<string>();
+    groups.forEach((g) => {
+      if (g.supplier_type) {
+        g.supplier_type.split(/[,;]/).forEach((c) => {
+          const t = c.trim();
+          if (t) set.add(t);
+        });
+      }
+    });
+    return Array.from(set).sort();
+  }, [groups]);
 
   // Direct navigation to /suppliers/:groupId/manage
   if (groupId && directGroup) {
@@ -513,7 +561,7 @@ export const SupplierManagementPage = () => {
   return (
     <div className="flex flex-col gap-5">
       <PageIntro
-        eyebrow="Lifecycle Workspace"
+        eyebrow="Existing Group Management (SB9)"
         title="Supplier Group Management"
         description="Browse supplier groups, inspect details, edit information, and open the unit & site assignment workspace."
         actions={
@@ -526,12 +574,13 @@ export const SupplierManagementPage = () => {
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[280px] flex-1">
+        {/* Search */}
+        <div className="relative min-w-[260px] flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, scope, type…"
+            placeholder="Search by name, code, type…"
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
           />
           {search && (
@@ -542,10 +591,40 @@ export const SupplierManagementPage = () => {
           )}
         </div>
 
+        {/* Scope filter */}
+        <select
+          value={scopeFilter}
+          onChange={(e) => setScopeFilter(e.target.value)}
+          className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+        >
+          {SCOPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
+        {/* Category filter */}
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="h-10 max-w-[180px] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+        >
+          <option value="">All categories</option>
+          {allCategories.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+
+        {hasFilters && (
+          <button type="button" onClick={clearFilters}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 shadow-sm hover:bg-slate-50">
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
+        )}
+
         <p className="text-sm text-slate-400">
           <span className="font-bold text-slate-700">{filtered.length}</span>{" "}
           group{filtered.length !== 1 ? "s" : ""}
-          {search ? " matching" : ""}
+          {hasFilters ? " matching" : ""}
         </p>
 
         {loading && <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />}
@@ -573,21 +652,66 @@ export const SupplierManagementPage = () => {
           <Building2 className="mx-auto mb-3 h-8 w-8 text-slate-300" />
           <p className="text-sm font-semibold text-slate-500">No groups found</p>
           <p className="mt-1 text-xs text-slate-400">
-            {search ? "Try a broader search term." : "No supplier groups exist yet."}
+            {hasFilters ? "Try adjusting your filters." : "No supplier groups exist yet."}
           </p>
-          {search && (
-            <button type="button" onClick={() => setSearch("")}
+          {hasFilters && (
+            <button type="button" onClick={clearFilters}
               className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-              Clear search
+              Clear filters
             </button>
           )}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((g) => (
-            <GroupCard key={g.id_group} group={g} onClick={() => setDrawerGroup(g)} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {paginated.map((g) => (
+              <GroupCard key={g.id_group} group={g} onClick={() => setDrawerGroup(g)} />
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
+              <span className="text-xs text-slate-500">
+                Page {page + 1} of {totalPages} — {filtered.length} group{filtered.length !== 1 ? "s" : ""}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-40 hover:bg-slate-50"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+                  const pg =
+                    totalPages <= 7 ? i
+                    : page < 4 ? i
+                    : page > totalPages - 5 ? totalPages - 7 + i
+                    : page - 3 + i;
+                  return (
+                    <button key={pg} onClick={() => setPage(pg)}
+                      className={[
+                        "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition",
+                        pg === page
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "border border-slate-200 text-slate-600 hover:bg-slate-50",
+                      ].join(" ")}>
+                      {pg + 1}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-40 hover:bg-slate-50"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Drawer ── */}

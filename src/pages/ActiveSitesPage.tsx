@@ -375,6 +375,17 @@ function RelationDetailModal({
                 <InfoRow label="Unit" value={record.unit.unit_code || `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`} mono />
                 <InfoRow label="Relation" value={record.relation.relation_code || `REL-${String(record.relation.id_relation).padStart(6, "0")}`} mono />
                 <InfoRow label="Category" value={record.group.supplier_type || "—"} />
+                {record.unit.continent && <InfoRow label="Continent" value={record.unit.continent} />}
+                {record.unit.area && <InfoRow label="Area" value={record.unit.area} />}
+                {record.unit.supplier_email && <InfoRow label="Email" value={record.unit.supplier_email} />}
+                {record.unit.commodity_responsible && <InfoRow label="Commodity Resp." value={record.unit.commodity_responsible} />}
+                {record.unit.main_plants && <InfoRow label="Main Plants" value={record.unit.main_plants} />}
+                {(record.unit.scope1_ghg != null || record.unit.scope2_ghg != null) && (
+                  <InfoRow
+                    label="GHG (Sc1/Sc2)"
+                    value={`${record.unit.scope1_ghg != null ? record.unit.scope1_ghg : "—"} / ${record.unit.scope2_ghg != null ? record.unit.scope2_ghg : "—"} tCO₂e`}
+                  />
+                )}
               </div>
             </div>
 
@@ -398,6 +409,23 @@ function RelationDetailModal({
                 <InfoRow label="Panel" value={<Badge text={getPanelDecisionLabel(record.relation.panel_decision)} tone={getPanelDecisionTone(record.relation.panel_decision)} />} />
               </div>
             </div>
+
+            {/* SB1 Logistics */}
+            {(record.relation.transport_mode || record.relation.transit_days != null || record.relation.incoterm_place || record.relation.data_validity || record.relation.delivery_status) && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">SB1 Logistics</p>
+                <div className="space-y-0">
+                  {record.relation.transport_mode && <InfoRow label="Transport" value={record.relation.transport_mode} />}
+                  {record.relation.transit_days != null && <InfoRow label="Transit days" value={String(record.relation.transit_days)} />}
+                  {record.relation.incoterm_place && <InfoRow label="Incoterm / Place" value={record.relation.incoterm_place} />}
+                  {record.relation.real_ap_days != null && <InfoRow label="Real AP days" value={String(record.relation.real_ap_days)} />}
+                  {record.relation.delivery_status && <InfoRow label="Delivery status" value={record.relation.delivery_status} />}
+                  {record.relation.data_validity && <InfoRow label="Data validity" value={record.relation.data_validity} />}
+                  {record.relation.quality_cert_required && <InfoRow label="Quality cert required" value={record.relation.quality_cert_required} />}
+                  {record.relation.last_eval_score != null && <InfoRow label="Last eval score" value={String(record.relation.last_eval_score)} />}
+                </div>
+              </div>
+            )}
 
             {/* Strategic */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
@@ -459,6 +487,12 @@ function InfoRow({
 
 const panelTabs: WorkspaceTab[] = [
   {
+    key: "all",
+    label: "All Relations",
+    icon: <Archive className="h-3.5 w-3.5" />,
+    panelDecision: undefined,
+  },
+  {
     key: "panel_add",
     label: "On panel",
     icon: <ShieldCheck className="h-3.5 w-3.5" />,
@@ -486,7 +520,11 @@ export default function ActiveSitesPage() {
   const [filterGrade, setFilterGrade] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
-  const [activeTab, setActiveTab] = useState("panel_add");
+  const [filterScope, setFilterScope] = useState("");
+  const [filterFamily, setFilterFamily] = useState("");
+  const [filterSubFamily, setFilterSubFamily] = useState("");
+  const [filterProductLine, setFilterProductLine] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -506,12 +544,16 @@ export default function ActiveSitesPage() {
       try {
         const response = await supplierAPI.listSitePanel({
           skip: 0,
-          limit: 500,
+          limit: 1000,
           site_name: search || undefined,
           class_grade: filterGrade || undefined,
           status: filterStatus || undefined,
           panel_decision: activeTabDef.panelDecision,
           category: filterCategory || undefined,
+          scope: filterScope || undefined,
+          family: filterFamily || undefined,
+          sub_family: filterSubFamily || undefined,
+          product_line: filterProductLine || undefined,
         });
 
         if (cancelled) return;
@@ -542,6 +584,10 @@ export default function ActiveSitesPage() {
     filterGrade,
     filterStatus,
     filterCategory,
+    filterScope,
+    filterFamily,
+    filterSubFamily,
+    filterProductLine,
     activeTab,
     reloadTick,
   ]);
@@ -564,16 +610,21 @@ export default function ActiveSitesPage() {
     return relationRows.filter((row) =>
       normalizeText(row.site.site_name).includes(keyword) ||
       normalizeText(row.group.nom).includes(keyword) ||
-      normalizeText(row.group.supplier_type).includes(keyword),
+      normalizeText(row.group.supplier_type).includes(keyword) ||
+      normalizeText(row.unit.supplier_code).includes(keyword) ||
+      normalizeText(row.unit.family ?? "").includes(keyword) ||
+      normalizeText(row.unit.product_line ?? "").includes(keyword),
     );
   }, [relationRows, search]);
 
   const counts = useMemo(() => {
     const base: Record<string, number> = {
+      all: 0,
       panel_add: 0,
       panel_add_exec_committee: 0,
     };
     relationRows.forEach((row) => {
+      base.all += 1;
       const d = row.relation.panel_decision;
       if (d && d in base) base[d] += 1;
     });
@@ -592,13 +643,17 @@ export default function ActiveSitesPage() {
   }, [currentPage, page]);
 
   const hasActiveFilters =
-    search || filterGrade || filterStatus || filterCategory;
+    search || filterGrade || filterStatus || filterCategory || filterScope || filterFamily || filterSubFamily || filterProductLine;
 
   const clearFilters = () => {
     setSearch("");
     setFilterGrade("");
     setFilterStatus("");
     setFilterCategory("");
+    setFilterScope("");
+    setFilterFamily("");
+    setFilterSubFamily("");
+    setFilterProductLine("");
   };
 
   const openModal = async (row: RelationRow) => {
@@ -623,9 +678,9 @@ export default function ActiveSitesPage() {
   return (
     <div className="flex min-h-[calc(100vh-160px)] flex-col gap-6">
       <PageIntro
-        eyebrow="Portfolio"
+        eyebrow="Supplier Panel (SB1)"
         title="Supplier Panel"
-        description="Suppliers formally approved or pending committee validation — confirmed panel members across all Avocarbon sites."
+        description="All active supplier–site delivery relationships from SB1 — covers all scopes and families across Avocarbon plants."
       />
 
       {/* ── Search & filters ── */}
@@ -707,6 +762,64 @@ export default function ActiveSitesPage() {
             </button>
           )}
         </div>
+
+        {/* Second filter row */}
+        <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3 dark:border-white/[0.06]">
+          <div className="w-40">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Scope
+            </label>
+            <div className="relative">
+              <select
+                value={filterScope}
+                onChange={(e) => setFilterScope(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 px-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10"
+              >
+                <option value="">All scopes</option>
+                <option value="global">Global</option>
+                <option value="strategic">Strategic</option>
+                <option value="local">Local</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-[160px]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Family
+            </label>
+            <input
+              value={filterFamily}
+              onChange={(e) => setFilterFamily(e.target.value)}
+              placeholder="e.g. Electronics"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-3 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
+            />
+          </div>
+
+          <div className="flex-1 min-w-[160px]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Sub Family
+            </label>
+            <input
+              value={filterSubFamily}
+              onChange={(e) => setFilterSubFamily(e.target.value)}
+              placeholder="e.g. Ferrites"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-3 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
+            />
+          </div>
+
+          <div className="flex-1 min-w-[160px]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Product Line
+            </label>
+            <input
+              value={filterProductLine}
+              onChange={(e) => setFilterProductLine(e.target.value)}
+              placeholder="e.g. Power Electronics"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-3 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:bg-[#0d1929] dark:focus:ring-blue-500/10"
+            />
+          </div>
+        </div>
       </div>
 
       {/* ── Panel toggle + count ── */}
@@ -770,6 +883,9 @@ export default function ActiveSitesPage() {
                 <tr className="bg-[#0b1f38] text-left">
                   <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Supplier</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Category</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Scope</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Family / Product</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Unit</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Site</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Grade</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Status</th>
@@ -791,6 +907,14 @@ export default function ActiveSitesPage() {
                       </div>
                     </td>
                     <td className="px-5 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" /></td>
+                    <td className="px-5 py-4"><div className="h-6 w-16 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" /></td>
+                    <td className="px-5 py-4">
+                      <div className="space-y-1.5">
+                        <div className="h-3 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
+                        <div className="h-2.5 w-16 animate-pulse rounded-full bg-slate-50 dark:bg-white/[0.04]" />
+                      </div>
+                    </td>
+                    <td className="px-5 py-4"><div className="h-3 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" /></td>
                     <td className="px-5 py-4">
                       <div className="space-y-1.5">
                         <div className="h-3 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
@@ -832,6 +956,9 @@ export default function ActiveSitesPage() {
                 <tr className="bg-[#0b1f38] text-left">
                   <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Supplier</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Category</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Scope</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Family / Product</th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Unit</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Site</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Grade</th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Status</th>
@@ -883,6 +1010,53 @@ export default function ActiveSitesPage() {
                         {row.group.supplier_type ? (
                           <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
                             {row.group.supplier_type}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                        )}
+                      </td>
+
+                      {/* Scope */}
+                      <td className="px-5 py-4">
+                        {row.relation.supplier_scope ? (
+                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                            normalizeText(row.relation.supplier_scope).includes("global")
+                              ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+                              : normalizeText(row.relation.supplier_scope).includes("strategic")
+                              ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+                              : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                          }`}>
+                            {row.relation.supplier_scope}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                        )}
+                      </td>
+
+                      {/* Family / Product */}
+                      <td className="px-5 py-4">
+                        <div className="min-w-0">
+                          {row.unit.family ? (
+                            <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                              {row.unit.family}
+                            </div>
+                          ) : null}
+                          {row.unit.product_line ? (
+                            <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
+                              {row.unit.product_line}
+                            </div>
+                          ) : null}
+                          {!row.unit.family && !row.unit.product_line && (
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Unit supplier_code */}
+                      <td className="px-5 py-4">
+                        {row.unit.supplier_code ? (
+                          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-500 tracking-wide dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400">
+                            {row.unit.supplier_code}
                           </span>
                         ) : (
                           <span className="text-slate-300 dark:text-slate-600">—</span>
