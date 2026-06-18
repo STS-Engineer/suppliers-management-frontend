@@ -1314,7 +1314,6 @@ class SupplierOnboardingAPI {
       expected_annual_saving?: number;
       cash_impact?: number;
       duration_months?: number;
-      budget_status?: string;
       budget_year?: number;
       // Dates
       planned_start_date?: string;
@@ -1655,6 +1654,46 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/financial-lines/${lineId}/revise-baseline`,
       { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
       "Failed to revise financial baseline.",
+    );
+  }
+
+  async requestSTPRevision(
+    opportunityId: number,
+    data: {
+      director_email: string;
+      note: string;
+      requested_by?: string;
+      current_price?: number;
+      proposed_price?: number;
+      current_price_n1?: number;
+      current_price_n2?: number;
+      current_price_n3?: number;
+      proposed_price_n1?: number;
+      proposed_price_n2?: number;
+      proposed_price_n3?: number;
+      annual_quantity_n1?: number;
+      annual_quantity_n2?: number;
+      annual_quantity_n3?: number;
+      annual_quantity_n4?: number;
+      bonus_before?: number;
+      bonus_after?: number;
+    },
+  ) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/request-stp-revision`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
+      "Failed to submit STP revision request.",
+    );
+  }
+
+  async decideSTPRevision(
+    opportunityId: number,
+    data: { decision: string; decided_by?: string; note?: string },
+  ) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/decide-stp-revision`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
+      "Failed to record STP revision decision.",
     );
   }
 

@@ -28,7 +28,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import supplierAPI from "../services/supplierOnboardingAPI";
+import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
 
@@ -55,7 +55,7 @@ interface MonthlyRow {
 interface FinLine {
   financial_line_id: number;
   line_name?: string;
-  budget_status?: string;
+  validation_status?: string;
   expected_annual_saving?: number;
   budget_value?: number;
   planned_start_date?: string;
@@ -145,7 +145,7 @@ interface Opp {
   execution_start_date?: string;
   real_start_date?: string;
   duration_months?: number;
-  budget_status?: string;
+  validation_status?: string;
   budget_year?: number;
   budget_confirmed_at?: string;
   budget_confirmed_by?: string;
@@ -262,6 +262,7 @@ interface Opp {
   reason_other?: string;
   secondary_plants?: string;
   gate_conditions?: string;
+  pending_stp_revision?: Record<string, unknown> | null;
   projects: ProjectRec[];
   financial_lines: FinLine[];
   opp_documents: OppDoc[];
@@ -718,9 +719,9 @@ function OverviewTab({ opp }: { opp: Opp }) {
           icon={<FileText size={12} />}
           label="Budget Year"
           value={opp.budget_year ? String(opp.budget_year) : "—"}
-          sub={opp.budget_status ?? undefined}
+          sub={opp.validation_status ?? undefined}
           subClassName={
-            opp.budget_status === "Budgeted"
+            opp.validation_status === "Budgeted"
               ? "font-semibold text-emerald-600"
               : undefined
           }
@@ -866,14 +867,14 @@ function OverviewTab({ opp }: { opp: Opp }) {
           value={fmtDate(opp.val_date)}
         />
         <InfoRow
-          label="Budget Status"
+          label="Validation Status"
           value={
-            opp.budget_status
-              ? `${opp.budget_status}${opp.budget_confirmed_at ? ` — confirmed ${fmtDate(opp.budget_confirmed_at)}${opp.budget_confirmed_by ? ` by ${opp.budget_confirmed_by}` : ""}` : ""}`
+            opp.validation_status
+              ? `${opp.validation_status}${opp.budget_confirmed_at ? ` — confirmed ${fmtDate(opp.budget_confirmed_at)}${opp.budget_confirmed_by ? ` by ${opp.budget_confirmed_by}` : ""}` : ""}`
               : undefined
           }
           valueClassName={
-            opp.budget_status === "Budgeted"
+            opp.validation_status === "Budgeted"
               ? "font-semibold text-emerald-600"
               : undefined
           }
@@ -987,9 +988,13 @@ function EditTab({
   ].includes(opp.status ?? "");
   const stpReadOnly =
     !stpEditablePhases.includes(opp.phase_status ?? "") || pendingApproval;
+  const isStpPhase23 =
+    isSourced && ["Phase 2", "Phase 3"].includes(opp.phase_status ?? "");
+  const hasPendingSTPRevision =
+    isStpPhase23 && !!opp.pending_stp_revision;
   // Budget status is derived from validation (Validate→Budgeted). The financial
   // baseline locks once the opportunity is validated/budgeted.
-  const isBudgeted = opp.budget_status === "Budgeted";
+  const isBudgeted = opp.validation_status === "Budgeted";
   const locked = isBudgeted;
 
   const phaseNote: Record<string, string> = {
@@ -1020,7 +1025,6 @@ function EditTab({
     planned_start_date: opp.planned_start_date ?? "",
     execution_start_date: opp.execution_start_date ?? "",
     real_start_date: opp.real_start_date ?? "",
-    budget_status: opp.budget_status ?? "Empty",
     budget_year: opp.budget_year
       ? String(parseInt(String(opp.budget_year)))
       : "",
@@ -1166,6 +1170,18 @@ function EditTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+
+  // STP revision request modal (Phase 2/3)
+  const [stpRevModal, setStpRevModal] = useState(false);
+  const [stpRevForm, setStpRevForm] = useState({ director_email: "", note: "" });
+  const [stpRevLoading, setStpRevLoading] = useState(false);
+  const [stpRevError, setStpRevError] = useState<string | null>(null);
+
+  // STP revision decision modal (Director)
+  const [stpDecModal, setStpDecModal] = useState(false);
+  const [stpDecForm, setStpDecForm] = useState({ decision: "Approved", note: "" });
+  const [stpDecLoading, setStpDecLoading] = useState(false);
+  const [stpDecError, setStpDecError] = useState<string | null>(null);
 
   // Live-computed end date: last day of the final month in the period
   // duration=1, start=Oct → 31 Oct | duration=12, start=Oct → 30 Sep next year
@@ -1630,9 +1646,70 @@ function EditTab({
         onRefresh(res.data as Opp);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed");
+      if (err instanceof SupplierApiError && err.errorCode === "STP_REQUIRES_APPROVAL") {
+        setStpRevModal(true);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function submitSTPRevisionRequest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stpRevForm.director_email.trim() || !stpRevForm.note.trim()) return;
+    setStpRevLoading(true);
+    setStpRevError(null);
+    try {
+      await supplierAPI.requestSTPRevision(opp.opportunity_id, {
+        director_email: stpRevForm.director_email.trim(),
+        note: stpRevForm.note.trim(),
+        requested_by: userEmail,
+        current_price: form.current_price ? parseFloat(form.current_price) : undefined,
+        proposed_price: form.proposed_price ? parseFloat(form.proposed_price) : undefined,
+        current_price_n1: form.current_price_n1 ? parseFloat(form.current_price_n1) : undefined,
+        current_price_n2: form.current_price_n2 ? parseFloat(form.current_price_n2) : undefined,
+        current_price_n3: form.current_price_n3 ? parseFloat(form.current_price_n3) : undefined,
+        proposed_price_n1: form.proposed_price_n1 ? parseFloat(form.proposed_price_n1) : undefined,
+        proposed_price_n2: form.proposed_price_n2 ? parseFloat(form.proposed_price_n2) : undefined,
+        proposed_price_n3: form.proposed_price_n3 ? parseFloat(form.proposed_price_n3) : undefined,
+        annual_quantity_n1: form.annual_quantity_n1 ? parseInt(form.annual_quantity_n1) : undefined,
+        annual_quantity_n2: form.annual_quantity_n2 ? parseInt(form.annual_quantity_n2) : undefined,
+        annual_quantity_n3: form.annual_quantity_n3 ? parseInt(form.annual_quantity_n3) : undefined,
+        annual_quantity_n4: form.annual_quantity_n4 ? parseInt(form.annual_quantity_n4) : undefined,
+        bonus_before: form.bonus_before ? parseFloat(form.bonus_before) : undefined,
+        bonus_after: form.bonus_after ? parseFloat(form.bonus_after) : undefined,
+      });
+      setStpRevModal(false);
+      setStpRevForm({ director_email: "", note: "" });
+      const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
+      onRefresh(fresh.data as Opp);
+    } catch (err: unknown) {
+      setStpRevError(err instanceof Error ? err.message : "Failed to submit revision request.");
+    } finally {
+      setStpRevLoading(false);
+    }
+  }
+
+  async function submitSTPDecision(e: React.FormEvent) {
+    e.preventDefault();
+    setStpDecLoading(true);
+    setStpDecError(null);
+    try {
+      await supplierAPI.decideSTPRevision(opp.opportunity_id, {
+        decision: stpDecForm.decision,
+        decided_by: userEmail,
+        note: stpDecForm.note.trim() || undefined,
+      });
+      setStpDecModal(false);
+      setStpDecForm({ decision: "Approved", note: "" });
+      const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
+      onRefresh(fresh.data as Opp);
+    } catch (err: unknown) {
+      setStpDecError(err instanceof Error ? err.message : "Failed to record decision.");
+    } finally {
+      setStpDecLoading(false);
     }
   }
 
@@ -2310,6 +2387,24 @@ function EditTab({
                   the version the reviewer received. It unlocks if the gate
                   returns it for rework.
                 </>
+              ) : isStpPhase23 ? (
+                <div className="flex flex-col gap-2">
+                  <p>
+                    <strong>STP locked in execution.</strong> Prices and quantities
+                    are committed. If renegotiation with the supplier changes the
+                    baseline, submit a revision request — the Purchasing Director
+                    will receive an email and must approve before values are updated.
+                  </p>
+                  {!hasPendingSTPRevision && (
+                    <button
+                      type="button"
+                      onClick={() => setStpRevModal(true)}
+                      className="self-start rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                    >
+                      Request Revision
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   <strong>STP locked.</strong> Prices, quantities and the
@@ -2322,6 +2417,56 @@ function EditTab({
               )}
             </div>
           )}
+
+          {/* Pending revision banner — shown while awaiting Director decision */}
+          {hasPendingSTPRevision && (() => {
+            const rev = opp.pending_stp_revision as Record<string, unknown>;
+            const requested_at = rev.requested_at as string | undefined;
+            const director_email = rev.director_email as string | undefined;
+            const note = rev.note as string | undefined;
+            const proposed = rev.proposed_fields as Record<string, unknown> | undefined;
+            const preview = rev.computed_preview as Record<string, unknown> | undefined;
+            return (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+                    <Clock size={13} /> Revision pending Director approval
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStpDecModal(true)}
+                    className="rounded-lg bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                  >
+                    Approve / Reject
+                  </button>
+                </div>
+                {director_email && (
+                  <p className="text-xs text-blue-700">
+                    Sent to <strong>{director_email}</strong>
+                    {requested_at && ` on ${new Date(requested_at).toLocaleDateString("en-GB")}`}
+                  </p>
+                )}
+                {note && (
+                  <p className="text-xs text-blue-600 italic">"{note}"</p>
+                )}
+                {proposed && (
+                  <div className="text-xs text-blue-700 grid grid-cols-2 gap-x-4 gap-y-0.5 pt-1">
+                    {(["current_price", "proposed_price", "proposed_price_n1", "proposed_price_n2", "proposed_price_n3"] as const).map((k) =>
+                      proposed[k] != null ? (
+                        <span key={k}><span className="font-semibold">{k.replace(/_/g, " ")}</span>: {String(proposed[k])}</span>
+                      ) : null
+                    )}
+                    {preview && preview.period_saving != null && (
+                      <span className="col-span-2 font-semibold text-blue-800 pt-0.5">
+                        Projected saving: €{Number(preview.period_saving).toLocaleString("en-GB")}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <fieldset
             disabled={stpReadOnly}
             className={stpReadOnly ? "space-y-4 opacity-80" : "space-y-4"}
@@ -3354,6 +3499,170 @@ function EditTab({
           </button>
         </div>
       </div>
+
+      {/* STP Revision Request modal */}
+      {stpRevModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-bold text-slate-800">
+                Request STP Baseline Revision
+              </h2>
+              <button
+                type="button"
+                onClick={() => { setStpRevModal(false); setStpRevError(null); }}
+                className="rounded-lg p-1 hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submitSTPRevisionRequest} className="px-6 py-5 space-y-4">
+              <p className="text-xs text-slate-500">
+                The proposed values from the form will be sent to the Purchasing
+                Director for approval. Current figures remain active until the
+                Director approves.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Purchasing Director email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  placeholder="director@avocarbon.com"
+                  value={stpRevForm.director_email}
+                  onChange={(e) => setStpRevForm((f) => ({ ...f, director_email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Justification <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  placeholder="Explain why the baseline needs to change (supplier renegotiation, volume update, etc.)"
+                  value={stpRevForm.note}
+                  onChange={(e) => setStpRevForm((f) => ({ ...f, note: e.target.value }))}
+                />
+              </div>
+              {stpRevError && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                  {stpRevError}
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setStpRevModal(false); setStpRevError(null); }}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={stpRevLoading || !stpRevForm.director_email.trim() || !stpRevForm.note.trim()}
+                  className="flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                >
+                  {stpRevLoading && <RefreshCw size={13} className="animate-spin" />}
+                  Send for Approval
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* STP Revision Decision modal (Director) */}
+      {stpDecModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <h2 className="text-base font-bold text-slate-800">
+                STP Revision Decision
+              </h2>
+              <button
+                type="button"
+                onClick={() => { setStpDecModal(false); setStpDecError(null); }}
+                className="rounded-lg p-1 hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submitSTPDecision} className="px-6 py-5 space-y-4">
+              <p className="text-xs text-slate-500">
+                Approving will immediately apply the proposed prices and quantities
+                and recompute the savings baseline. Rejecting keeps current values.
+              </p>
+              <div className="flex gap-3">
+                {(["Approved", "Rejected"] as const).map((d) => (
+                  <label
+                    key={d}
+                    className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      stpDecForm.decision === d
+                        ? d === "Approved"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          : "border-red-300 bg-red-50 text-red-700"
+                        : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      className="sr-only"
+                      name="decision"
+                      value={d}
+                      checked={stpDecForm.decision === d}
+                      onChange={() => setStpDecForm((f) => ({ ...f, decision: d }))}
+                    />
+                    {d === "Approved" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                    {d}
+                  </label>
+                ))}
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Note (optional)
+                </label>
+                <textarea
+                  rows={2}
+                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  placeholder="Reason or conditions..."
+                  value={stpDecForm.note}
+                  onChange={(e) => setStpDecForm((f) => ({ ...f, note: e.target.value }))}
+                />
+              </div>
+              {stpDecError && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                  {stpDecError}
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setStpDecModal(false); setStpDecError(null); }}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={stpDecLoading}
+                  className={`flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                    stpDecForm.decision === "Approved"
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  {stpDecLoading && <RefreshCw size={13} className="animate-spin" />}
+                  {stpDecForm.decision === "Approved" ? "Approve" : "Reject"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
@@ -4223,7 +4532,7 @@ function FinancialTab({
     );
   }
 
-  const isBudgeted = opp.budget_status === "Budgeted";
+  const isBudgeted = opp.validation_status === "Budgeted";
 
   // One financial line per opportunity (Olivier: one STP = one opportunity = one financial line)
   const line = opp.financial_lines[0];
@@ -6133,9 +6442,9 @@ function DetailDrawer({
               <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-blue-600">
                 {opp.phase_status}
               </span>
-              {opp.budget_status === "Budgeted" && (
+              {opp.validation_status === "Budgeted" && (
                 <span className="rounded-full bg-violet-50 px-2.5 py-0.5 text-[10px] font-semibold text-violet-600">
-                  Budgeted
+                  Validated
                 </span>
               )}
               {opp.priority_category && (
@@ -6328,9 +6637,9 @@ function OppCard({
         >
           {opp.status}
         </span>
-        {opp.budget_status === "Budgeted" && (
+        {opp.validation_status === "Budgeted" && (
           <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9.5px] font-semibold text-violet-600 border border-violet-100">
-            Budgeted
+            Validated
           </span>
         )}
       </div>
@@ -6587,7 +6896,7 @@ export default function PurchasingValuePage() {
   const filtered = opportunities.filter((o) => {
     if (filterType !== "All" && o.opportunity_type !== filterType) return false;
     if (filterStatus !== "All" && o.status !== filterStatus) return false;
-    if (filterBudget !== "All" && o.budget_status !== filterBudget)
+    if (filterBudget !== "All" && o.validation_status !== filterBudget)
       return false;
     if (filterPriority !== "All" && o.priority_category !== filterPriority)
       return false;
@@ -6669,7 +6978,7 @@ export default function PurchasingValuePage() {
   }, {});
 
   // KPIs — budget source of truth is OpportunityBudgetYear (director commitment),
-  // not opp.budget_status (execution-maturity flag).
+  // not opp.validation_status (execution-maturity flag).
   const currentYear = new Date().getFullYear();
   const committedOppIds = new Set(
     opportunities
@@ -6837,7 +7146,7 @@ export default function PurchasingValuePage() {
           ))}
         </div>
 
-        {/* Row 2 — Status, Budget, Priority, Validation, Plant */}
+        {/* Row 2 — Status, Validation, Priority, Gate, Plant */}
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100/60 px-4 py-2 dark:border-white/[0.05] sm:px-8">
           <FilterSelect
             label="Status"
@@ -6847,7 +7156,7 @@ export default function PurchasingValuePage() {
           />
           <Sep />
           <FilterSelect
-            label="Budget"
+            label="Validation"
             value={filterBudget}
             onChange={setFilterBudget}
             options={["All", "Budgeted", "Empty"]}
