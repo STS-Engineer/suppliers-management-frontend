@@ -94,6 +94,8 @@ interface ProjectRec {
   off_tool_date?: string;
   committee_review_date?: string;
   committee_members?: string;
+  change_mode?: string;
+  change_mode_comment?: string;
 }
 interface OppDoc {
   doc_id: number;
@@ -3682,12 +3684,6 @@ function GateTab({
   const [error, setError] = useState<string | null>(null);
   // Start study
   const [showStart, setShowStart] = useState(false);
-  // Submit for validation (Phase 0)
-  const [showSubmitP0, setShowSubmitP0] = useState(false);
-  const [submitP0Form, setSubmitP0Form] = useState({
-    to_emails: "",
-    message: "",
-  });
   // Submit to committee (Phase 1)
   const [showSubmitP1, setShowSubmitP1] = useState(false);
   const [submitP1Form, setSubmitP1Form] = useState({
@@ -3699,6 +3695,69 @@ function GateTab({
   const [pm, setPm] = useState(opp.project_owner ?? "");
   const [comments, setComments] = useState("");
   const [showGate, setShowGate] = useState(false);
+  // Gate approval request
+  const [showApproval, setShowApproval] = useState(false);
+  const [plantManagerEmail, setPlantManagerEmail] = useState("");
+  const [purchasingManagerEmails, setPurchasingManagerEmails] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approvalRequests, setApprovalRequests] = useState<{
+    request_id: number;
+    phase_from: string | null;
+    requested_by: string | null;
+    requested_at: string | null;
+    status: string | null;
+    consensus_result: string | null;
+    votes: { vote_id: number; approver_email: string | null; access_token: string | null; is_plant_manager: boolean | null; decision: string | null; decided_at: string | null; comment: string | null; project_manager_email: string | null }[];
+  }[]>([]);
+
+  useEffect(() => {
+    supplierAPI.getGateApprovalStatus(opp.opportunity_id)
+      .then((res) => {
+        const requests = res.data ?? [];
+        setApprovalRequests(requests);
+        // Pre-fill PM email from the most recent approved vote that carries a PM designation
+        const pmFromVotes = requests
+          .flatMap((r: { votes: { decision: string | null; project_manager_email: string | null }[] }) => r.votes)
+          .find((v: { decision: string | null; project_manager_email: string | null }) => v.decision === "Approved" && v.project_manager_email)
+          ?.project_manager_email;
+        if (pmFromVotes) setPm(pmFromVotes);
+      })
+      .catch(() => {});
+  }, [opp.opportunity_id, opp.phase_status]);
+
+  async function submitApprovalRequest() {
+    const pm = plantManagerEmail.trim();
+    if (!pm) { setApprovalError("Plant Manager email is required."); return; }
+    const purchasing = purchasingManagerEmails
+      .split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
+    setApprovalSubmitting(true);
+    setApprovalError(null);
+    try {
+      await supplierAPI.requestGateApproval(opp.opportunity_id, {
+        plant_manager_email: pm,
+        purchasing_manager_emails: purchasing,
+        message: approvalMessage || undefined,
+      });
+      const res = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
+      const requests = res.data ?? [];
+      setApprovalRequests(requests);
+      const pmFromVotes = requests
+        .flatMap((r: { votes: { decision: string | null; project_manager_email: string | null }[] }) => r.votes)
+        .find((v: { decision: string | null; project_manager_email: string | null }) => v.decision === "Approved" && v.project_manager_email)
+        ?.project_manager_email;
+      if (pmFromVotes) setPm(pmFromVotes);
+      setShowApproval(false);
+      setPlantManagerEmail("");
+      setPurchasingManagerEmails("");
+      setApprovalMessage("");
+    } catch (e: unknown) {
+      setApprovalError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setApprovalSubmitting(false);
+    }
+  }
 
   const isAssigned = opp.status === "Assigned";
   const isWorkingOn =
@@ -3714,6 +3773,9 @@ function GateTab({
     isUnderCommittee ||
     ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "");
   const isClosed = opp.phase_status === "Closed";
+  const activePhase0Requests = approvalRequests.filter(
+    (r) => r.phase_from === "Phase 0" && r.status !== "Superseded"
+  );
   const needsPm =
     decision === "Go" &&
     opp.opportunity_type &&
@@ -3928,9 +3990,23 @@ function GateTab({
         </div>
       )}
 
-      {/* STEP 2 — Phase 0: Submit to PM for gate review */}
+      {/* STEP 2 — Phase 0: Submit & Request Gate Approval (merged) */}
       {isWorkingOn && opp.phase_status === "Phase 0" && (
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-3">
+
+          {/* Context badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+              Phase 0
+            </span>
+            <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+              STP Opportunity Study
+            </span>
+            <span className="text-[10px] text-amber-500">
+              Gate: Phase 0 → Phase 1
+            </span>
+          </div>
+
           {/* Pre-submission checklist — Phase 0 */}
           {phase0Missing.length > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-1.5">
@@ -3953,95 +4029,193 @@ function GateTab({
               PM
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-amber-700">
-              Step 2 — Submit Phase 0 for PM Validation
+
+          {/* Formal approval with unique links */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-amber-700">
+                Request Formal Approval
+              </p>
+              {!isClosed && (
+                <button
+                  onClick={() => setShowApproval((v) => !v)}
+                  className="text-[11px] font-semibold text-amber-600 hover:underline"
+                >
+                  {showApproval ? "Cancel" : "+ Request →"}
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-amber-600">
+              Send each reviewer a unique link — they see the full opportunity
+              dossier and vote Approved / Rejected / Needs Review.
             </p>
-            <button
-              onClick={() => setShowSubmitP0((s) => !s)}
-              className="text-[11px] font-semibold text-amber-600 hover:underline"
-            >
-              {showSubmitP0 ? "Hide" : "Open →"}
-            </button>
+
+            {showApproval && (
+              <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-3">
+                {approvalError && (
+                  <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                    {approvalError}
+                  </p>
+                )}
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                    Plant Manager email <span className="text-red-500">*</span>
+                  </label>
+                  <p className="text-[10px] text-slate-400 mb-1">
+                    Will vote and designate the Project Manager upon approval.
+                  </p>
+                  <input
+                    type="email"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="plant.manager@avocarbon.com"
+                    value={plantManagerEmail}
+                    onChange={(e) => setPlantManagerEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                    Purchasing Manager email(s)
+                  </label>
+                  <p className="text-[10px] text-slate-400 mb-1">
+                    Additional approvers — vote only, no PM designation.
+                  </p>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="purchasing@avocarbon.com, director@avocarbon.com"
+                    value={purchasingManagerEmails}
+                    onChange={(e) => setPurchasingManagerEmails(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                    Message (optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Context or specific points for the reviewers…"
+                    value={approvalMessage}
+                    onChange={(e) => setApprovalMessage(e.target.value)}
+                  />
+                </div>
+                <button
+                  disabled={approvalSubmitting}
+                  onClick={submitApprovalRequest}
+                  className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                >
+                  {approvalSubmitting ? "Sending…" : "Send Approval Links"}
+                </button>
+              </div>
+            )}
+
+            {/* Existing approval requests for Phase 0 (exclude superseded) */}
+            {activePhase0Requests.map((req) => (
+                <div
+                  key={req.request_id}
+                  className="rounded-xl border border-amber-200 bg-white p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-slate-700">
+                      by {req.requested_by ?? "—"}
+                      {req.requested_at
+                        ? ` · ${fmtDate(req.requested_at)}`
+                        : ""}
+                    </p>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                        req.status === "Completed" &&
+                        req.consensus_result === "Go"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : req.status === "Completed" &&
+                              req.consensus_result === "No Go"
+                            ? "bg-red-100 text-red-700"
+                            : req.status === "Completed"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {req.status === "Completed"
+                        ? req.consensus_result
+                        : "Pending"}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {req.votes.map((v) => (
+                      <div key={v.vote_id} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-600">{v.approver_email}</span>
+                            {v.is_plant_manager && (
+                              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                                Plant Mgr
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {v.decision ? (
+                              <>
+                                <span className={`font-semibold ${
+                                  v.decision === "Approved" ? "text-emerald-600"
+                                  : v.decision === "Rejected" ? "text-red-600"
+                                  : "text-amber-600"
+                                }`}>
+                                  {v.decision === "Approved" ? "✅" : v.decision === "Rejected" ? "❌" : "🔄"}{" "}
+                                  {v.decision}
+                                </span>
+                                {v.decided_at && (
+                                  <span className="text-slate-400">{fmtDate(v.decided_at)}</span>
+                                )}
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-400 italic">Pending…</span>
+                                {v.access_token && (
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(
+                                      `${window.location.origin}/approve/${v.access_token}`,
+                                    )}
+                                    className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                                    title="Copy approval link to clipboard"
+                                  >
+                                    Copy link
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Show designated PM below the vote row */}
+                        {v.is_plant_manager && v.project_manager_email && (
+                          <p className="text-[10px] text-green-700 pl-1">
+                            PM assigned: <span className="font-semibold">{v.project_manager_email}</span>
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {req.votes.some((v) => v.comment) && (
+                    <div className="border-t border-slate-200 pt-2 space-y-1">
+                      {req.votes
+                        .filter((v) => v.comment)
+                        .map((v) => (
+                          <p
+                            key={v.vote_id}
+                            className="text-[10.5px] text-slate-500 italic"
+                          >
+                            {v.approver_email}: &ldquo;{v.comment}&rdquo;
+                          </p>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            {activePhase0Requests.length === 0 && !showApproval && (
+                <p className="text-[11px] text-amber-500/70">
+                  No formal approval requests yet for this gate.
+                </p>
+              )}
           </div>
-          <p className="text-[11px] text-amber-600">
-            Sends the Opportunity Study to the Purchasing Manager and plant
-            manager for Go / No Go / Review gate decision.
-          </p>
-          {opp.validation_request_sent_at && (
-            <p className="text-[10px] text-amber-500">
-              Last sent: {fmtDate(opp.validation_request_sent_at)}
-            </p>
-          )}
-          {showSubmitP0 && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                act(async () => {
-                  const emails = submitP0Form.to_emails
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                  if (!emails.length)
-                    throw new Error("At least one PM email required.");
-                  const res = await supplierAPI.submitForValidation(
-                    opp.opportunity_id,
-                    {
-                      to_emails: emails,
-                      message: submitP0Form.message || undefined,
-                      submitted_by: userEmail,
-                    },
-                  );
-                  onRefresh(res.data as Opp);
-                  setShowSubmitP0(false);
-                });
-              }}
-              className="space-y-3"
-            >
-              <div>
-                <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Plant Manager, Purchasing Manager email(s) *
-                </label>
-                <input
-                  required
-                  className={inp}
-                  placeholder="pm@avocarbon.com"
-                  value={submitP0Form.to_emails}
-                  onChange={(e) =>
-                    setSubmitP0Form((f) => ({
-                      ...f,
-                      to_emails: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Message (optional)
-                </label>
-                <textarea
-                  rows={2}
-                  className={`${inp} resize-none`}
-                  value={submitP0Form.message}
-                  onChange={(e) =>
-                    setSubmitP0Form((f) => ({ ...f, message: e.target.value }))
-                  }
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading || phase0Missing.length > 0}
-                className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
-              >
-                {loading ? (
-                  <RefreshCw size={12} className="animate-spin" />
-                ) : (
-                  <Mail size={13} />
-                )}{" "}
-                Submit for Validation
-              </button>
-            </form>
-          )}
         </div>
       )}
 
@@ -4369,6 +4543,116 @@ function GateTab({
           )}
         </div>
       )}
+
+      {/* Approval Status — only shown outside of Phase 0 / Phase 1 working cards */}
+      {!(isWorkingOn && opp.phase_status === "Phase 0") &&
+        !isPhase1Working &&
+        approvalRequests.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-widest text-slate-400">
+              Approval Requests
+            </p>
+            {approvalRequests.map((req) => (
+              <div
+                key={req.request_id}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-700">
+                    Phase {req.phase_from} → next &nbsp;·&nbsp; by{" "}
+                    {req.requested_by ?? "—"}
+                  </p>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                      req.status === "Completed" &&
+                      req.consensus_result === "Go"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : req.status === "Completed" &&
+                            req.consensus_result === "No Go"
+                          ? "bg-red-100 text-red-700"
+                          : req.status === "Completed"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {req.status === "Completed"
+                      ? req.consensus_result
+                      : "Pending"}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {req.votes.map((v) => (
+                    <div
+                      key={v.vote_id}
+                      className="flex items-center justify-between text-[11px]"
+                    >
+                      <span className="text-slate-600">{v.approver_email}</span>
+                      <div className="flex items-center gap-2">
+                        {v.decision ? (
+                          <>
+                            <span
+                              className={`font-semibold ${
+                                v.decision === "Approved"
+                                  ? "text-emerald-600"
+                                  : v.decision === "Rejected"
+                                    ? "text-red-600"
+                                    : "text-amber-600"
+                              }`}
+                            >
+                              {v.decision === "Approved"
+                                ? "✅"
+                                : v.decision === "Rejected"
+                                  ? "❌"
+                                  : "🔄"}{" "}
+                              {v.decision}
+                            </span>
+                            {v.decided_at && (
+                              <span className="text-slate-400">
+                                {fmtDate(v.decided_at)}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400 italic">
+                              Pending…
+                            </span>
+                            {v.access_token && (
+                              <button
+                                onClick={() =>
+                                  navigator.clipboard.writeText(
+                                    `${window.location.origin}/approve/${v.access_token}`,
+                                  )
+                                }
+                                className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                              >
+                                Copy link
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {req.votes.some((v) => v.comment) && (
+                  <div className="border-t border-slate-200 pt-2 space-y-1">
+                    {req.votes
+                      .filter((v) => v.comment)
+                      .map((v) => (
+                        <p
+                          key={v.vote_id}
+                          className="text-[10.5px] text-slate-500 italic"
+                        >
+                          {v.approver_email}: &ldquo;{v.comment}&rdquo;
+                        </p>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
       {/* Audit trail from comments */}
       {opp.comments && opp.comments.includes("[") && (
@@ -5903,6 +6187,19 @@ const PHASE_OUTPUT_DEF: Record<
         type: "select",
         options: ["On time", "Late", "On hold"],
       },
+      {
+        key: "change_mode",
+        label: "Change type",
+        type: "select",
+        options: ["Standard", "Silent"],
+        hint: "Standard = formal PPAP required · Silent = no plant validation needed",
+      },
+      {
+        key: "change_mode_comment",
+        label: "Change type comment",
+        type: "textarea",
+        hint: "Justification or context for this change type at this phase",
+      },
     ],
   },
   "Phase 2": {
@@ -5916,6 +6213,19 @@ const PHASE_OUTPUT_DEF: Record<
         type: "select",
         options: ["On time", "Late", "On hold"],
       },
+      {
+        key: "change_mode",
+        label: "Change type",
+        type: "select",
+        options: ["Standard", "Silent"],
+        hint: "Standard = formal PPAP required · Silent = no plant validation needed",
+      },
+      {
+        key: "change_mode_comment",
+        label: "Change type comment",
+        type: "textarea",
+        hint: "Justification or context for this change type at this phase",
+      },
     ],
   },
   "Phase 3": {
@@ -5923,6 +6233,19 @@ const PHASE_OUTPUT_DEF: Record<
     owner: "Project Manager (Purchasing support)",
     deliverable: "PPAP validated + plant start",
     fields: [
+      {
+        key: "change_mode",
+        label: "Change type",
+        type: "select",
+        options: ["Standard", "Silent"],
+        hint: "Standard = formal PPAP required · Silent = no plant validation needed",
+      },
+      {
+        key: "change_mode_comment",
+        label: "Change type comment",
+        type: "textarea",
+        hint: "Justification or context for this change type at this phase",
+      },
       {
         key: "plant_validation",
         label: "PPAP / Plant validation",
@@ -5950,6 +6273,19 @@ const PHASE_OUTPUT_DEF: Record<
     owner: "Project Manager (Purchasing support)",
     deliverable: "LLC document + savings follow-up closed",
     fields: [
+      {
+        key: "change_mode",
+        label: "Change type (final)",
+        type: "select",
+        options: ["Standard", "Silent"],
+        hint: "Confirm the final change type for closure records",
+      },
+      {
+        key: "change_mode_comment",
+        label: "Change type comment",
+        type: "textarea",
+        hint: "Final note on change type — confirm or amend the Phase 3 assessment",
+      },
       {
         key: "phase_output_notes",
         label: "Lessons learned",
