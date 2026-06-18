@@ -24,16 +24,27 @@ export interface UnitFormData {
   address_line: string;
   city: string;
   country: string;
+  continent: string;
+  area: string;
   // Product classification
   family: string[];
   sub_family: string[];
   product_line: string[];
   // Additional unit info
   website: string;
+  supplier_email: string;
+  commodity_responsible: string;
+  main_plants: string;
   carbon_footprint: string;
   green_electricity_pct: string;
   copper_brass_pct: string;
   category: string[];
+  // GHG data
+  scope1_ghg: string;
+  scope2_ghg: string;
+  ghg_comments: string;
+  ghg_requested_date: string;
+  ghg_completion_pct: string;
   unit_contacts: ContactFormData[];
 }
 
@@ -210,6 +221,9 @@ export interface SupplierDevelopmentPlan {
   file_notes?: string | null;
   supplier_comments?: string | null;
   internal_comments?: string | null;
+  decision?: string | null;
+  commodity?: string | null;
+  plant?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   is_overdue?: boolean;
@@ -400,13 +414,34 @@ export interface SupplierUnitResponse {
   id_group: number;
   unit_code?: string;
   supplier_code: string;
-  address_line: string;
-  city: string;
-  country: string;
-  product_type: string;
-  product_category: string;
-  amount_value?: number;
-  amount_currency: string;
+  address_line?: string;
+  city?: string;
+  country?: string;
+  continent?: string | null;
+  area?: string | null;
+  product_type?: string;
+  product_category?: string;
+  family?: string | null;
+  sub_family?: string | null;
+  product_line?: string | null;
+  category?: string | null;
+  website?: string | null;
+  supplier_email?: string | null;
+  commodity_responsible?: string | null;
+  main_plants?: string | null;
+  carbon_footprint?: string | null;
+  green_electricity_pct?: string | null;
+  copper_brass_pct?: string | null;
+  scope1_ghg?: number | null;
+  scope2_ghg?: number | null;
+  ghg_comments?: string | null;
+  ghg_requested_date?: string | null;
+  ghg_completion_pct?: string | null;
+  amount_value?: number | null;
+  amount_currency?: string;
+  strategique?: boolean;
+  monopolistique?: boolean;
+  directed?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -447,6 +482,7 @@ export interface SupplierSiteRelation {
   id_supplier_unit: number;
   relation_code?: string;
   unit_code?: string;
+  sb1_item_name?: string | null;
   supplier_scope?: string;
   supplier_owner?: string;
   annual_spend_value?: number | null;
@@ -466,6 +502,40 @@ export interface SupplierSiteRelation {
   inactivated_at?: string;
   last_status_change?: string;
   evaluation_comments?: string;
+  // Supplier Panel (SB1) fields
+  last_eval_score?: number | null;
+  transport_mode?: string | null;
+  transit_days?: number | null;
+  incoterm_place?: string | null;
+  real_ap_days?: number | null;
+  real_ap_days_validated?: number | null;
+  consignment?: boolean | null;
+  preferred_dev_supplier?: boolean | null;
+  data_validity?: string | null;
+  quality_cert_required?: string | null;
+  delivery_status?: string | null;
+  req_ap_date?: string | null;
+}
+
+// Carbon Footprint (SB8)
+export interface CarbonFootprintRecord {
+  id_carbon_footprint: number;
+  id_supplier_unit?: number | null;
+  id_relation?: number | null;
+  year?: number | null;
+  carbon_fp_grade?: string | null;
+  purchase_amount?: number | null;
+  weighted_footprint?: number | null;
+  production_fp_grade?: string | null;
+  transport_impact?: number | null;
+  global_fp_impact?: number | null;
+  supplier_origin?: string | null;
+  supplier_continent?: string | null;
+  site_location?: string | null;
+  site_continent?: string | null;
+  supplier_unit_code?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface InitialUnitEvaluationResponse {
