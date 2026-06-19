@@ -822,7 +822,7 @@ function OverviewTab({ opp }: { opp: Opp }) {
             .map(([yr, val]) => (
               <InfoRow
                 key={`cy-${yr}`}
-                label={`Est. Saving ${yr}`}
+                label={`Est. Saving Budget ${yr}`}
                 value={fmt(Number(val), cur)}
               />
             ))}
@@ -1347,9 +1347,9 @@ function EditTab({
             (i === 0 ? bonusDelta : 0),
         )
       : null;
-  // Calendar-year prorated split — each STP per-year window (gross/12 per month)
-  // streamed from the SAVINGS START (real start, else planned/study start + phases
-  // 1–3), capped at duration_months. Mirrors compute_budget_year_portions backend.
+  // Budget-year prorated split — budget year N = 01 Dec N-1 -> 30 Nov N.
+  // Allocation is by actual days from the savings start, mirroring
+  // compute_budget_year_portions backend.
   const savingByYear = (() => {
     if (savingPerYear == null) return null;
     const projectAnchor =
@@ -1373,15 +1373,41 @@ function EditTab({
     const maxMonths = 12 * savingPerYear.length;
     const durMonths = parseInt(form.duration_months || "0") || 0;
     const months = durMonths > 0 ? Math.min(durMonths, maxMonths) : maxMonths;
+    const addMonthsPreserveDay = (base: Date, offsetMonths: number) => {
+      const d = new Date(base);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const day = d.getDate();
+      const target = new Date(year, month + offsetMonths, 1);
+      const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+      return new Date(target.getFullYear(), target.getMonth(), Math.min(day, lastDay));
+    };
+    const budgetYearForDate = (d: Date) => (d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear());
+    const budgetYearEndExclusive = (fy: number) => new Date(fy, 11, 1);
     const acc: Record<number, number> = {};
-    for (let t = 0; t < months; t++) {
-      const monthly = savingPerYear[Math.floor(t / 12)] / 12;
-      const yr = new Date(
-        start.getFullYear(),
-        start.getMonth() + t,
-        1,
-      ).getFullYear();
-      acc[yr] = (acc[yr] || 0) + monthly;
+    const overallEnd = addMonthsPreserveDay(start, months);
+
+    for (let i = 0; i < savingPerYear.length; i++) {
+      const annual = savingPerYear[i];
+      if (annual == null) continue;
+      const windowStart = addMonthsPreserveDay(start, i * 12);
+      const windowEnd = addMonthsPreserveDay(start, (i + 1) * 12);
+      if (windowStart >= overallEnd) break;
+      const effectiveEnd = windowEnd < overallEnd ? windowEnd : overallEnd;
+      const windowDays = (windowEnd.getTime() - windowStart.getTime()) / 86400000;
+      if (windowDays <= 0 || effectiveEnd <= windowStart) continue;
+
+      let cursor = windowStart;
+      while (cursor < effectiveEnd) {
+        const fy = budgetYearForDate(cursor);
+        const fyEnd = budgetYearEndExclusive(fy);
+        const sliceEnd = fyEnd < effectiveEnd ? fyEnd : effectiveEnd;
+        const days = (sliceEnd.getTime() - cursor.getTime()) / 86400000;
+        if (days > 0) {
+          acc[fy] = (acc[fy] || 0) + (annual * days) / windowDays;
+        }
+        cursor = sliceEnd;
+      }
     }
     return Object.entries(acc)
       .map(([y, v]) => ({ year: Number(y), amount: v }))
@@ -6716,7 +6742,16 @@ function DetailDrawer({
   }, []);
 
   const docCount = opp.opp_documents?.length ?? 0;
-  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const missingFinancialMonths = (() => {
+    const line = opp.financial_lines?.[0];
+    if (!line?.monthly_financials?.length) return 0;
+    const todayFirst = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    return line.monthly_financials.filter((r) => {
+      if (!r.period_month) return false;
+      return new Date(r.period_month) < todayFirst && r.actual_saving == null;
+    }).length;
+  })();
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "overview", label: "Overview", icon: <Layers size={11} /> },
     // One editing tab — labelled "STP Study" for Sourcing/Tech-Productivity
     // (general + STP in one form), "Edit" for Negotiation/Cash (general only).
@@ -6727,7 +6762,7 @@ function DetailDrawer({
     },
     { id: "gate", label: "Gate", icon: <CheckCircle2 size={11} /> },
     { id: "project", label: "Project", icon: <FolderOpen size={11} /> },
-    { id: "financial", label: "Financial", icon: <BarChart2 size={11} /> },
+    { id: "financial", label: "Financial", icon: <BarChart2 size={11} />, badge: missingFinancialMonths || undefined },
     {
       id: "files",
       label: `Files${docCount ? ` (${docCount})` : ""}`,
@@ -6843,6 +6878,11 @@ function DetailDrawer({
               >
                 {t.icon}
                 {t.label}
+                {t.badge ? (
+                  <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                    {t.badge}
+                  </span>
+                ) : null}
               </button>
             );
           })}
