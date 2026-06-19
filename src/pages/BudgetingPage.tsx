@@ -30,6 +30,7 @@ interface Summary {
   total_applicable: number;
   total_budgeted: number;
   total_opportunity: number;
+  total_empty: number;
   total_validated: number;
 }
 
@@ -68,6 +69,10 @@ const PORTION_COLORS: Record<string, string> = {
 };
 
 const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+
+function budgetYearWindowLabel(year: number) {
+  return `01 Dec ${year - 1} - 30 Nov ${year}`;
+}
 
 // Validation dimension (auto, from the opportunity's phase)
 function ValidationBadge({ status }: { status?: string | null }) {
@@ -263,20 +268,24 @@ export default function BudgetingPage() {
               Opportunities in {fiscalYear}
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-800">{summary.total}</p>
+            <p className="mt-0.5 text-[10px] text-slate-400">{budgetYearWindowLabel(fiscalYear)}</p>
           </div>
           <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-              Total estimated saving (EUR)
+              Estimated saving in {fiscalYear} (EUR)
             </p>
             <p className="mt-1 text-lg font-bold text-slate-800">{fmt(summary.total_applicable)}</p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              All statuses: Budgeted + Opportunity + Empty
+            </p>
           </div>
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-500">
-              Budgeted (EUR)
+              Committed budget (EUR)
             </p>
             <p className="mt-1 text-lg font-bold text-blue-700">{fmt(summary.total_budgeted)}</p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              opportunity (not yet budgeted): {fmt(summary.total_opportunity)}
+              Opportunity: {fmt(summary.total_opportunity)} · Empty: {fmt(summary.total_empty)}
             </p>
           </div>
         </div>
@@ -301,7 +310,7 @@ export default function BudgetingPage() {
               <th className="px-3 py-2.5 font-semibold">Validation</th>
               <th className="px-3 py-2.5 font-semibold">Budget</th>
               <th className="px-3 py-2.5 font-semibold">Portion</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Saving ({fiscalYear})</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Saving (Budget {fiscalYear})</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -315,7 +324,7 @@ export default function BudgetingPage() {
             {!loading && items.length === 0 && (
               <tr>
                 <td colSpan={selectMode ? 9 : 8} className="px-3 py-8 text-center text-slate-400">
-                  No opportunities generate savings in {fiscalYear}.
+                  No opportunities generate savings in budget year {fiscalYear}.
                 </td>
               </tr>
             )}

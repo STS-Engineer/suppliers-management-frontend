@@ -19,7 +19,7 @@ import {
   YAxis,
 } from "recharts";
 import { Pagination } from "../components/common/Pagination";
-import { KPI, SectionCard, StatusBadge } from "../components/UI";
+import { KPI, PageIntro, SectionCard, StatusBadge } from "../components/UI";
 import {
   classDistribution,
   dashboardMetrics,
@@ -54,7 +54,12 @@ export function DashboardPage() {
   const groupLabel = selectedGroup === "all" ? "All groups" : selectedGroup;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
+      <PageIntro
+        eyebrow="Overview"
+        title="Supplier Dashboard"
+        description="Portfolio health at a glance — active relations, hold counts, class distribution and supplier spotlight."
+      />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KPI
           label="Total suppliers"
