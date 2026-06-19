@@ -27,7 +27,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
@@ -1355,12 +1355,16 @@ function EditTab({
     const projectAnchor =
       opp.study_start_date || form.planned_start_date || opp.planned_start_date;
     if (!projectAnchor) return null;
+    const parseLocalDate = (value: string) => {
+      const [y, m, d] = value.split("-").map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    };
     let start: Date;
     const realStart = form.real_start_date || opp.real_start_date;
     if (realStart) {
-      start = new Date(realStart);
+      start = parseLocalDate(realStart);
     } else {
-      start = new Date(projectAnchor);
+      start = parseLocalDate(projectAnchor);
       if (isNaN(start.getTime())) return null;
       // Phases 1–3 only — savings flow once deployment ends, before Phase 4 closure.
       const weeks =
@@ -7220,22 +7224,27 @@ export default function PurchasingValuePage() {
     load();
   }, [load]);
 
-  // Deep-link: open a specific opportunity's detail when navigated from Budgeting
+  // Deep-link: open a specific opportunity's detail when navigated from Budgeting.
+  // Supports both router state (legacy) and ?opp=<id> query param (L2 — URL-safe, refresh-proof).
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const deepLinkDone = useRef(false);
   useEffect(() => {
-    const id = (location.state as { openOpportunityId?: number } | null)
-      ?.openOpportunityId;
+    const stateId = (location.state as { openOpportunityId?: number } | null)?.openOpportunityId;
+    const paramRaw = searchParams.get("opp");
+    const paramId = paramRaw ? parseInt(paramRaw, 10) : undefined;
+    const id = stateId ?? paramId;
     if (id && !deepLinkDone.current && opportunities.length) {
       const found = opportunities.find((o) => o.opportunity_id === id);
       if (found) {
         setSelected(found);
         deepLinkDone.current = true;
+        // Clean up both state and query param so the drawer doesn't re-open on next navigation
         navigate(location.pathname, { replace: true, state: null });
       }
     }
-  }, [location, opportunities, navigate]);
+  }, [location, searchParams, opportunities, navigate]);
 
   // Derive dropdown options from loaded data
   const plantOptions = [
@@ -7355,7 +7364,8 @@ export default function PurchasingValuePage() {
 
   // KPIs — budget source of truth is OpportunityBudgetYear (director commitment),
   // not opp.validation_status (execution-maturity flag).
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
   const committedOppIds = new Set(
     opportunities
       .filter((o) =>

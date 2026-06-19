@@ -104,9 +104,9 @@ function InlineEditForm({
     try {
       await supplierAPI.setRecovery(item.financial_line_id, {
         recovery_status: form.recovery_status,
-        recovery_note: form.recovery_note || undefined,
-        recovery_target_date: form.recovery_target_date || undefined,
-        recovery_amount: form.recovery_amount ? parseFloat(form.recovery_amount) : undefined,
+        recovery_note: form.recovery_note.trim() ? form.recovery_note : null,
+        recovery_target_date: form.recovery_target_date || null,
+        recovery_amount: form.recovery_amount ? parseFloat(form.recovery_amount) : null,
         updated_by: userEmail,
       });
       onSaved();
@@ -248,9 +248,15 @@ function RecoveryCard({
             {statusCfg.icon} {item.recovery_status}
           </span>
           <button
-            onClick={() => navigate(`/purchasing-value?highlight=${item.opportunity_id}`)}
+            onClick={() =>
+              item.opportunity_id &&
+              navigate("/purchasing-value", {
+                state: { openOpportunityId: item.opportunity_id },
+              })
+            }
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             title="Open opportunity"
+            disabled={!item.opportunity_id}
           >
             <ExternalLink size={13} />
           </button>

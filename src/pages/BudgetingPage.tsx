@@ -68,7 +68,8 @@ const PORTION_COLORS: Record<string, string> = {
   Residual: "bg-orange-100 text-orange-700",
 };
 
-const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const _CY = new Date().getFullYear();
+const YEARS = Array.from({ length: 10 }, (_, i) => _CY - 2 + i);
 
 function budgetYearWindowLabel(year: number) {
   return `01 Dec ${year - 1} - 30 Nov ${year}`;
@@ -118,7 +119,7 @@ export default function BudgetingPage() {
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
 
-  const [fiscalYear, setFiscalYear] = useState<number>(2026);
+  const [fiscalYear, setFiscalYear] = useState<number>(new Date().getFullYear());
   const [items, setItems] = useState<BudgetYearItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,6 +129,11 @@ export default function BudgetingPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [decisions, setDecisions] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // Sorting state (read-only mode)
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   async function load(year: number) {
     setLoading(true);
@@ -158,6 +164,28 @@ export default function BudgetingPage() {
   const setDecision = (oppId: number, status: string) =>
     setDecisions((prev) => ({ ...prev, [oppId]: status }));
 
+  // Sorting helper — toggle col, flip dir on re-click
+  function toggleSort(col: string) {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+  const sortIndicator = (col: string) =>
+    sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+
+  const sortedItems = [...items].sort((a, b) => {
+    if (!sortCol) return 0;
+    let av: string | number | null = null;
+    let bv: string | number | null = null;
+    if (sortCol === "name") { av = a.opportunity_name ?? ""; bv = b.opportunity_name ?? ""; }
+    else if (sortCol === "plant") { av = a.plant_name ?? ""; bv = b.plant_name ?? ""; }
+    else if (sortCol === "type") { av = a.opportunity_type ?? ""; bv = b.opportunity_type ?? ""; }
+    else if (sortCol === "phase") { av = a.phase_status ?? ""; bv = b.phase_status ?? ""; }
+    else if (sortCol === "saving") { av = a.applicable_amount_eur ?? a.applicable_amount ?? 0; bv = b.applicable_amount_eur ?? b.applicable_amount ?? 0; }
+    if (av === null) av = ""; if (bv === null) bv = "";
+    const cmp = typeof av === "number" ? av - (bv as number) : String(av).localeCompare(String(bv));
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
   // Consolidated in EUR (opportunities may be in EUR/USD/RMB/INR)
   const budgetedTotal = items
     .filter((i) => decisions[i.opportunity_id] === "Budgeted")
@@ -167,13 +195,15 @@ export default function BudgetingPage() {
   ).length;
 
   async function saveBudget() {
+    setShowConfirm(false);
     setSaving(true);
     setError(null);
     try {
-      const payload = items.map((i) => ({
-        opportunity_id: i.opportunity_id,
-        budget_status: decisions[i.opportunity_id] || "Opportunity",
-      }));
+      // H3 — deduplicate by opportunity_id (defensive: shouldn't happen, but guard it)
+      const seen = new Set<number>();
+      const payload = items
+        .filter((i) => { if (seen.has(i.opportunity_id)) return false; seen.add(i.opportunity_id); return true; })
+        .map((i) => ({ opportunity_id: i.opportunity_id, budget_status: decisions[i.opportunity_id] || "Opportunity" }));
       await supplierAPI.assignBudget(fiscalYear, payload, userEmail);
       await load(fiscalYear);
       setSelectMode(false);
@@ -192,10 +222,16 @@ export default function BudgetingPage() {
           <h1 className="text-xl font-bold text-slate-800">Budgeting</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {selectMode
-              ? `Create Budget ${fiscalYear} — tick the opportunities to commit to this year's budget (forecast or validated).`
-              : "Calendar-year view of estimated savings. Use Create Budget to commit opportunities — including forecast ones — to a year."}
+              ? `Create Budget ${fiscalYear} — tick the opportunities to commit to this budget year (forecast or validated).`
+              : "Budget-year view of estimated savings. Use Create Budget to commit opportunities — including forecast ones — to a year."}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            This page follows the budget-year window, not the calendar year.
           </p>
         </div>
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          Budget year {fiscalYear}: {budgetYearWindowLabel(fiscalYear)} · daily prorata
+        </p>
         <div className="flex items-center gap-2">
           <select
             value={fiscalYear}
@@ -239,7 +275,7 @@ export default function BudgetingPage() {
                 <X size={12} /> Cancel
               </button>
               <button
-                onClick={saveBudget}
+                onClick={() => setShowConfirm(true)}
                 disabled={saving || items.length === 0}
                 className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
@@ -260,8 +296,40 @@ export default function BudgetingPage() {
         </div>
       )}
 
-      {/* Summary KPIs */}
-      {summary && (
+      {/* Confirmation modal — H1: locks are irreversible, require explicit confirmation */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="mb-2 text-base font-bold text-slate-800">Confirm budget commitment</h3>
+            <p className="mb-1 text-sm text-slate-600">
+              You are about to lock the budget decisions for <strong>FY {fiscalYear}</strong>:
+            </p>
+            <p className="mb-4 rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
+              {budgetedCount} opportunit{budgetedCount === 1 ? "y" : "ies"} → Budgeted · Total {fmt(budgetedTotal)}
+            </p>
+            <p className="mb-5 text-xs text-slate-500">
+              Budget decisions are <strong>locked</strong> once saved — they cannot be changed automatically. Make sure the selection is correct.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBudget}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Confirm & save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary KPIs — hidden in Create Budget mode to avoid confusion with live local totals (M3) */}
+      {summary && !selectMode && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
@@ -303,16 +371,17 @@ export default function BudgetingPage() {
           <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400">
             <tr>
               {selectMode && <th className="px-3 py-2.5 font-semibold">Set status</th>}
-              <th className="px-3 py-2.5 font-semibold">Opportunity</th>
-              <th className="px-3 py-2.5 font-semibold">Plant</th>
-              <th className="px-3 py-2.5 font-semibold">Type</th>
-              <th className="px-3 py-2.5 font-semibold">Phase</th>
+              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("name")}>Opportunity{sortIndicator("name")}</th>
+              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("plant")}>Plant{sortIndicator("plant")}</th>
+              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("type")}>Type{sortIndicator("type")}</th>
+              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("phase")}>Phase{sortIndicator("phase")}</th>
               <th className="px-3 py-2.5 font-semibold">Validation</th>
               <th className="px-3 py-2.5 font-semibold">Budget</th>
               <th className="px-3 py-2.5 font-semibold">Portion</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Saving (Budget {fiscalYear})</th>
+              <th className="cursor-pointer select-none px-3 py-2.5 text-right font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("saving")}>Saving (Budget {fiscalYear}){sortIndicator("saving")}</th>
             </tr>
           </thead>
+          {/* L4 — derive colSpan from column count so adding a column doesn't break loading rows */}
           <tbody className="divide-y divide-slate-50">
             {loading && (
               <tr>
@@ -329,7 +398,7 @@ export default function BudgetingPage() {
               </tr>
             )}
             {!loading &&
-              items.map((item) => (
+              sortedItems.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/60">
                   {selectMode && (
                     <td className="px-3 py-2.5">
@@ -347,9 +416,7 @@ export default function BudgetingPage() {
                   <td className="px-3 py-2.5">
                     <button
                       onClick={() =>
-                        navigate("/purchasing-value", {
-                          state: { openOpportunityId: item.opportunity_id },
-                        })
+                        navigate(`/purchasing-value?opp=${item.opportunity_id}`)
                       }
                       className="flex items-center gap-1 font-semibold text-slate-700 hover:text-blue-600"
                     >
@@ -404,11 +471,14 @@ export default function BudgetingPage() {
         </table>
       </div>
 
+      <p className="text-[11px] text-slate-500">
+        Budget year note: this screen uses the 01 Dec to 30 Nov budget window and allocates savings by actual-day prorata.
+      </p>
       <p className="text-[11px] text-slate-400">
-        Savings are split pro-rata across fiscal years from the project start date (real start once
-        in Phase 3, otherwise the expected/planned start). Per-opportunity amounts are shown in their
-        own currency; the <strong>KPI totals are consolidated in EUR</strong> (group reporting
-        currency). Any opportunity with savings in the year can be committed via{" "}
+        Savings are split pro-rata by actual days across budget years from the project start date
+        (real start once in Phase 3, otherwise the expected/planned start). Per-opportunity amounts
+        are shown in their own currency; the <strong>KPI totals are consolidated in EUR</strong>
+        (group reporting currency). Any opportunity with savings in the budget year can be committed via{" "}
         <strong>Create Budget</strong> — <strong>Validated</strong> = Phase 3 started,{" "}
         <strong>Forecast</strong> = not yet. The committed choice is locked.
       </p>

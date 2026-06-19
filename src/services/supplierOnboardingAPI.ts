@@ -1617,9 +1617,9 @@ class SupplierOnboardingAPI {
     lineId: number,
     data: {
       recovery_status: string;
-      recovery_note?: string;
-      recovery_target_date?: string;
-      recovery_amount?: number;
+      recovery_note?: string | null;
+      recovery_target_date?: string | null;
+      recovery_amount?: number | null;
       updated_by?: string;
     },
   ) {

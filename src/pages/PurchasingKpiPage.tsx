@@ -215,10 +215,12 @@ function Ring({ pct, size = 56, color = "#10b981" }: { pct: number; size?: numbe
 // Main Dashboard Page
 // ---------------------------------------------------------------------------
 export default function PurchasingKpiPage() {
+  const today = new Date();
+  const activeBudgetYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
   const [data, setData] = useState<KpiData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(activeBudgetYear);
   const [plantFilter, setPlantFilter] = useState("All");
   const [tab, setTab] = useState<"monthly" | "plant" | "type" | "alerts">("monthly");
 
@@ -244,7 +246,7 @@ export default function PurchasingKpiPage() {
   const { kpis, monthly_actuals, by_plant, by_type, late_projects, missing_updates, escalated } = data;
 
   // Filter monthly by plant if needed (future enhancement - currently all plants)
-  const monthlyFiltered = monthly_actuals.filter(d => d.period.startsWith(String(selectedYear)));
+  const monthlyFiltered = monthly_actuals;
   const totalAlerts = kpis.escalated_count + kpis.late_projects_count + kpis.missing_update_lines;
 
   return (
