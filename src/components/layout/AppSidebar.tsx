@@ -71,6 +71,7 @@ const PRIMARY_NAV: NavItem[] = [
       { name: "Monthly Follow-up", path: "/purchasing-value/monthly" },
       { name: "Budgeting", path: "/purchasing-value/budgeting" },
       { name: "Recovery Plans", path: "/purchasing-value/recovery" },
+      { name: "KPIs", path: "/purchasing-value/kpis" },
     ],
   },
   // {

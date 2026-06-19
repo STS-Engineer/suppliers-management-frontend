@@ -1499,11 +1499,16 @@ class SupplierOnboardingAPI {
     );
   }
 
-  async getPurchasingKpis(year?: number) {
-    const q = year ? `?year=${year}` : "";
+  async getPurchasingKpis(year?: number, filters?: { plantIds?: number[]; categories?: string[]; buyers?: string[] }) {
+    const p = new URLSearchParams();
+    if (year) p.set("year", String(year));
+    if (filters?.plantIds?.length) p.set("plant_ids", filters.plantIds.join(","));
+    if (filters?.categories?.length) p.set("categories", filters.categories.join(","));
+    if (filters?.buyers?.length) p.set("buyers", filters.buyers.join(","));
+    const q = p.toString() ? `?${p.toString()}` : "";
     return this.request(
       `${this.baseUrl}/purchasing-value/kpis${q}`,
-      { method: "GET", headers: this.getAuthHeaders() },
+      { method: "GET", headers: this.getAuthHeaders(), cache: "no-store" },
       "Failed to load purchasing KPIs.",
     );
   }

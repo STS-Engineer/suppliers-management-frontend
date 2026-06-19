@@ -20,7 +20,7 @@ import PurchasingValuePage from "./pages/PurchasingValuePage";
 import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
 import BudgetingPage from "./pages/BudgetingPage";
 import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
-// import PurchasingKpiPage from "./pages/PurchasingKpiPage";
+import PurchasingKpiPage from "./pages/PurchasingKpiPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 import GateApprovalPage from "./pages/GateApprovalPage";
 // import CarbonFootprintPage from "./pages/CarbonFootprintPage";
@@ -89,7 +89,7 @@ const router = createBrowserRouter([
       },
       { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
       { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
-      // { path: "/purchasing-value/kpis",               element: <Navigate to="/suppliers" replace /> },
+      { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
       // { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },
       // { path: "/suppliers/certifications", element: <CertificationsTrackingPage /> },
