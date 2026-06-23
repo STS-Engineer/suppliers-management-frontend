@@ -28,8 +28,10 @@ export const SupplierMasterReviewStep: React.FC<
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">
-          {error}
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900 space-y-1">
+          {error.split("\n").map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
         </div>
       )}
 

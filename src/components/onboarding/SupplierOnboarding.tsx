@@ -20,7 +20,7 @@ import { ContactsForm } from "./ContactsForm";
 import { CertificationsForm } from "./CertificationsForm";
 import { SupplierMasterReviewStep } from "./SupplierMasterReviewStep";
 import { SupplierMasterSuccessPage } from "./SupplierMasterSuccessPage";
-import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { supplierAPI, SupplierApiError } from "../../services/supplierOnboardingAPI";
 import { SupplierMasterCreationResponse } from "../../types/onboarding";
 import { SupplierManagement } from "./SupplierManagement";
 import { InlineAlert, PageIntro } from "../UI";
@@ -312,6 +312,25 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       newContacts[index] = { ...newContacts[index], [field]: value };
       return { ...prev, contacts: newContacts };
     });
+    if (field === "email") {
+      const emailError =
+        value && !looksLikeEmail(value) ? "Must be a valid email address" : undefined;
+      setErrors((prev) => ({
+        ...prev,
+        contacts: {
+          ...(prev.contacts ?? {}),
+          [index]: { ...(prev.contacts?.[index] ?? {}), email: emailError },
+        },
+      }));
+    } else if (errors.contacts?.[index]?.[field]) {
+      setErrors((prev) => ({
+        ...prev,
+        contacts: {
+          ...(prev.contacts ?? {}),
+          [index]: { ...(prev.contacts?.[index] ?? {}), [field]: undefined },
+        },
+      }));
+    }
   };
 
   const handleAddContact = () => {
@@ -464,6 +483,8 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           }
           if (!contact.email) {
             contactIdx.email = "Email is required";
+          } else if (!looksLikeEmail(contact.email)) {
+            contactIdx.email = "Must be a valid email address";
           }
           if (Object.keys(contactIdx).length > 0) {
             contactErrors[idx] = contactIdx;
@@ -559,7 +580,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         unit: cleanedUnitPayload(formData.unit),
         unit_contacts: unit_contacts.filter(hasMeaningfulContactData),
         contacts: formData.contacts,
-        certifications: cleanedCertifications,
+        certifications: cleanedCertifications.filter((c) => c.standard_type?.trim()),
         annual_spend_value: formData.annual_spend_value || undefined,
         annual_spend_currency: formData.annual_spend_currency || undefined,
       };
@@ -572,11 +593,65 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       });
       setMasterResponse(response);
     } catch (error) {
-      setSubmitError(
-        error instanceof Error
-          ? error.message
-          : "An error occurred while submitting the form",
-      );
+      if (error instanceof SupplierApiError && Array.isArray(error.details) && error.details.length > 0) {
+        const contactErrors: { [index: number]: { [field: string]: string } } = {};
+        const groupErrors: { [field: string]: string } = {};
+        const unitErrors: { [field: string]: string } = {};
+        const certErrors: { [index: number]: { [field: string]: string } } = {};
+        const fieldMessages: string[] = [];
+        let firstStep: OnboardingStep | null = null;
+
+        const humanize = (msg: string) =>
+          msg.replace(/^Value error,\s*/i, "").replace(/^\w/, (c) => c.toUpperCase());
+
+        for (const detail of error.details as { field: string; message: string }[]) {
+          const f = detail.field;
+          const msg = humanize(detail.message);
+
+          const contactMatch = f.match(/^body\.contacts\.(\d+)\.(\w+)$/);
+          const groupMatch = f.match(/^body\.group\.(\w+)$/);
+          const unitMatch = f.match(/^body\.unit\.(\w+)$/);
+          const certMatch = f.match(/^body\.certifications\.(\d+)\.(\w+)$/);
+
+          if (contactMatch) {
+            const idx = parseInt(contactMatch[1], 10);
+            contactErrors[idx] = { ...(contactErrors[idx] ?? {}), [contactMatch[2]]: msg };
+            fieldMessages.push(`Contact #${idx + 1} — ${contactMatch[2]}: ${msg}`);
+            if (!firstStep) firstStep = "contacts";
+          } else if (groupMatch) {
+            groupErrors[groupMatch[1]] = msg;
+            fieldMessages.push(`Supplier group — ${groupMatch[1]}: ${msg}`);
+            if (!firstStep) firstStep = "supplier";
+          } else if (unitMatch) {
+            unitErrors[unitMatch[1]] = msg;
+            fieldMessages.push(`Supplier unit — ${unitMatch[1]}: ${msg}`);
+            if (!firstStep) firstStep = "unit";
+          } else if (certMatch) {
+            const idx = parseInt(certMatch[1], 10);
+            certErrors[idx] = { ...(certErrors[idx] ?? {}), [certMatch[2]]: msg };
+            fieldMessages.push(`Certification #${idx + 1} — ${certMatch[2]}: ${msg}`);
+            if (!firstStep) firstStep = "certifications";
+          } else {
+            fieldMessages.push(msg);
+          }
+        }
+
+        const newErrors: any = {};
+        if (Object.keys(contactErrors).length > 0) newErrors.contacts = contactErrors;
+        if (Object.keys(groupErrors).length > 0) newErrors.group = groupErrors;
+        if (Object.keys(unitErrors).length > 0) newErrors.unit = unitErrors;
+        if (Object.keys(certErrors).length > 0) newErrors.certifications = certErrors;
+        if (Object.keys(newErrors).length > 0) setErrors((prev) => ({ ...prev, ...newErrors }));
+        if (firstStep) setCurrentStep(firstStep);
+
+        setSubmitError(fieldMessages.join("\n"));
+      } else {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "An error occurred while submitting the form",
+        );
+      }
       console.error("Submission error:", error);
     } finally {
       setIsSubmitting(false);

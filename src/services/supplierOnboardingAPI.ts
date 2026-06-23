@@ -1532,7 +1532,7 @@ class SupplierOnboardingAPI {
 
   async assignBudget(
     fiscalYear: number,
-    decisions: { opportunity_id: number; budget_status: string }[],
+    decisions: { opportunity_id: number; budget_status: string; /* delta_reason?: string[] */ }[],
     decidedBy?: string,
   ) {
     return this.request(
@@ -1545,6 +1545,21 @@ class SupplierOnboardingAPI {
       "Failed to save budget.",
     );
   }
+
+  // async updateDeltaReasons(
+  //   fiscalYear: number,
+  //   decisions: { opportunity_id: number; delta_reason: string[] }[],
+  // ) {
+  //   return this.request(
+  //     `${this.baseUrl}/purchasing-value/budgets/${fiscalYear}/delta-reasons`,
+  //     {
+  //       method: "POST",
+  //       headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+  //       body: JSON.stringify({ decisions }),
+  //     },
+  //     "Failed to save delta reasons.",
+  //   );
+  // }
 
   async getSuppliersByPlant(plantId: number) {
     return this.request(
@@ -1753,6 +1768,42 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/financial-lines/${lineId}/complete`,
       { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
       "Failed to complete financial line.",
+    );
+  }
+
+  // ========================================================================
+  // Opportunity Action Plans
+  // ========================================================================
+
+  async listActionPlans(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load action plans.",
+    );
+  }
+
+  async createActionPlan(opportunityId: number, payload: object) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      "Failed to create action plan.",
+    );
+  }
+
+  async updateActionPlan(opportunityId: number, actionPlanId: number, payload: object) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}`,
+      { method: "PUT", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      "Failed to update action plan.",
+    );
+  }
+
+  async deleteActionPlan(opportunityId: number, actionPlanId: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to delete action plan.",
     );
   }
 
