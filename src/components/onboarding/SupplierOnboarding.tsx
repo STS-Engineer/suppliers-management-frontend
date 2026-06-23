@@ -34,11 +34,15 @@ const MASTER_STEPS: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "supplier",       label: "Supplier Info",  description: "Group profile"     },
-  { id: "contacts",       label: "Contacts",        description: "Group contacts"    },
-  { id: "unit",           label: "Unit Location",   description: "First unit"        },
-  { id: "certifications", label: "Certifications",  description: "Quality records"   },
-  { id: "review",         label: "Review",          description: "Create master"     },
+  { id: "supplier", label: "Supplier Info", description: "Group profile" },
+  { id: "contacts", label: "Contacts", description: "Group contacts" },
+  { id: "unit", label: "Unit Location", description: "First unit" },
+  {
+    id: "certifications",
+    label: "Certifications",
+    description: "Quality records",
+  },
+  { id: "review", label: "Review", description: "Create master" },
 ];
 
 const EMPTY_FORM: OnboardingFormData = {
@@ -150,12 +154,50 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   const [draftSaved, setDraftSaved] = useState(false);
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
 
-  // ── Navigation guard ──────────────────────────────────────────────────────
+  const hasMeaningfulContactData = (contact: ContactFormData) =>
+    !!(
+      contact.full_name.trim() ||
+      contact.email.trim() ||
+      contact.role_label.trim() ||
+      contact.role_name.trim() ||
+      contact.phone.trim()
+    );
+
+  const looksLikeEmail = (value: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const emptyToUndefined = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  };
+
+  const cleanedUnitPayload = (unit: UnitFormData) => ({
+    ...unit,
+    ghg_requested_date: emptyToUndefined(unit.ghg_requested_date),
+    scope1_ghg: emptyToUndefined(unit.scope1_ghg),
+    scope2_ghg: emptyToUndefined(unit.scope2_ghg),
+  });
+
+  // â”€â”€ Navigation guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const formHasData =
     !!masterResponse === false &&
     (formData.group.nom.trim().length > 0 ||
-      formData.contacts.length > 0 ||
-      formData.unit.supplier_code.trim().length > 0);
+      formData.contacts.some(hasMeaningfulContactData) ||
+      formData.unit.supplier_code.trim().length > 0 ||
+      formData.unit.unit_contacts.some(hasMeaningfulContactData) ||
+      formData.certifications.some(
+        (certification) =>
+          !!(
+            certification.standard_type?.trim() ||
+            certification.certification_type?.trim() ||
+            certification.certificate_name?.trim() ||
+            certification.amount_value?.trim() ||
+            certification.start_date ||
+            certification.end_date ||
+            certification.expiry_mode?.trim() ||
+            certification.comments?.trim()
+          ),
+      ));
 
   const blocker = useBlocker(formHasData);
 
@@ -183,7 +225,10 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           "Standard category is required when adding a certification";
       }
 
-      if (certification.standard_type && !certification.certification_type?.trim()) {
+      if (
+        certification.standard_type &&
+        !certification.certification_type?.trim()
+      ) {
         rowErrors.certification_type = "Certification is required";
       }
 
@@ -201,6 +246,31 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     });
 
     return certificationErrors;
+  };
+
+  const buildUnitContactErrors = () => {
+    const unitContactErrors: Record<number, Record<string, string>> = {};
+
+    formData.unit.unit_contacts.forEach((contact, index) => {
+      if (!hasMeaningfulContactData(contact)) {
+        return;
+      }
+
+      const rowErrors: Record<string, string> = {};
+      if (!contact.full_name.trim()) {
+        rowErrors.full_name =
+          "Full name is required when adding a unit contact";
+      }
+      if (contact.email.trim() && !looksLikeEmail(contact.email)) {
+        rowErrors.email = "Enter a valid email address";
+      }
+
+      if (Object.keys(rowErrors).length > 0) {
+        unitContactErrors[index] = rowErrors;
+      }
+    });
+
+    return unitContactErrors;
   };
 
   const handleGroupChange = (field: keyof GroupFormData, value: any) => {
@@ -348,6 +418,11 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         ) {
           groupErrors.supplier_owner =
             "Global supplier owner email is required";
+        } else if (
+          formData.group.supplier_owner.trim() &&
+          !looksLikeEmail(formData.group.supplier_owner)
+        ) {
+          groupErrors.supplier_owner = "Enter a valid email address";
         }
         if (formData.group.supplier_type.length === 0) {
           groupErrors.supplier_type = "Select at least one category";
@@ -363,14 +438,25 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         if (!formData.unit.supplier_code) {
           unitErrors.supplier_code = "Supplier code is required";
         }
+        if (
+          formData.unit.supplier_email.trim() &&
+          !looksLikeEmail(formData.unit.supplier_email)
+        ) {
+          unitErrors.supplier_email = "Enter a valid email address";
+        }
         if (Object.keys(unitErrors).length > 0) {
           newErrors.unit = unitErrors;
+        }
+        const unitContactErrors = buildUnitContactErrors();
+        if (Object.keys(unitContactErrors).length > 0) {
+          newErrors.unit_contacts = unitContactErrors;
         }
         break;
       }
 
       case "contacts":
         const contactErrors: any = {};
+        let hasPrimaryContact = false;
         formData.contacts.forEach((contact, idx) => {
           const contactIdx = contactErrors[idx] || {};
           if (!contact.full_name) {
@@ -426,16 +512,26 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
   const handleSubmit = async () => {
     const certificationErrors = buildCertificationErrors();
+    const unitContactErrors = buildUnitContactErrors();
     if (
       !validateStep(currentStep) ||
-      Object.keys(certificationErrors).length > 0
+      Object.keys(certificationErrors).length > 0 ||
+      Object.keys(unitContactErrors).length > 0
     ) {
       setValidationNotice(
         "Please review the missing or invalid fields before creating the supplier master.",
       );
-      if (Object.keys(certificationErrors).length > 0) {
-        setErrors((prev) => ({ ...prev, certifications: certificationErrors }));
-      }
+      setErrors((prev) => ({
+        ...prev,
+        certifications:
+          Object.keys(certificationErrors).length > 0
+            ? certificationErrors
+            : prev.certifications,
+        unit_contacts:
+          Object.keys(unitContactErrors).length > 0
+            ? unitContactErrors
+            : prev.unit_contacts,
+      }));
       return;
     }
 
@@ -446,20 +542,22 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     try {
       const { unit_contacts } = formData.unit;
 
-      const cleanedCertifications = formData.certifications.map(({ file, ...cert }) => ({
-        ...cert,
-        amount_value: cert.amount_value ? cert.amount_value : null,
-        start_date: cert.start_date ? cert.start_date : null,
-        end_date: cert.end_date ? cert.end_date : null,
-      }));
+      const cleanedCertifications = formData.certifications.map(
+        ({ file, ...cert }) => ({
+          ...cert,
+          amount_value: cert.amount_value ? cert.amount_value : null,
+          start_date: cert.start_date ? cert.start_date : null,
+          end_date: cert.end_date ? cert.end_date : null,
+        }),
+      );
 
       const payloadData = {
         group: {
           ...formData.group,
           supplier_type: formData.group.supplier_type.join(", "),
         },
-        unit: formData.unit,
-        unit_contacts: unit_contacts.filter((c) => c.full_name.trim()),
+        unit: cleanedUnitPayload(formData.unit),
+        unit_contacts: unit_contacts.filter(hasMeaningfulContactData),
         contacts: formData.contacts,
         certifications: cleanedCertifications,
         annual_spend_value: formData.annual_spend_value || undefined,
@@ -517,7 +615,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   return (
     <div className="flex min-h-[calc(100vh-64px)] flex-col bg-slate-50">
       <PageIntro
-        eyebrow="Lifecycle · Phase 1"
+        eyebrow="Lifecycle Â· Phase 1"
         title="Create Supplier Master"
         description="Set up the supplier group, first unit, contacts and certifications. Site assignment and relation evaluations follow in the next phase."
         actions={
@@ -541,9 +639,13 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       {/* Unsaved-progress banner */}
       {formHasData && (
         <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5">
-          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-white">!</span>
+          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-white">
+            !
+          </span>
           <p className="text-xs font-medium text-amber-800">
-            Unsaved progress — complete all steps and click <strong>Create</strong> to save. Navigating away will discard your data.
+            Unsaved progress complete all steps and click{" "}
+            <strong>Create</strong> to save. Navigating away will discard your
+            data.
           </p>
         </div>
       )}
@@ -573,6 +675,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
             <SupplierUnitForm
               data={formData.unit}
               errors={errors.unit || {}}
+              unitContactErrors={errors.unit_contacts || {}}
               onChange={handleUnitChange}
               groupContacts={formData.contacts}
             />
@@ -620,7 +723,11 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6 lg:px-8">
             {draftSaved && (
               <div className="mb-3">
-                <InlineAlert title="Draft saved" message="Your progress has been saved." tone="info" />
+                <InlineAlert
+                  title="Draft saved"
+                  message="Your progress has been saved."
+                  tone="info"
+                />
               </div>
             )}
             <div className="flex gap-3">
@@ -630,8 +737,18 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
                 disabled={currentStep === "supplier"}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
                 Previous
               </button>
@@ -642,8 +759,18 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0f2744] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a3a5c]"
               >
                 Continue
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             </div>
@@ -651,22 +778,34 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         </div>
       )}
 
-      {/* ── Leave confirmation modal ── */}
+      {/* â”€â”€ Leave confirmation modal â”€â”€ */}
       {blocker.state === "blocked" && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.25)]">
             <div className="border-b border-slate-100 bg-amber-50 px-6 py-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                    />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900">Leave without saving?</h3>
+                  <h3 className="font-bold text-slate-900">
+                    Leave without saving?
+                  </h3>
                   <p className="mt-1 text-sm text-slate-600">
-                    You have unsaved progress on this supplier creation. Leaving now will discard everything you've entered.
+                    You have unsaved progress on this supplier creation. Leaving
+                    now will discard everything you've entered.
                   </p>
                 </div>
               </div>

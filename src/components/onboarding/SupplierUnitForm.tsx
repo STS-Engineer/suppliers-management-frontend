@@ -4,83 +4,176 @@
 
 import React from "react";
 import { UserPlus, X } from "lucide-react";
-import { UnitFormData, ContactFormData, FormErrors } from "../../types/onboarding";
-import { CreatableMultiSelect, FormInput, FormCheckbox, FormSelect } from "./FormElements";
+import {
+  UnitFormData,
+  ContactFormData,
+  FormErrors,
+} from "../../types/onboarding";
+import {
+  CreatableMultiSelect,
+  FormInput,
+  FormCheckbox,
+  FormSelect,
+} from "./FormElements";
 
 interface SupplierUnitFormProps {
   data: UnitFormData;
   errors: FormErrors;
+  unitContactErrors?: { [key: number]: FormErrors };
   onChange: (field: keyof UnitFormData, value: any) => void;
   groupContacts?: ContactFormData[];
 }
 
 const COUNTRIES = [
-  "China", "India", "Vietnam", "Thailand", "Indonesia",
-  "Germany", "France", "Italy", "Poland", "Netherlands",
-  "United States", "Canada", "Mexico", "Brazil",
-  "Japan", "South Korea", "Taiwan", "Malaysia",
-  "United Kingdom", "Spain", "Australia", "Other",
+  "China",
+  "India",
+  "Vietnam",
+  "Thailand",
+  "Indonesia",
+  "Germany",
+  "France",
+  "Italy",
+  "Poland",
+  "Netherlands",
+  "United States",
+  "Canada",
+  "Mexico",
+  "Brazil",
+  "Japan",
+  "South Korea",
+  "Taiwan",
+  "Malaysia",
+  "United Kingdom",
+  "Spain",
+  "Australia",
+  "Other",
 ];
 
 const DEFAULT_FAMILIES = [
-  "Electronics", "Electromechanical", "Magnetics", "Passive Components",
-  "Chemicals", "Raw Materials", "Metals", "Plastics", "Packaging",
-  "Mechanical Parts", "PCB & Assemblies", "Cables & Connectors",
-  "Software & Services", "Tooling & Equipment",
+  "Electronics",
+  "Electromechanical",
+  "Magnetics",
+  "Passive Components",
+  "Chemicals",
+  "Raw Materials",
+  "Metals",
+  "Plastics",
+  "Packaging",
+  "Mechanical Parts",
+  "PCB & Assemblies",
+  "Cables & Connectors",
+  "Software & Services",
+  "Tooling & Equipment",
 ];
 
 const DEFAULT_CATEGORIES = [
-  "Ferrites", "Chokes", "Wire coils", "Inductors", "Transformers",
-  "Capacitors", "Resistors", "Diodes", "MOSFETs", "IGBTs",
-  "Sensors", "Filters", "Connectors", "Switches", "Relays",
-  "Motors", "PCB Assemblies", "Cables", "Coatings", "Laminates",
+  "Ferrites",
+  "Chokes",
+  "Wire coils",
+  "Inductors",
+  "Transformers",
+  "Capacitors",
+  "Resistors",
+  "Diodes",
+  "MOSFETs",
+  "IGBTs",
+  "Sensors",
+  "Filters",
+  "Connectors",
+  "Switches",
+  "Relays",
+  "Motors",
+  "PCB Assemblies",
+  "Cables",
+  "Coatings",
+  "Laminates",
 ];
 
 const DEFAULT_SUB_FAMILIES = [
-  "Ferrites", "Inductors", "Transformers", "Capacitors", "Resistors",
-  "Diodes", "MOSFETs", "IGBTs", "Sensors", "Filters",
-  "Connectors", "Switches", "Relays", "Motors", "Coatings",
-  "Adhesives", "Laminates", "Substrates",
+  "Ferrites",
+  "Inductors",
+  "Transformers",
+  "Capacitors",
+  "Resistors",
+  "Diodes",
+  "MOSFETs",
+  "IGBTs",
+  "Sensors",
+  "Filters",
+  "Connectors",
+  "Switches",
+  "Relays",
+  "Motors",
+  "Coatings",
+  "Adhesives",
+  "Laminates",
+  "Substrates",
 ];
 
 const DEFAULT_PRODUCT_LINES = [
-  "Power Electronics", "Signal Processing", "Thermal Management",
-  "EMC Solutions", "Energy Storage", "Drive Systems",
-  "Automation & Control", "Lighting", "Wireless & RF",
+  "Power Electronics",
+  "Signal Processing",
+  "Thermal Management",
+  "EMC Solutions",
+  "Energy Storage",
+  "Drive Systems",
+  "Automation & Control",
+  "Lighting",
+  "Wireless & RF",
 ];
 
 const EMPTY_CONTACT: ContactFormData = {
-  full_name: "", email: "", phone: "",
-  role_label: "", role_name: "", is_primary_contact: false,
+  full_name: "",
+  email: "",
+  phone: "",
+  role_label: "",
+  role_name: "",
+  is_primary_contact: false,
 };
 
 export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
-  data, errors, onChange, groupContacts = [],
+  data,
+  errors,
+  unitContactErrors = {},
+  onChange,
+  groupContacts = [],
 }) => {
   const contacts: ContactFormData[] = data.unit_contacts ?? [];
   const hasGroupContacts = groupContacts.some((c) => c.full_name.trim());
 
-  const updateContact = (index: number, field: keyof ContactFormData, value: any) => {
-    const updated = contacts.map((c, i) => (i === index ? { ...c, [field]: value } : c));
+  const updateContact = (
+    index: number,
+    field: keyof ContactFormData,
+    value: any,
+  ) => {
+    const updated = contacts.map((c, i) =>
+      i === index ? { ...c, [field]: value } : c,
+    );
     onChange("unit_contacts", updated);
   };
 
-  const addContact = () => onChange("unit_contacts", [...contacts, { ...EMPTY_CONTACT }]);
+  const addContact = () =>
+    onChange("unit_contacts", [...contacts, { ...EMPTY_CONTACT }]);
   const removeContact = (index: number) =>
-    onChange("unit_contacts", contacts.filter((_, i) => i !== index));
+    onChange(
+      "unit_contacts",
+      contacts.filter((_, i) => i !== index),
+    );
 
   return (
     <div className="form-section">
-      <div className="section-header">
-        <h2>Unit Location</h2>
-        <p>Register the supplier unit, plant, or operating location details.</p>
+      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+        <h2 className="text-base font-semibold text-slate-900">Unit Location</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Register the supplier unit, plant, or operating location.
+        </p>
       </div>
 
       {/* ── Identity ── */}
       <div className="form-grid">
         <div className="col-span-2">
           <FormInput
-            label="Supplier name"
+            label="Unit Name"
             name="supplier_code"
             value={data.supplier_code}
             onChange={(e) => onChange("supplier_code", e.target.value)}
@@ -183,9 +276,12 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
 
       {/* ── Product classification ── */}
       <div className="col-span-2 mt-6 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-        <h3 className="text-base font-semibold text-slate-900">Product Classification</h3>
+        <h3 className="text-base font-semibold text-slate-900">
+          Product Classification
+        </h3>
         <p className="mt-1 text-sm text-slate-500">
-          Classify the products or services provided by this unit. Select existing values or type to create new ones.
+          Classify the products or services provided by this unit. Select
+          existing values or type to create new ones.
         </p>
       </div>
 
@@ -232,7 +328,9 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
 
       {/* ── Sustainability & qualification ── */}
       <div className="col-span-2 mt-6 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-        <h3 className="text-base font-semibold text-slate-900">Sustainability &amp; Qualification</h3>
+        <h3 className="text-base font-semibold text-slate-900">
+          Sustainability &amp; Qualification
+        </h3>
         <p className="mt-1 text-sm text-slate-500">
           Environmental data and supplier qualification category.
         </p>
@@ -292,7 +390,9 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
 
       {/* ── GHG Data ── */}
       <div className="col-span-2 mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-        <h3 className="text-base font-semibold text-emerald-900">GHG Emissions Data</h3>
+        <h3 className="text-base font-semibold text-emerald-900">
+          GHG Emissions Data
+        </h3>
         <p className="mt-1 text-sm text-emerald-700">
           Greenhouse gas footprint reported by the supplier.
         </p>
@@ -343,7 +443,9 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
         />
 
         <div className="col-span-2">
-          <label className="mb-1 block text-sm font-semibold text-slate-700">GHG Comments</label>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">
+            GHG Comments
+          </label>
           <textarea
             value={data.ghg_comments}
             onChange={(e) => onChange("ghg_comments", e.target.value)}
@@ -357,21 +459,37 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
       {/* ── Group contacts reference ── */}
       {hasGroupContacts && (
         <div className="mt-8">
-          <h3 className="mb-1 text-sm font-semibold text-slate-700">Group contacts (reference)</h3>
+          <h3 className="mb-1 text-sm font-semibold text-slate-700">
+            Group contacts (reference)
+          </h3>
           <p className="mb-3 text-xs text-slate-500">
-            Registered at group level — apply to all units in this supplier group.
+            Registered at group level — apply to all units in this supplier
+            group.
           </p>
           <div className="space-y-1.5">
-            {groupContacts.filter((c) => c.full_name.trim()).map((c, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs">
-                <span className="font-semibold text-slate-800">{c.full_name}</span>
-                {c.role_label && <span className="text-slate-500">· {c.role_label}</span>}
-                {c.email && <span className="ml-auto text-slate-400">{c.email}</span>}
-                {c.is_primary_contact && (
-                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Primary</span>
-                )}
-              </div>
-            ))}
+            {groupContacts
+              .filter((c) => c.full_name.trim())
+              .map((c, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs"
+                >
+                  <span className="font-semibold text-slate-800">
+                    {c.full_name}
+                  </span>
+                  {c.role_label && (
+                    <span className="text-slate-500">· {c.role_label}</span>
+                  )}
+                  {c.email && (
+                    <span className="ml-auto text-slate-400">{c.email}</span>
+                  )}
+                  {c.is_primary_contact && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                      Primary
+                    </span>
+                  )}
+                </div>
+              ))}
           </div>
         </div>
       )}
@@ -380,9 +498,12 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
       <div className="mt-8">
         <div className="mb-1 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Unit contacts</h3>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Unit contacts
+            </h3>
             <p className="mt-0.5 text-xs text-slate-500">
-              Supplier-side contacts specific to this unit (quality manager, sales contact, etc.).
+              Supplier-side contacts specific to this unit (quality manager,
+              sales contact, etc.).
             </p>
           </div>
           <button
@@ -401,8 +522,12 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
             className="mt-3 cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center transition hover:border-slate-400 hover:bg-white"
           >
             <UserPlus className="mx-auto mb-2 h-5 w-5 text-slate-400" />
-            <p className="text-sm font-medium text-slate-500">No unit contacts yet</p>
-            <p className="mt-0.5 text-xs text-slate-400">Click to add the first contact for this unit</p>
+            <p className="text-sm font-medium text-slate-500">
+              No unit contacts yet
+            </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Click to add the first contact for this unit
+            </p>
           </div>
         ) : (
           <div className="mt-3 space-y-4">
@@ -412,7 +537,9 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                   <h4 className="text-sm font-semibold text-slate-800">
                     Contact #{index + 1}
                     {contact.is_primary_contact && (
-                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Primary</span>
+                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                        Primary
+                      </span>
                     )}
                   </h4>
                   {contacts.length > 1 && (
@@ -432,9 +559,12 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                       label="Full Name"
                       name={`unit-contact-${index}-full_name`}
                       value={contact.full_name}
-                      onChange={(e) => updateContact(index, "full_name", e.target.value)}
+                      onChange={(e) =>
+                        updateContact(index, "full_name", e.target.value)
+                      }
                       placeholder="e.g., John Zhang"
                       required
+                      error={unitContactErrors[index]?.full_name}
                     />
                   </div>
                   <FormInput
@@ -442,28 +572,37 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                     name={`unit-contact-${index}-email`}
                     type="email"
                     value={contact.email}
-                    onChange={(e) => updateContact(index, "email", e.target.value)}
+                    onChange={(e) =>
+                      updateContact(index, "email", e.target.value)
+                    }
                     placeholder="john@supplier.com"
+                    error={unitContactErrors[index]?.email}
                   />
                   <FormInput
                     label="Phone"
                     name={`unit-contact-${index}-phone`}
                     value={contact.phone}
-                    onChange={(e) => updateContact(index, "phone", e.target.value)}
+                    onChange={(e) =>
+                      updateContact(index, "phone", e.target.value)
+                    }
                     placeholder="+86 21 1234 5678"
                   />
                   <FormInput
                     label="Role label"
                     name={`unit-contact-${index}-role_label`}
                     value={contact.role_label}
-                    onChange={(e) => updateContact(index, "role_label", e.target.value)}
+                    onChange={(e) =>
+                      updateContact(index, "role_label", e.target.value)
+                    }
                     placeholder="e.g., Quality Manager"
                   />
                   <FormInput
                     label="Detailed role description"
                     name={`unit-contact-${index}-role_name`}
                     value={contact.role_name}
-                    onChange={(e) => updateContact(index, "role_name", e.target.value)}
+                    onChange={(e) =>
+                      updateContact(index, "role_name", e.target.value)
+                    }
                     placeholder="Full role description"
                   />
                   <div className="col-span-2">
@@ -471,7 +610,13 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                       label="Primary contact"
                       name={`unit-contact-${index}-primary`}
                       checked={contact.is_primary_contact}
-                      onChange={(e) => updateContact(index, "is_primary_contact", e.target.checked)}
+                      onChange={(e) =>
+                        updateContact(
+                          index,
+                          "is_primary_contact",
+                          e.target.checked,
+                        )
+                      }
                       helperText="This contact will receive all notifications for this unit"
                     />
                   </div>
