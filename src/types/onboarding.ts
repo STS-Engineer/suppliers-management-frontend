@@ -305,7 +305,14 @@ export type OnboardingStep =
   | 'configuration'
   | 'review';
 
-type SubmittedUnitFormData = UnitFormData;
+type SubmittedUnitFormData = Omit<
+  UnitFormData,
+  "ghg_requested_date" | "scope1_ghg" | "scope2_ghg"
+> & {
+  ghg_requested_date?: string;
+  scope1_ghg?: string;
+  scope2_ghg?: string;
+};
 
 type SubmittedCertificationFormData = Omit<
   CertificationFormData,
