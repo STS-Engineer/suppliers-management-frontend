@@ -11,7 +11,7 @@ import {
   SupplierGroupSummary,
 } from "../types/onboarding";
 
-const API_URL =
+export const API_URL =
   import.meta.env.VITE_API_URL?.trim() ||
   "https://supp-back-cbc7g9avb5b7cjbd.francecentral-01.azurewebsites.net/api/v1";
   
@@ -498,6 +498,7 @@ class SupplierOnboardingAPI {
     sub_family?: string;
     product_line?: string;
     supplier_name?: string;
+    include_inactive?: boolean;
   }): Promise<{
     status: string;
     data: {
@@ -530,6 +531,7 @@ class SupplierOnboardingAPI {
     if (params.sub_family) query.set("sub_family", params.sub_family);
     if (params.product_line) query.set("product_line", params.product_line);
     if (params.supplier_name) query.set("supplier_name", params.supplier_name);
+    if (params.include_inactive) query.set("include_inactive", "true");
 
     return this.request(
       `${this.baseUrl}/sites/panel?${query.toString()}`,
@@ -880,6 +882,17 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async getCriteriaValidityBulk() {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/criteria-validity`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load criteria validity data.",
+    );
+  }
+
   async getRelationEvaluationWorkspace(relationId: number) {
     return this.request(
       `${this.baseUrl}/supplier-relations/${relationId}/evaluation-workspace`,
@@ -1121,6 +1134,37 @@ class SupplierOnboardingAPI {
         body: JSON.stringify(data),
       },
       "Failed to update the operational evaluation.",
+    );
+  }
+
+  async saveEvaluationDraft(relationId: number, data: Record<string, any>) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/evaluation-draft`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to save evaluation draft.",
+    );
+  }
+
+  async clearEvaluationDraft(relationId: number) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/evaluation-draft`,
+      {
+        method: "DELETE",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to clear evaluation draft.",
+    );
+  }
+
+  async getCycleHistory(relationId: number) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/evaluation-cycle-history`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load cycle history.",
     );
   }
 
@@ -1992,12 +2036,62 @@ class SupplierOnboardingAPI {
   // Certifications Tracking
   // ===========================================================================
 
+  async uploadCertificationFile(
+    unitId: number,
+    certId: number,
+    file: File,
+  ): Promise<{ data: import("../types/onboarding").SupplierCertificationResponse; message: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("auth_token");
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}/certifications/${certId}/file`,
+      { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData },
+      "Failed to upload certification file.",
+    );
+  }
+
+  async patchCertification(
+    unitId: number,
+    certId: number,
+    data: {
+      certification_type?: string | null;
+      certificate_name?: string | null;
+      start_date?: string | null;
+      end_date?: string | null;
+      comments?: string | null;
+      file_name?: string | null;
+      file_url?: string | null;
+    },
+  ): Promise<{
+    data: import("../types/onboarding").SupplierCertificationResponse;
+    affected_evaluations: Array<{
+      relation_id: number;
+      previous_quality_cert: string | null;
+      new_quality_cert: string | null;
+      new_class_score: number | null;
+      new_class_value: number | null;
+    }>;
+    message: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}/certifications/${certId}`,
+      {
+        method: "PATCH",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update certification.",
+    );
+  }
+
   async listAllCertifications(params?: {
     skip?: number;
     limit?: number;
     standard_type?: string;
     expired_only?: boolean;
     expiring_days?: number;
+    q?: string;
   }): Promise<{ items: SupplierCertificationResponse[]; total: number; skip: number; limit: number }> {
     const query = new URLSearchParams();
     if (params?.skip !== undefined) query.set("skip", String(params.skip));
@@ -2005,6 +2099,7 @@ class SupplierOnboardingAPI {
     if (params?.standard_type) query.set("standard_type", params.standard_type);
     if (params?.expired_only) query.set("expired_only", "true");
     if (params?.expiring_days !== undefined) query.set("expiring_days", String(params.expiring_days));
+    if (params?.q) query.set("q", params.q);
     const qs = query.toString();
     const res = await this.request<{ data: { items: SupplierCertificationResponse[]; total: number; skip: number; limit: number } }>(
       `${this.baseUrl}/suppliers/certifications${qs ? `?${qs}` : ""}`,
@@ -2012,6 +2107,30 @@ class SupplierOnboardingAPI {
       "Failed to load certifications data.",
     );
     return res.data;
+  }
+
+  async updateSupplierUnit(unitId: number, data: Record<string, unknown>) {
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update supplier unit.",
+    );
+  }
+
+  async patchRelation(relationId: number, data: Record<string, unknown>) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}`,
+      {
+        method: "PATCH",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update relation.",
+    );
   }
 }
 

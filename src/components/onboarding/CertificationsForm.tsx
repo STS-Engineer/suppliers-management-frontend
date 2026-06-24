@@ -40,13 +40,19 @@ export const CertificationsForm: React.FC<CertificationsFormProps> = ({
 }) => {
   return (
     <div className="form-section">
-      <div className="section-header">
-        <h2>Quality &amp; Compliance Certifications</h2>
-        <p>
-          Select the standard category first, then pick the specific
-          certification from the list. Upload the certificate document if
-          available.
-        </p>
+      <div className="mb-6 flex items-start gap-4 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 ring-1 ring-amber-200">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-slate-900">Quality &amp; Compliance Certifications</h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Select the standard category first, then pick the specific certification from the list. Upload the certificate document if available.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-6">

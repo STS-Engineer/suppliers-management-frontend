@@ -21,6 +21,7 @@ interface SupplierUnitFormProps {
   errors: FormErrors;
   unitContactErrors?: { [key: number]: FormErrors };
   onChange: (field: keyof UnitFormData, value: any) => void;
+  onBlur?: (field: keyof UnitFormData) => void;
   groupContacts?: ContactFormData[];
 }
 
@@ -136,6 +137,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
   errors,
   unitContactErrors = {},
   onChange,
+  onBlur,
   groupContacts = [],
 }) => {
   const contacts: ContactFormData[] = data.unit_contacts ?? [];
@@ -248,6 +250,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
           type="email"
           value={data.supplier_email}
           onChange={(e) => onChange("supplier_email", e.target.value)}
+          onBlur={() => onBlur?.("supplier_email")}
           placeholder="contact@supplier.com"
           error={errors.supplier_email}
         />

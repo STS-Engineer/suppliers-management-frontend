@@ -43,7 +43,7 @@ export const StepProgress: React.FC<StepProgressProps> = ({
           {/* Track line */}
           <div className="absolute left-0 right-0 top-4 h-px bg-slate-200" style={{ zIndex: 0 }}>
             <div
-              className="h-full bg-gradient-to-r from-[#0f2744] to-blue-600 transition-all duration-500"
+              className="h-full bg-gradient-to-r from-amber-400 to-amber-300 transition-all duration-500"
               style={{ width: `${Math.max(0, (currentIndex / (steps.length - 1)) * 100)}%` }}
             />
           </div>
@@ -65,9 +65,9 @@ export const StepProgress: React.FC<StepProgressProps> = ({
                   className={[
                     "flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-200",
                     isCompleted
-                      ? "border-[#0f2744] bg-[#0f2744] text-white"
+                      ? "border-amber-400 bg-amber-400 text-slate-900"
                       : isCurrent
-                      ? "border-[#0f2744] bg-white text-[#0f2744] shadow-[0_0_0_4px_rgba(15,39,68,0.12)]"
+                      ? "border-amber-400 bg-white text-amber-600 shadow-[0_0_0_4px_rgba(251,191,36,0.20)]"
                       : "border-slate-300 bg-white text-slate-400",
                     onStepClick && !isUpcoming ? "cursor-pointer hover:opacity-80" : "cursor-default",
                   ].join(" ")}
@@ -76,7 +76,7 @@ export const StepProgress: React.FC<StepProgressProps> = ({
                 </button>
 
                 <div className="mt-2 text-center">
-                  <p className={`text-xs font-semibold ${isCurrent ? "text-[#0f2744]" : isCompleted ? "text-slate-600" : "text-slate-400"}`}>
+                  <p className={`text-xs font-semibold ${isCurrent ? "text-amber-600" : isCompleted ? "text-slate-600" : "text-slate-400"}`}>
                     {step.label}
                   </p>
                   <p className="mt-0.5 text-[10px] text-slate-400">{step.description}</p>

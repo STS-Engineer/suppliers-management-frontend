@@ -12,6 +12,7 @@ interface ContactsFormProps {
   onAddContact: () => void;
   onRemoveContact: (index: number) => void;
   onChange: (index: number, field: keyof ContactFormData, value: any) => void;
+  onBlur: (index: number, field: keyof ContactFormData) => void;
 }
 
 export const ContactsForm: React.FC<ContactsFormProps> = ({
@@ -20,6 +21,7 @@ export const ContactsForm: React.FC<ContactsFormProps> = ({
   onAddContact,
   onRemoveContact,
   onChange,
+  onBlur,
 }) => {
   return (
     <div className="form-section">
@@ -83,6 +85,7 @@ export const ContactsForm: React.FC<ContactsFormProps> = ({
                 type="email"
                 value={contact.email}
                 onChange={(e) => onChange(index, "email", e.target.value)}
+                onBlur={() => onBlur(index, "email")}
                 placeholder="john@example.com"
                 error={errors[index]?.email}
                 required

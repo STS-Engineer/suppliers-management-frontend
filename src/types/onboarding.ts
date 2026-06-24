@@ -91,6 +91,8 @@ export interface CertificationFormData {
 export interface SupplierCertificationResponse {
   id_certification: number;
   id_supplier_unit?: number | null;
+  supplier_code?: string | null;
+  group_nom?: string | null;
   standard_type?: string | null;
   certification_type?: string | null;
   certificate_name?: string | null;

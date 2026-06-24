@@ -20,7 +20,10 @@ import { ContactsForm } from "./ContactsForm";
 import { CertificationsForm } from "./CertificationsForm";
 import { SupplierMasterReviewStep } from "./SupplierMasterReviewStep";
 import { SupplierMasterSuccessPage } from "./SupplierMasterSuccessPage";
-import { supplierAPI, SupplierApiError } from "../../services/supplierOnboardingAPI";
+import {
+  supplierAPI,
+  SupplierApiError,
+} from "../../services/supplierOnboardingAPI";
 import { SupplierMasterCreationResponse } from "../../types/onboarding";
 import { SupplierManagement } from "./SupplierManagement";
 import { InlineAlert, PageIntro } from "../UI";
@@ -178,7 +181,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     scope2_ghg: emptyToUndefined(unit.scope2_ghg),
   });
 
-  // â”€â”€ Navigation guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const formHasData =
     !!masterResponse === false &&
     (formData.group.nom.trim().length > 0 ||
@@ -312,17 +314,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       newContacts[index] = { ...newContacts[index], [field]: value };
       return { ...prev, contacts: newContacts };
     });
-    if (field === "email") {
-      const emailError =
-        value && !looksLikeEmail(value) ? "Must be a valid email address" : undefined;
-      setErrors((prev) => ({
-        ...prev,
-        contacts: {
-          ...(prev.contacts ?? {}),
-          [index]: { ...(prev.contacts?.[index] ?? {}), email: emailError },
-        },
-      }));
-    } else if (errors.contacts?.[index]?.[field]) {
+    if (errors.contacts?.[index]?.[field]) {
       setErrors((prev) => ({
         ...prev,
         contacts: {
@@ -331,6 +323,48 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         },
       }));
     }
+  };
+
+  const handleContactBlur = (index: number, field: keyof ContactFormData) => {
+    if (field !== "email") return;
+    const value = formData.contacts[index]?.email ?? "";
+    const emailError =
+      value && !looksLikeEmail(value)
+        ? "Must be a valid email address"
+        : undefined;
+    setErrors((prev) => ({
+      ...prev,
+      contacts: {
+        ...(prev.contacts ?? {}),
+        [index]: { ...(prev.contacts?.[index] ?? {}), email: emailError },
+      },
+    }));
+  };
+
+  const handleGroupBlur = (field: keyof GroupFormData) => {
+    if (field !== "supplier_owner") return;
+    const value = formData.group.supplier_owner;
+    const emailError =
+      value.trim() && !looksLikeEmail(value)
+        ? "Enter a valid email address"
+        : undefined;
+    setErrors((prev) => ({
+      ...prev,
+      group: { ...(prev.group ?? {}), supplier_owner: emailError },
+    }));
+  };
+
+  const handleUnitBlur = (field: keyof UnitFormData) => {
+    if (field !== "supplier_email") return;
+    const value = formData.unit.supplier_email;
+    const emailError =
+      value.trim() && !looksLikeEmail(value)
+        ? "Enter a valid email address"
+        : undefined;
+    setErrors((prev) => ({
+      ...prev,
+      unit: { ...(prev.unit ?? {}), supplier_email: emailError },
+    }));
   };
 
   const handleAddContact = () => {
@@ -580,7 +614,9 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         unit: cleanedUnitPayload(formData.unit),
         unit_contacts: unit_contacts.filter(hasMeaningfulContactData),
         contacts: formData.contacts,
-        certifications: cleanedCertifications.filter((c) => c.standard_type?.trim()),
+        certifications: cleanedCertifications.filter((c) =>
+          c.standard_type?.trim(),
+        ),
         annual_spend_value: formData.annual_spend_value || undefined,
         annual_spend_currency: formData.annual_spend_currency || undefined,
       };
@@ -593,8 +629,13 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       });
       setMasterResponse(response);
     } catch (error) {
-      if (error instanceof SupplierApiError && Array.isArray(error.details) && error.details.length > 0) {
-        const contactErrors: { [index: number]: { [field: string]: string } } = {};
+      if (
+        error instanceof SupplierApiError &&
+        Array.isArray(error.details) &&
+        error.details.length > 0
+      ) {
+        const contactErrors: { [index: number]: { [field: string]: string } } =
+          {};
         const groupErrors: { [field: string]: string } = {};
         const unitErrors: { [field: string]: string } = {};
         const certErrors: { [index: number]: { [field: string]: string } } = {};
@@ -602,9 +643,14 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         let firstStep: OnboardingStep | null = null;
 
         const humanize = (msg: string) =>
-          msg.replace(/^Value error,\s*/i, "").replace(/^\w/, (c) => c.toUpperCase());
+          msg
+            .replace(/^Value error,\s*/i, "")
+            .replace(/^\w/, (c) => c.toUpperCase());
 
-        for (const detail of error.details as { field: string; message: string }[]) {
+        for (const detail of error.details as {
+          field: string;
+          message: string;
+        }[]) {
           const f = detail.field;
           const msg = humanize(detail.message);
 
@@ -615,8 +661,13 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
           if (contactMatch) {
             const idx = parseInt(contactMatch[1], 10);
-            contactErrors[idx] = { ...(contactErrors[idx] ?? {}), [contactMatch[2]]: msg };
-            fieldMessages.push(`Contact #${idx + 1} — ${contactMatch[2]}: ${msg}`);
+            contactErrors[idx] = {
+              ...(contactErrors[idx] ?? {}),
+              [contactMatch[2]]: msg,
+            };
+            fieldMessages.push(
+              `Contact #${idx + 1} — ${contactMatch[2]}: ${msg}`,
+            );
             if (!firstStep) firstStep = "contacts";
           } else if (groupMatch) {
             groupErrors[groupMatch[1]] = msg;
@@ -628,8 +679,13 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
             if (!firstStep) firstStep = "unit";
           } else if (certMatch) {
             const idx = parseInt(certMatch[1], 10);
-            certErrors[idx] = { ...(certErrors[idx] ?? {}), [certMatch[2]]: msg };
-            fieldMessages.push(`Certification #${idx + 1} — ${certMatch[2]}: ${msg}`);
+            certErrors[idx] = {
+              ...(certErrors[idx] ?? {}),
+              [certMatch[2]]: msg,
+            };
+            fieldMessages.push(
+              `Certification #${idx + 1} — ${certMatch[2]}: ${msg}`,
+            );
             if (!firstStep) firstStep = "certifications";
           } else {
             fieldMessages.push(msg);
@@ -637,11 +693,14 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         }
 
         const newErrors: any = {};
-        if (Object.keys(contactErrors).length > 0) newErrors.contacts = contactErrors;
+        if (Object.keys(contactErrors).length > 0)
+          newErrors.contacts = contactErrors;
         if (Object.keys(groupErrors).length > 0) newErrors.group = groupErrors;
         if (Object.keys(unitErrors).length > 0) newErrors.unit = unitErrors;
-        if (Object.keys(certErrors).length > 0) newErrors.certifications = certErrors;
-        if (Object.keys(newErrors).length > 0) setErrors((prev) => ({ ...prev, ...newErrors }));
+        if (Object.keys(certErrors).length > 0)
+          newErrors.certifications = certErrors;
+        if (Object.keys(newErrors).length > 0)
+          setErrors((prev) => ({ ...prev, ...newErrors }));
         if (firstStep) setCurrentStep(firstStep);
 
         setSubmitError(fieldMessages.join("\n"));
@@ -690,7 +749,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   return (
     <div className="flex min-h-[calc(100vh-64px)] flex-col bg-slate-50">
       <PageIntro
-        eyebrow="Lifecycle Â· Phase 1"
+        eyebrow="Lifecycle · Phase 1"
         title="Create Supplier Master"
         description="Set up the supplier group, first unit, contacts and certifications. Site assignment and relation evaluations follow in the next phase."
         actions={
@@ -743,6 +802,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               data={formData.group}
               errors={errors.group || {}}
               onChange={handleGroupChange}
+              onBlur={handleGroupBlur}
             />
           )}
 
@@ -752,6 +812,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               errors={errors.unit || {}}
               unitContactErrors={errors.unit_contacts || {}}
               onChange={handleUnitChange}
+              onBlur={handleUnitBlur}
               groupContacts={formData.contacts}
             />
           )}
@@ -763,6 +824,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               onAddContact={handleAddContact}
               onRemoveContact={handleRemoveContact}
               onChange={handleContactChange}
+              onBlur={handleContactBlur}
             />
           )}
 
@@ -831,7 +893,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0f2744] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a3a5c]"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400 px-6 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-amber-500 active:scale-95"
               >
                 Continue
                 <svg
@@ -853,7 +915,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         </div>
       )}
 
-      {/* â”€â”€ Leave confirmation modal â”€â”€ */}
       {blocker.state === "blocked" && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.25)]">

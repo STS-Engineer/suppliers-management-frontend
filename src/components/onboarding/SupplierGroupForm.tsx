@@ -22,12 +22,14 @@ interface SupplierGroupFormProps {
   data: GroupFormData;
   errors: FormErrors;
   onChange: (field: keyof GroupFormData, value: any) => void;
+  onBlur?: (field: keyof GroupFormData) => void;
 }
 
 export const SupplierGroupForm: React.FC<SupplierGroupFormProps> = ({
   data,
   errors,
   onChange,
+  onBlur,
 }) => {
   const toggleCategory = (value: string) => {
     const nextValue = data.supplier_type.includes(value)
@@ -85,6 +87,7 @@ export const SupplierGroupForm: React.FC<SupplierGroupFormProps> = ({
               type="email"
               value={data.supplier_owner}
               onChange={(e) => onChange("supplier_owner", e.target.value)}
+              onBlur={() => onBlur?.("supplier_owner")}
               placeholder="name@avocarbon.com"
               error={errors.supplier_owner}
               required={data.supplier_scope === "global"}

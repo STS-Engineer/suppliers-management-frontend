@@ -13,6 +13,7 @@ interface FormInputProps {
   type?: string;
   value: string | number;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
   placeholder?: string;
   error?: string;
   required?: boolean;
@@ -27,7 +28,7 @@ interface FormInputProps {
 }
 
 export const FormInput: React.FC<FormInputProps> = ({
-  label, name, type = "text", value, onChange, placeholder,
+  label, name, type = "text", value, onChange, onBlur, placeholder,
   error, required = false, disabled = false, readOnly = false,
   helperText, min, max, step, inputMode, suffix,
 }) => {
@@ -39,7 +40,7 @@ export const FormInput: React.FC<FormInputProps> = ({
       </label>
       <div className="relative">
         <input
-          id={name} name={name} type={type} value={value} onChange={onChange}
+          id={name} name={name} type={type} value={value} onChange={onChange} onBlur={onBlur}
           placeholder={placeholder} disabled={disabled} readOnly={readOnly}
           min={min} max={max} step={step} inputMode={inputMode}
           className={`form-input ${suffix ? "pr-10" : ""} ${error ? "border-red-500" : "border-gray-300"}`}
