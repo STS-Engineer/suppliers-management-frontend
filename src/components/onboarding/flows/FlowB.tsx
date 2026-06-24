@@ -100,17 +100,6 @@ export const FlowB: React.FC<FlowBProps> = ({
   );
   const [supplierScope] = useState(groupScope ?? "local");
 
-  // SB1 logistics fields (optional)
-  const [transportMode, setTransportMode] = useState("");
-  const [transitDays, setTransitDays] = useState("");
-  const [incotermPlace, setIncotermPlace] = useState("");
-  const [realApDays, setRealApDays] = useState("");
-  const [deliveryStatus, setDeliveryStatus] = useState("");
-  const [dataValidity, setDataValidity] = useState("");
-  const [qualityCertRequired, setQualityCertRequired] = useState("");
-  const [reqApDate, setReqApDate] = useState("");
-  const [consignment, setConsignment] = useState(false);
-  const [preferredDevSupplier, setPreferredDevSupplier] = useState(false);
 
   // Contact step
   const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
@@ -213,7 +202,7 @@ export const FlowB: React.FC<FlowBProps> = ({
     if (step === 1) return unitId !== null;
     if (step === 2) return siteId !== null;
     if (step === 3) {
-      if (addNew) return newContact.full_name.trim().length > 0;
+      if (addNew) return newContact.full_name.trim().length > 0 && newContact.email.trim().length > 0;
       return selectedContactId !== null;
     }
     if (step === 4) return supplierOwner.trim().length > 0;
@@ -228,16 +217,6 @@ export const FlowB: React.FC<FlowBProps> = ({
       const relRes = await supplierAPI.linkUnitToSite(unitId, siteId, {
         supplier_owner: supplierOwner,
         supplier_scope: supplierScope,
-        transport_mode: transportMode || undefined,
-        transit_days: transitDays ? parseInt(transitDays) : undefined,
-        incoterm_place: incotermPlace || undefined,
-        real_ap_days: realApDays ? parseInt(realApDays) : undefined,
-        delivery_status: deliveryStatus || undefined,
-        data_validity: dataValidity || undefined,
-        quality_cert_required: qualityCertRequired || undefined,
-        req_ap_date: reqApDate || undefined,
-        consignment: consignment || undefined,
-        preferred_dev_supplier: preferredDevSupplier || undefined,
       });
 
       const relationId: number | undefined =
@@ -253,7 +232,7 @@ export const FlowB: React.FC<FlowBProps> = ({
         } else if (addNew && newContact.full_name.trim()) {
           await supplierAPI.addContactToRelation(relationId, {
             full_name: newContact.full_name,
-            email: newContact.email || undefined,
+            email: newContact.email,
             phone: newContact.phone || undefined,
             role_label: newContact.role_label || undefined,
             id_supplier_unit: unitId,
@@ -276,12 +255,12 @@ export const FlowB: React.FC<FlowBProps> = ({
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="mb-6 overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-md">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+      <div className="flex items-center justify-between border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-6 py-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500">
             Assign Unit to Plant
           </p>
           <h3 className="mt-0.5 text-base font-bold text-slate-900">{groupName}</h3>
@@ -309,7 +288,7 @@ export const FlowB: React.FC<FlowBProps> = ({
                     done
                       ? "bg-[#0f2744] text-white"
                       : active
-                      ? "border-2 border-[#0f2744] bg-white text-[#0f2744]"
+                      ? "bg-amber-400 text-slate-900 shadow-sm"
                       : "border-2 border-slate-200 bg-white text-slate-300"
                   }`}
                 >
@@ -323,7 +302,7 @@ export const FlowB: React.FC<FlowBProps> = ({
                 </div>
                 <span
                   className={`text-[10px] font-semibold ${
-                    active ? "text-[#0f2744]" : done ? "text-slate-500" : "text-slate-300"
+                    active ? "text-amber-600" : done ? "text-slate-500" : "text-slate-300"
                   }`}
                 >
                   {label}
@@ -572,7 +551,7 @@ export const FlowB: React.FC<FlowBProps> = ({
                         onChange={(e) => setNewContact((p) => ({ ...p, full_name: e.target.value }))}
                       />
                     </FieldWrap>
-                    <FieldWrap label="Email">
+                    <FieldWrap label="Email *">
                       <input
                         type="email"
                         className={inputCls}
@@ -614,83 +593,45 @@ export const FlowB: React.FC<FlowBProps> = ({
               </p>
             </div>
 
-            <FieldWrap
-              label="Owner email *"
-              hint={
-                supplierScope === "global" && groupOwner
-                  ? "Pre-filled from the group default. Edit to override for this relation only."
-                  : undefined
-              }
-            >
+            <FieldWrap label="Owner email *">
               <input
                 type="email"
                 className={inputCls}
                 placeholder="name@avocarbon.com"
                 value={supplierOwner}
-                disabled={supplierScope === "global" && !!groupOwner}
                 onChange={(e) => setSupplierOwner(e.target.value)}
               />
             </FieldWrap>
 
+            {/* Notice: using group default */}
             {supplierScope === "global" && groupOwner && supplierOwner === groupOwner && (
               <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
                 <svg className="h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                Using the global owner configured on the supplier group.
+                Using the global owner configured on the supplier group. Edit to override for this relation only.
               </div>
             )}
 
-            {/* SB1 logistics (optional) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Logistics (SB1) — Optional
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <FieldWrap label="Transport Mode">
-                  <input className={inputCls} placeholder="e.g. Sea, Air, Road"
-                    value={transportMode} onChange={(e) => setTransportMode(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Transit Days">
-                  <input className={inputCls} type="number" placeholder="e.g. 30"
-                    value={transitDays} onChange={(e) => setTransitDays(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Incoterm / Place">
-                  <input className={inputCls} placeholder="e.g. FOB Shanghai"
-                    value={incotermPlace} onChange={(e) => setIncotermPlace(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Real AP Days">
-                  <input className={inputCls} type="number" placeholder="e.g. 45"
-                    value={realApDays} onChange={(e) => setRealApDays(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Delivery Status">
-                  <input className={inputCls} placeholder="e.g. On time"
-                    value={deliveryStatus} onChange={(e) => setDeliveryStatus(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Data Validity">
-                  <input className={inputCls} placeholder="e.g. Up to date"
-                    value={dataValidity} onChange={(e) => setDataValidity(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Quality Cert Required">
-                  <input className={inputCls} placeholder="e.g. IATF 16949"
-                    value={qualityCertRequired} onChange={(e) => setQualityCertRequired(e.target.value)} />
-                </FieldWrap>
-                <FieldWrap label="Requested AP Date">
-                  <input className={inputCls} type="date"
-                    value={reqApDate} onChange={(e) => setReqApDate(e.target.value)} />
-                </FieldWrap>
-                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                  <input type="checkbox" id="consignment" checked={consignment} onChange={(e) => setConsignment(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600" />
-                  <label htmlFor="consignment" className="text-sm text-slate-700 cursor-pointer">Consignment</label>
+            {/* Notice: overriding group default */}
+            {supplierScope === "global" && groupOwner && supplierOwner !== groupOwner && supplierOwner.trim() !== "" && (
+              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="flex items-center gap-2">
+                  <svg className="h-3.5 w-3.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Overriding group default for this relation.
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                  <input type="checkbox" id="preferred_dev" checked={preferredDevSupplier} onChange={(e) => setPreferredDevSupplier(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600" />
-                  <label htmlFor="preferred_dev" className="text-sm text-slate-700 cursor-pointer">Preferred Dev Supplier</label>
-                </div>
+                <button
+                  type="button"
+                  className="ml-3 font-semibold text-amber-700 underline hover:text-amber-900"
+                  onClick={() => setSupplierOwner(groupOwner)}
+                >
+                  Reset
+                </button>
               </div>
-            </div>
+            )}
+
           </div>
         )}
 
@@ -769,7 +710,7 @@ export const FlowB: React.FC<FlowBProps> = ({
                 disabled={!canNext()}
                 className={`flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
                   canNext()
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    ? "bg-amber-400 text-slate-900 hover:bg-amber-500 shadow-sm"
                     : "cursor-not-allowed bg-slate-100 text-slate-400"
                 }`}
               >

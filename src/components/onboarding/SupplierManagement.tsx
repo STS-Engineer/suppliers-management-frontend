@@ -905,10 +905,10 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                 )}
                 <button
                   onClick={() => setActiveFlow(activeFlow === "createUnit" ? null : "createUnit")}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
                     activeFlow === "createUnit"
-                      ? "bg-[#062B49] text-white"
-                      : "border border-slate-200 bg-white text-slate-700 hover:border-[#062B49]/30 hover:text-[#062B49]"
+                      ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                      : "bg-amber-400 text-slate-900 shadow-sm hover:bg-amber-500"
                   }`}
                 >
                   {activeFlow === "createUnit" ? (

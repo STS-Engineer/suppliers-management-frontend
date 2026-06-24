@@ -107,43 +107,27 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
             </p>
           </div>
 
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${
-                gradeStyle
-                  ? `${gradeStyle.bg} ${gradeStyle.text} ${gradeStyle.ring}`
-                  : "bg-slate-100 text-slate-500 ring-slate-200"
-              }`}>
-                {gradeStyle ? `Grade ${summary!.final_grade}` : "No grade yet"}
-              </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
-                {siteRelations.length} plant{siteRelations.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            {onAssignToPlant && (
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${
+              gradeStyle
+                ? `${gradeStyle.bg} ${gradeStyle.text} ${gradeStyle.ring}`
+                : "bg-slate-100 text-slate-500 ring-slate-200"
+            }`}>
+              {gradeStyle ? `Grade ${summary!.final_grade}` : "No grade yet"}
+            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
+              {siteRelations.length} plant{siteRelations.length !== 1 ? "s" : ""}
+            </span>
+            {onAssignToPlant && !assignActive && siteRelations.length > 0 && (
               <button
                 onClick={onAssignToPlant}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  assignActive
-                    ? "bg-[#062B49] text-white"
-                    : "border border-[#062B49]/30 bg-white text-[#062B49] hover:bg-[#062B49]/5"
-                }`}
+                title="Assign to another plant"
+                className="flex items-center gap-1.5 rounded-xl bg-amber-400 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-amber-500 active:scale-95"
               >
-                {assignActive ? (
-                  <>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Cancel
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0 0a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                    Assign to Plant
-                  </>
-                )}
+                <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0 0a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Assign to Plant
               </button>
             )}
           </div>
@@ -158,12 +142,25 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
             Loading plant relations…
           </div>
         ) : siteRelations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0 0a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+          <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-400 ring-1 ring-amber-200">
+              <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0 0a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
             </div>
-            <p className="text-sm font-semibold text-slate-600">No plant relations yet</p>
-            <p className="text-xs text-slate-400">Use "Assign Selected Unit" above to link this unit to a plant.</p>
+            <div>
+              <p className="text-sm font-semibold text-slate-700">No plant relations yet</p>
+              <p className="mt-0.5 text-xs text-slate-400">Link this unit to an Avocarbon plant to start the evaluation.</p>
+            </div>
+            {onAssignToPlant && !assignActive && (
+              <button
+                onClick={onAssignToPlant}
+                className="flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-amber-500 active:scale-95"
+              >
+                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m0 0a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Assign to Plant
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
