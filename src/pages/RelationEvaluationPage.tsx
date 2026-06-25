@@ -175,9 +175,29 @@ const CRITERIA_DETAIL_CONFIG: Record<string, CriterionDetailConfig> = {
 };
 
 function addMonthsToDate(dateStr: string, months: number): string {
+  if (!Number.isFinite(months)) return "";
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  const result = d.toISOString();
+  if (!result) return "";
+  return result.slice(0, 10);
+}
+
+function safeToFixed(v: number | null | undefined, decimals = 1): string {
+  if (v === null || v === undefined || !isFinite(v)) return "—";
+  return v.toFixed(decimals);
+}
+
+function safeNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
+function safeWidth(score: number | null | undefined): string {
+  const v = score ?? 0;
+  return `${isFinite(v) ? Math.min(v, 100) : 0}%`;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +323,39 @@ const PANEL_DECISION_OPTIONS = [
   { value: "panel_reject", label: "Supplier cannot be added to the Panel" },
 ];
 
+const UI_CRITERIA_VALUE_NORMALIZATION: Record<
+  string,
+  Record<string, string>
+> = {
+  top: {
+    "60 days eom or +": "60 days end of month or +",
+  },
+  sqma: {
+    "Signed M.Res/not sent": "Signed M/Res/not sent",
+  },
+  family_coverage: {
+    "100% Cov.": "Supplier can make all the family requirements",
+    "Main sub-Fam Cov.": "Supplier can make the main family requirements",
+    "1 sub-F or refs Cov.": "Supplier can make only of few family requirements",
+    "1 ref": "Supplier can make 1 family requirements",
+  },
+  cons_or_wd: {
+    "Cons. or WD": "Cons. Or Daily Deliveries",
+  },
+  quality_certification: {
+    "ISO9001 (cat BCD)": "IATF / ISO9001 (cat BCD)",
+    "IS09001 (cat BCD)": "IATF / ISO9001 (cat BCD)",
+  },
+};
+
+function normalizeUiCriteriaValue(
+  field: string,
+  value: string | null | undefined,
+): string {
+  if (!value) return "";
+  return UI_CRITERIA_VALUE_NORMALIZATION[field]?.[value] ?? value;
+}
+
 // ---------------------------------------------------------------------------
 // Score helpers
 // ---------------------------------------------------------------------------
@@ -396,6 +449,7 @@ const GRADE_CLR: Record<string, string> = {
 
 interface WorkspaceExtra {
   baseline_locked: boolean;
+  reevaluation_type?: "initial" | "preliminary" | null;
   baseline_data?: {
     management_system?: number;
     customer_communication?: number;
@@ -413,6 +467,7 @@ interface WorkspaceExtra {
     standard_type?: string;
     certification_type?: string;
     certificate_name?: string;
+    start_date?: string;
     end_date?: string;
   }>;
   evaluation_documents?: Array<{
@@ -431,8 +486,8 @@ interface WorkspaceExtra {
 const TABS = [
   { id: "class", label: "Class Evaluation" },
   { id: "operational", label: "Operational" },
-  { id: "history", label: "History & Documents" },
   { id: "decision", label: "Decision & Impact" },
+  { id: "history", label: "History & Documents" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -441,7 +496,7 @@ const inputCls =
 
 export default function RelationEvaluationPage() {
   const { relationId } = useParams<{ relationId: string }>();
-  const relId = Number(relationId);
+  const relId = relationId ? Number(relationId) : NaN;
 
   const [tab, setTab] = useState<Tab>("class");
   const [form, setForm] = useState<EvaluationDetailsFormData>({
@@ -451,24 +506,30 @@ export default function RelationEvaluationPage() {
   const [relation, setRelation] = useState<SupplierSiteRelation | null>(null);
   const [siteName, setSiteName] = useState("");
   const [unitName, setUnitName] = useState("");
+  const [unitIsActive, setUnitIsActive] = useState(true);
+  const [unitInactivatedAt, setUnitInactivatedAt] = useState<string | null>(
+    null,
+  );
   const [extra, setExtra] = useState<WorkspaceExtra>({
     baseline_locked: false,
   });
   const [history, setHistory] = useState<SupplierStatusHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Tab | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [evalDocs, setEvalDocs] = useState<
     WorkspaceExtra["evaluation_documents"]
   >([]);
 
-  // Evaluation date (can differ from today) + initial self-assessment flag
+  // Evaluation date (can differ from today)
   const [evaluationDate, setEvaluationDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
-  // Default true — will be set false once baseline is already locked
-  const [isInitialSelfAssessment, setIsInitialSelfAssessment] = useState(true);
+  // Derived: true when no baseline has been locked yet (no self_assessment record)
+  const isInitialSelfAssessment = !extra.baseline_locked;
   // Per-criterion detail data (validity dates, signature, files)
   const [criteriaDetails, setCriteriaDetails] = useState<
     Record<string, CriterionDetail>
@@ -481,7 +542,7 @@ export default function RelationEvaluationPage() {
   const [classEditMode, setClassEditMode] = useState(false);
 
   const load = useCallback(async () => {
-    if (!relId) return;
+    if (!relId || isNaN(relId)) return;
     setLoading(true);
     setError(null);
     try {
@@ -490,6 +551,11 @@ export default function RelationEvaluationPage() {
         supplierAPI.listSites(),
       ]);
       const ws = wsRes.data as any;
+      if (!ws?.relation) {
+        setError("No relation data returned from server.");
+        setLoading(false);
+        return;
+      }
       const rel: SupplierSiteRelation = ws.relation;
       const sites = (
         Array.isArray(sitesRes.data) ? sitesRes.data : []
@@ -507,11 +573,13 @@ export default function RelationEvaluationPage() {
 
       setHistory(ws.status_history || []);
       const baselineLocked = ws.baseline_locked ?? false;
-      // Once baseline is locked the initial self-assessment phase is over
-      if (baselineLocked) setIsInitialSelfAssessment(false);
+
+      setUnitIsActive(ws.unit_is_active ?? true);
+      setUnitInactivatedAt(ws.unit_inactivated_at ?? null);
 
       setExtra({
         baseline_locked: baselineLocked,
+        reevaluation_type: ws.reevaluation_type ?? null,
         baseline_data: ws.baseline_data ?? null,
         unit_certifications: ws.unit_certifications ?? [],
         evaluation_documents: ws.evaluation_documents ?? [],
@@ -525,10 +593,29 @@ export default function RelationEvaluationPage() {
         seededDetails[k] = v as CriterionDetail;
       }
 
-      // Auto-populate quality_certification details from unit certs if not already set
-      const qualCert = (ws.unit_certifications ?? []).find(
-        (c: any) => c.standard_type === "quality" && c.certification_type,
+      // Auto-populate quality_certification details from the best-scoring non-expired unit cert
+      const CERT_SCORE_ORDER = [
+        "IATF / ISO9001 (cat BCD)",
+        "IATF 16949:2016",
+        "ISO 9001 (cat BCD)",
+        "ISO9001 (cat BCD)",
+        "ISO9001",
+        "ISO 9001",
+      ];
+      const today = new Date().toISOString().slice(0, 10);
+      const qualCertsAll = (ws.unit_certifications ?? []).filter(
+        (c: any) => c.certification_type,
       );
+      // Prefer non-expired; fall back to expired if all are expired
+      const qualCertsValid = qualCertsAll.filter(
+        (c: any) => !c.end_date || c.end_date >= today,
+      );
+      const qualCertPool = qualCertsValid.length > 0 ? qualCertsValid : qualCertsAll;
+      const qualCert = [...qualCertPool].sort((a: any, b: any) => {
+        const ra = CERT_SCORE_ORDER.indexOf(a.certification_type);
+        const rb = CERT_SCORE_ORDER.indexOf(b.certification_type);
+        return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+      })[0];
       if (
         qualCert &&
         !seededDetails["quality_certification"]?.validity_start_date
@@ -542,8 +629,9 @@ export default function RelationEvaluationPage() {
       setCriteriaDetails(seededDetails);
 
       // Seed strategic mentions (may be comma-separated in future or single)
-      const sm =
+      const smRaw =
         ws.strategic_mention || ws.relation?.strategic_mention || "none";
+      const sm = typeof smRaw === "string" ? smRaw : "none";
       setStrategicMentions(
         new Set(
           sm
@@ -556,44 +644,77 @@ export default function RelationEvaluationPage() {
         setEvaluationDate(ws.relation.last_evaluation_date);
       }
 
-      const n = (v: any) =>
-        v !== undefined && v !== null ? Number(v) : undefined;
+      const n = (v: any) => {
+        if (v === undefined || v === null) return undefined;
+        const num = Number(v);
+        return isFinite(num) ? num : undefined;
+      };
+
+      // If a draft exists and baseline is not yet locked, restore the draft values
+      const draft = !baselineLocked ? (ws.evaluation_draft ?? null) : null;
+      setHasDraft(draft !== null);
+      const src = draft ?? ws;
+
       setForm({
-        strategic_mention: ws.strategic_mention || "none",
-        panel_decision: ws.panel_decision || undefined,
-        class_value: ws.class_value ?? undefined,
-        class_score: n(ws.class_score),
-        operational_grade: ws.operational_grade ?? undefined,
-        operational_score: n(ws.operational_score),
-        impact_score: ws.impact_score ?? undefined,
-        comments: ws.comments || "",
-        class_criteria_details: ws.class_criteria_details || {},
-        top: ws.top || "",
-        lta: ws.lta || "",
-        sqma: ws.sqma || "",
-        quality_certification: ws.quality_certification || "",
-        family_coverage: ws.family_coverage || "",
-        competitiveness: ws.competitiveness || "",
-        geo_coverage: ws.geo_coverage || "",
-        cons_or_wd: ws.cons_or_wd || "",
-        financial_health: ws.financial_health || "",
-        prod_lia_ins: ws.prod_lia_ins || "",
-        prod: ws.prod || "",
-        management_system: n(ws.management_system),
-        customer_communication: n(ws.customer_communication),
-        development_design: n(ws.development_design),
-        production_manufacturing: n(ws.production_manufacturing),
-        quality_audits: n(ws.quality_audits),
-        suppliers_subcontractors: n(ws.suppliers_subcontractors),
-        deliveries: n(ws.deliveries),
-        environment_ethic_rules: n(ws.environment_ethic_rules),
-        impact_question_1: ws.impact_question_1 || "",
-        impact_question_2: ws.impact_question_2 || "",
-        impact_question_3: ws.impact_question_3 || "",
-        impact_question_4: ws.impact_question_4 || "",
-        impact_question_5: ws.impact_question_5 || "",
-        impact_question_6: ws.impact_question_6 || "",
+        strategic_mention: src.strategic_mention || "none",
+        panel_decision: src.panel_decision || undefined,
+        class_value: src.class_value ?? undefined,
+        class_score: n(src.class_score),
+        operational_grade: src.operational_grade ?? undefined,
+        operational_score: n(src.operational_score),
+        impact_score: src.impact_score ?? undefined,
+        comments: src.comments || "",
+        class_criteria_details: src.class_criteria_details || {},
+        top: normalizeUiCriteriaValue("top", src.top),
+        lta: normalizeUiCriteriaValue("lta", src.lta),
+        sqma: normalizeUiCriteriaValue("sqma", src.sqma),
+        quality_certification: normalizeUiCriteriaValue(
+          "quality_certification",
+          src.quality_certification,
+        ),
+        family_coverage: normalizeUiCriteriaValue(
+          "family_coverage",
+          src.family_coverage,
+        ),
+        competitiveness: normalizeUiCriteriaValue(
+          "competitiveness",
+          src.competitiveness,
+        ),
+        geo_coverage: normalizeUiCriteriaValue(
+          "geo_coverage",
+          src.geo_coverage,
+        ),
+        cons_or_wd: normalizeUiCriteriaValue("cons_or_wd", src.cons_or_wd),
+        financial_health: normalizeUiCriteriaValue(
+          "financial_health",
+          src.financial_health,
+        ),
+        prod_lia_ins: normalizeUiCriteriaValue(
+          "prod_lia_ins",
+          src.prod_lia_ins,
+        ),
+        prod: normalizeUiCriteriaValue("productivity", src.prod),
+        management_system: n(src.management_system),
+        customer_communication: n(src.customer_communication),
+        development_design: n(src.development_design),
+        production_manufacturing: n(src.production_manufacturing),
+        quality_audits: n(src.quality_audits),
+        suppliers_subcontractors: n(src.suppliers_subcontractors),
+        deliveries: n(src.deliveries),
+        environment_ethic_rules: n(src.environment_ethic_rules),
+        impact_question_1: src.impact_question_1 || "",
+        impact_question_2: src.impact_question_2 || "",
+        impact_question_3: src.impact_question_3 || "",
+        impact_question_4: src.impact_question_4 || "",
+        impact_question_5: src.impact_question_5 || "",
+        impact_question_6: src.impact_question_6 || "",
       });
+      if (draft?.criteria_details) {
+        setCriteriaDetails(draft.criteria_details);
+      }
+      if (draft?.strategic_mentions) {
+        setStrategicMentions(new Set(draft.strategic_mentions));
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -664,11 +785,17 @@ export default function RelationEvaluationPage() {
     try {
       const computed = classScore(form);
       const smValue = Array.from(strategicMentions).join(",") || "none";
+      const classCycleType =
+        extra.reevaluation_type === "initial"
+          ? "Initial Re-evaluation"
+          : extra.reevaluation_type === "preliminary"
+            ? "Preliminary Re-evaluation"
+            : isInitialSelfAssessment
+              ? "Initial Self-Assessment"
+              : "Criteria Change Review";
       await supplierAPI.updateRelationClassEvaluation(relId, {
         evaluation_date: evaluationDate,
-        cycle_type: isInitialSelfAssessment
-          ? "Initial Self-Assessment"
-          : "Criteria Change Review",
+        cycle_type: classCycleType,
         top: form.top,
         lta: form.lta,
         productivity: form.prod,
@@ -699,18 +826,71 @@ export default function RelationEvaluationPage() {
     }
   };
 
+  // Save raw form state as a draft — zero business logic, no grade/status changes
+  const saveDraft = async () => {
+    setSavingDraft(true);
+    setError(null);
+    try {
+      await supplierAPI.saveEvaluationDraft(relId, {
+        // Class criteria
+        top: form.top,
+        lta: form.lta,
+        prod: form.prod,
+        quality_certification: form.quality_certification,
+        prod_lia_ins: form.prod_lia_ins,
+        competitiveness: form.competitiveness,
+        sqma: form.sqma,
+        family_coverage: form.family_coverage,
+        geo_coverage: form.geo_coverage,
+        cons_or_wd: form.cons_or_wd,
+        financial_health: form.financial_health,
+        // Per-criterion detail (dates, signatures, doc refs)
+        criteria_details: criteriaDetails,
+        // Operational scores (partial is fine)
+        management_system: form.management_system,
+        customer_communication: form.customer_communication,
+        development_design: form.development_design,
+        production_manufacturing: form.production_manufacturing,
+        quality_audits: form.quality_audits,
+        suppliers_subcontractors: form.suppliers_subcontractors,
+        deliveries: form.deliveries,
+        environment_ethic_rules: form.environment_ethic_rules,
+        // Impact & decision
+        impact_question_1: form.impact_question_1,
+        impact_question_2: form.impact_question_2,
+        impact_question_3: form.impact_question_3,
+        impact_question_4: form.impact_question_4,
+        impact_question_5: form.impact_question_5,
+        impact_question_6: form.impact_question_6,
+        panel_decision: form.panel_decision,
+        strategic_mention: form.strategic_mention,
+        // Preserve strategic mentions multi-select set
+        strategic_mentions: Array.from(strategicMentions),
+        comments: form.comments,
+      });
+      setHasDraft(true);
+      showMsg("Draft saved — you can complete and submit later.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Draft save failed.");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   // Validate completeness before locking the baseline
   const validateInitialSelfAssessment = (): string | null => {
     const cs2 = classScore(form);
-    if (cs2.scores.length === 0) {
-      return "Class Evaluation: please fill at least one criterion before submitting the initial self-assessment.";
-    }
     const opVals = OPERATIONAL_CRITERIA.map(
       ({ key }) => form[key] as number | undefined,
     ).filter((v) => v !== undefined && v !== null);
-    if (opVals.length < OPERATIONAL_CRITERIA.length) {
-      return `Operational: all 8 criteria must have a score (${opVals.length}/8 filled).`;
-    }
+    const missing: string[] = [];
+    if (cs2.scores.length === 0)
+      missing.push("Class Evaluation (fill at least one criterion)");
+    if (opVals.length < OPERATIONAL_CRITERIA.length)
+      missing.push(`Operational (${opVals.length}/8 scores filled)`);
+    if (!form.panel_decision)
+      missing.push("Decision & Impact (panel decision missing)");
+    if (missing.length > 0) return missing.join(" · ");
     const sm = Array.from(strategicMentions).filter((s) => s !== "none");
     if (sm.length === 0 && !strategicMentions.has("none")) {
       return "Decision & Impact: please set the Strategic Mention.";
@@ -724,26 +904,42 @@ export default function RelationEvaluationPage() {
   const saveBaseline = async () => {
     if (isInitialSelfAssessment) {
       const validationError = validateInitialSelfAssessment();
-      if (validationError) { setError(validationError); return; }
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
     setSaving("operational");
     setError(null);
     try {
       const smValue = Array.from(strategicMentions).join(",") || "none";
       const computed = classScore(form);
-      const cycleType = isInitialSelfAssessment ? "Initial Self-Assessment" : "Operational Self-Assessment Refresh";
+      const cycleType =
+        extra.reevaluation_type === "initial"
+          ? "Initial Re-evaluation"
+          : extra.reevaluation_type === "preliminary"
+            ? "Preliminary Re-evaluation"
+            : isInitialSelfAssessment
+              ? "Initial Self-Assessment"
+              : "Operational Self-Assessment Refresh";
 
       // 1. Save class evaluation criteria
       await supplierAPI.updateRelationClassEvaluation(relId, {
         evaluation_date: evaluationDate,
         cycle_type: cycleType,
-        top: form.top, lta: form.lta, productivity: form.prod,
+        top: form.top,
+        lta: form.lta,
+        productivity: form.prod,
         quality_certification: form.quality_certification,
-        prod_lia_ins: form.prod_lia_ins, competitiveness: form.competitiveness,
-        sqma: form.sqma, family_coverage: form.family_coverage,
-        geo_coverage: form.geo_coverage, cons_or_wd: form.cons_or_wd,
+        prod_lia_ins: form.prod_lia_ins,
+        competitiveness: form.competitiveness,
+        sqma: form.sqma,
+        family_coverage: form.family_coverage,
+        geo_coverage: form.geo_coverage,
+        cons_or_wd: form.cons_or_wd,
         financial_health: form.financial_health,
-        class_score: computed.avg, class_value: computed.classValue,
+        class_score: computed.avg,
+        class_value: computed.classValue,
         strategic_mention: smValue,
         panel_decision: form.panel_decision,
         impact_score: impactScore(form),
@@ -753,7 +949,9 @@ export default function RelationEvaluationPage() {
         impact_question_4: form.impact_question_4,
         impact_question_5: form.impact_question_5,
         impact_question_6: form.impact_question_6,
-        class_criteria_details: Object.fromEntries(Object.entries(criteriaDetails)),
+        class_criteria_details: Object.fromEntries(
+          Object.entries(criteriaDetails),
+        ),
       });
 
       // 2. Save and lock operational baseline
@@ -771,7 +969,17 @@ export default function RelationEvaluationPage() {
         environment_ethic_rules: form.environment_ethic_rules,
       });
 
-      showMsg("Initial self-assessment saved and operational baseline locked.");
+      // 3. Clear the draft now that real data is committed
+      await supplierAPI.clearEvaluationDraft(relId).catch(() => undefined);
+      setHasDraft(false);
+
+      const successMsg =
+        extra.reevaluation_type === "initial"
+          ? "Initial re-evaluation submitted and baseline updated."
+          : extra.reevaluation_type === "preliminary"
+            ? "Preliminary re-evaluation submitted and baseline updated."
+            : "Initial self-assessment saved and operational baseline locked.";
+      showMsg(successMsg);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -919,15 +1127,84 @@ export default function RelationEvaluationPage() {
                 className="border-0 bg-transparent text-sm font-semibold text-white outline-none [color-scheme:dark]"
               />
             </div>
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-blue-200 select-none">
-              <input
-                type="checkbox"
-                checked={isInitialSelfAssessment}
-                onChange={(e) => setIsInitialSelfAssessment(e.target.checked)}
-                className="h-4 w-4 rounded border-blue-300 accent-blue-400"
-              />
-              Initial self-assessment
-            </label>
+            {extra.reevaluation_type === "initial" ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-orange-400/40 bg-orange-400/15 px-3 py-2">
+                <svg
+                  className="h-3.5 w-3.5 text-orange-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span className="text-[11px] font-semibold text-orange-200">
+                  Initial Re-evaluation Required
+                </span>
+              </div>
+            ) : extra.reevaluation_type === "preliminary" ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/15 px-3 py-2">
+                <svg
+                  className="h-3.5 w-3.5 text-amber-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span className="text-[11px] font-semibold text-amber-200">
+                  Preliminary Re-evaluation Required
+                </span>
+              </div>
+            ) : isInitialSelfAssessment ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/15 px-3 py-2">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                <span className="text-[11px] font-semibold text-amber-200">
+                  Initial Self-Assessment
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                <span className="text-[11px] font-semibold text-emerald-200">
+                  Baseline Locked
+                </span>
+              </div>
+            )}
+
+            {!unitIsActive && (
+              <div className="flex items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-400/15 px-3 py-2">
+                <svg
+                  className="h-3.5 w-3.5 text-red-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                <span className="text-[11px] font-semibold text-red-300">
+                  Inactive
+                  {unitInactivatedAt ? (() => {
+                    const d = new Date(unitInactivatedAt);
+                    return !isNaN(d.getTime()) ? ` since ${d.toLocaleDateString()}` : "";
+                  })() : ""}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Tab bar — sits on the dark header */}
@@ -980,7 +1257,7 @@ export default function RelationEvaluationPage() {
         )}
 
         {/* ── Initial self-assessment mode: all sections on one page ── */}
-        {isInitialSelfAssessment && !extra.baseline_locked ? (
+        {isInitialSelfAssessment ? (
           <InitialSelfAssessmentView
             form={form}
             setField={setField}
@@ -992,10 +1269,15 @@ export default function RelationEvaluationPage() {
             onToggleStrategic={toggleStrategicMention}
             impact={impact}
             saving={saving === "operational"}
+            savingDraft={savingDraft}
+            hasDraft={hasDraft}
             error={error}
             onSubmit={saveBaseline}
+            onSaveDraft={saveDraft}
             validateFn={validateInitialSelfAssessment}
             relationId={relId}
+            reevaluationType={extra.reevaluation_type}
+            onFileUploaded={load}
           />
         ) : (
           <>
@@ -1012,7 +1294,11 @@ export default function RelationEvaluationPage() {
                 relationId={relId}
                 readOnly={extra.baseline_locked && !classEditMode}
                 onRequestEdit={() => setClassEditMode(true)}
-                onCancelEdit={() => { setClassEditMode(false); load(); }}
+                onCancelEdit={() => {
+                  setClassEditMode(false);
+                  load();
+                }}
+                onFileUploaded={load}
               />
             )}
             {tab === "operational" && (
@@ -1070,10 +1356,15 @@ function InitialSelfAssessmentView({
   onToggleStrategic,
   impact,
   saving,
+  savingDraft,
+  hasDraft,
   error,
   onSubmit,
+  onSaveDraft,
   validateFn,
   relationId,
+  reevaluationType,
+  onFileUploaded,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -1090,14 +1381,19 @@ function InitialSelfAssessmentView({
   onToggleStrategic: (v: string) => void;
   impact: number;
   saving: boolean;
+  savingDraft?: boolean;
+  hasDraft?: boolean;
   error: string | null;
   onSubmit: () => void;
+  onSaveDraft?: () => void;
   validateFn: () => string | null;
+  reevaluationType?: "initial" | "preliminary" | null;
+  onFileUploaded?: () => void;
 }) {
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({
     class: true,
-    operational: false,
-    decision: false,
+    operational: true,
+    decision: true,
   });
   const toggle = (k: string) => setOpenSection((p) => ({ ...p, [k]: !p[k] }));
 
@@ -1112,8 +1408,70 @@ function InitialSelfAssessmentView({
 
   const validationMsg = validateFn();
 
+  const submitLabel =
+    reevaluationType === "initial"
+      ? "Submit Initial Re-evaluation"
+      : reevaluationType === "preliminary"
+        ? "Submit Preliminary Re-evaluation"
+        : "Submit & Lock Baseline";
+
   return (
     <div className="space-y-4">
+      {/* Re-evaluation context notice */}
+      {reevaluationType && (
+        <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-500/30 dark:bg-orange-900/20 dark:text-orange-300">
+          <svg
+            className="mt-0.5 h-4 w-4 shrink-0 text-orange-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">
+              {reevaluationType === "initial"
+                ? "Initial Re-evaluation Required"
+                : "Preliminary Re-evaluation Required"}
+            </p>
+            <p className="mt-0.5 text-orange-700 dark:text-orange-400">
+              {reevaluationType === "initial"
+                ? "This supplier has been inactive for 3+ years. Per procedure C2Pr3, a full initial evaluation (process audit) is required, equivalent to a new supplier."
+                : "This supplier has been inactive for 1+ year. Per procedure C2Pr3, a preliminary evaluation is required before returning to regular scorecards."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Draft restored banner */}
+      {hasDraft && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300">
+          <svg
+            className="h-4 w-4 shrink-0 text-amber-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+            />
+          </svg>
+          <span>
+            <span className="font-semibold">Draft restored.</span> Your
+            previously saved progress has been loaded. Complete all 3 sections
+            and submit to lock the baseline.
+          </span>
+        </div>
+      )}
+
       {/* Progress strip */}
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -1209,7 +1567,7 @@ function InitialSelfAssessmentView({
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {cs.scores.length}/11 criteria filled · Class{" "}
-                {cs.classValue ?? "—"} · Score {cs.avg?.toFixed(1) ?? "—"}
+                {cs.classValue ?? "—"} · Score {safeToFixed(cs.avg)}
               </p>
             </div>
             {cs.classValue && (
@@ -1235,6 +1593,7 @@ function InitialSelfAssessmentView({
             criteriaDetails={criteriaDetails}
             onDetailChange={onDetailChange}
             relationId={relationId}
+            onFileUploaded={onFileUploaded}
           />
         </div>
       )}
@@ -1282,52 +1641,109 @@ function InitialSelfAssessmentView({
 
       {/* Submit panel — validation + API error + button all together */}
       <div className="rounded-2xl border border-[#062B49]/20 bg-[#062B49]/5 px-5 py-4 space-y-3">
-
         {/* Validation warning (incomplete sections) */}
         {validationMsg && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300">
-            <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-500"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
-            {validationMsg}
+            <div>
+              <p className="font-semibold">Cannot submit yet</p>
+              <p className="mt-0.5">{validationMsg}</p>
+            </div>
           </div>
         )}
 
         {/* API / server error */}
         {error && (
           <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300">
-            <svg className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
             {error}
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-[#062B49] dark:text-blue-300">
-              Submit Initial Self-Assessment
+              {allOk ? "Ready to Submit" : "Complete all 3 sections to submit"}
             </p>
             <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">
-              This will lock the operational baseline permanently. Class
-              evaluation and decisions can still be updated later.
+              {allOk
+                ? reevaluationType
+                  ? "This will update the operational baseline with the new re-evaluation results."
+                  : "This will lock the operational baseline permanently. Class evaluation and decisions can still be updated later."
+                : "Fill Class Evaluation, Operational, and Decision & Impact — or save a draft to resume later."}
             </p>
           </div>
-          <button
-            onClick={onSubmit}
-            disabled={saving}
-            className={`rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-md transition disabled:opacity-50 ${
-              allOk
-                ? "bg-[#062B49] shadow-[#062B49]/20 hover:bg-[#0C5381]"
-                : "bg-amber-500 shadow-amber-500/20 hover:bg-amber-600"
-            }`}
-          >
-            {saving
-              ? "Submitting…"
-              : allOk
-                ? "Submit & Lock Baseline"
-                : "Submit anyway (incomplete)"}
-          </button>
+
+          <div className="flex shrink-0 gap-2">
+            {/* Draft button — always available when not fully complete */}
+            {!allOk && onSaveDraft && (
+              <button
+                onClick={onSaveDraft}
+                disabled={savingDraft || saving}
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                  />
+                </svg>
+                {savingDraft ? "Saving…" : "Save Draft"}
+              </button>
+            )}
+
+            {/* Submit button — disabled when sections are incomplete */}
+            <button
+              onClick={onSubmit}
+              disabled={saving || !allOk}
+              title={
+                !allOk ? "Complete all 3 sections before submitting" : undefined
+              }
+              className="inline-flex items-center gap-2 rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-[#062B49]/20"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              {saving ? "Submitting…" : submitLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1346,6 +1762,7 @@ function ClassCriteriaBody({
   onDetailChange,
   relationId,
   readOnly,
+  onFileUploaded,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -1358,6 +1775,7 @@ function ClassCriteriaBody({
   ) => void;
   relationId: number;
   readOnly?: boolean;
+  onFileUploaded?: () => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExp = (k: string) =>
@@ -1377,11 +1795,14 @@ function ClassCriteriaBody({
         const detail = criteriaDetails[pldKey] ?? {};
         const isQualCert = pldKey === "quality_certification";
         const qualCerts =
-          extra.unit_certifications?.filter(
-            (c) => c.standard_type === "quality" && c.certification_type,
-          ) ?? [];
+          extra.unit_certifications?.filter((c) => c.certification_type) ?? [];
         const appliedFromUnit =
-          isQualCert && qualCerts.some((c) => c.certification_type === val);
+          isQualCert &&
+          qualCerts.some(
+            (c) =>
+              normalizeUiCriteriaValue("quality_certification", c.certification_type) === val ||
+              c.certification_type === val,
+          );
         return (
           <div key={key}>
             <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors dark:hover:bg-white/[0.03]">
@@ -1424,21 +1845,37 @@ function ClassCriteriaBody({
                 <select
                   value={val}
                   onChange={(e) => {
-                    setField(key, e.target.value);
-                    if (e.target.value)
+                    const newVal = e.target.value;
+                    setField(key, newVal);
+                    if (newVal)
                       setExpanded((p) => {
                         const n = new Set(p);
                         n.add(pldKey);
                         return n;
                       });
+                    // For quality_certification: auto-fill dates from the matching unit cert
+                    if (isQualCert && newVal) {
+                      const matchingCert = qualCerts.find(
+                        (c) =>
+                          normalizeUiCriteriaValue("quality_certification", c.certification_type) === newVal ||
+                          c.certification_type === newVal,
+                      );
+                      if (matchingCert) {
+                        if (matchingCert.start_date)
+                          onDetailChange(pldKey, "validity_start_date", matchingCert.start_date);
+                        if (matchingCert.end_date)
+                          onDetailChange(pldKey, "validity_end_date", matchingCert.end_date);
+                        return;
+                      }
+                    }
                     const c2 = CRITERIA_DETAIL_CONFIG[pldKey];
                     if (
                       c2?.autoEndMonths &&
                       detail.validity_start_date &&
-                      e.target.value
+                      newVal
                     ) {
-                      const months = c2.autoEndMonths(e.target.value);
-                      if (months)
+                      const months = c2.autoEndMonths(newVal);
+                      if (typeof months === "number" && months > 0)
                         onDetailChange(
                           pldKey,
                           "validity_end_date",
@@ -1450,11 +1887,27 @@ function ClassCriteriaBody({
                   className={`${inputCls} text-xs ${readOnly ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
                 >
                   <option value="">— Select —</option>
-                  {(PLD_OPTIONS[pldKey] || []).map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
+                  {(PLD_OPTIONS[pldKey] || []).map((opt) => {
+                    if (isQualCert) {
+                      const matchCert = qualCerts.find(
+                        (c) =>
+                          normalizeUiCriteriaValue("quality_certification", c.certification_type) === opt ||
+                          c.certification_type === opt,
+                      );
+                      const today = new Date().toISOString().slice(0, 10);
+                      const expired = matchCert?.end_date && matchCert.end_date < today;
+                      return (
+                        <option key={opt} value={opt}>
+                          {opt}{expired ? " (expired)" : matchCert?.end_date ? ` — exp. ${matchCert.end_date}` : ""}
+                        </option>
+                      );
+                    }
+                    return (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div className="w-14 shrink-0 text-center">
@@ -1494,6 +1947,7 @@ function ClassCriteriaBody({
                   selectedValue={val}
                   relationId={relationId}
                   onChange={(field, v) => onDetailChange(pldKey, field, v)}
+                  onFileUploaded={onFileUploaded}
                 />
               </div>
             )}
@@ -1518,7 +1972,7 @@ function OperationalBody({
       {avg !== null && (
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929]">
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            Average: <strong>{avg.toFixed(1)}</strong>
+            Average: <strong>{safeToFixed(avg)}</strong>
           </span>
           {grade && (
             <span
@@ -1561,7 +2015,7 @@ function OperationalBody({
               <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
                 <div
                   className={`h-full rounded-full transition-all ${ok ? "bg-emerald-500" : "bg-amber-400"}`}
-                  style={{ width: `${Math.min(score ?? 0, 100)}%` }}
+                  style={{ width: safeWidth(score) }}
                 />
               </div>
               <span className="shrink-0 text-xs text-slate-400">
@@ -1757,6 +2211,7 @@ function ClassTab({
   readOnly,
   onRequestEdit,
   onCancelEdit,
+  onFileUploaded,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -1774,11 +2229,9 @@ function ClassTab({
   readOnly?: boolean;
   onRequestEdit?: () => void;
   onCancelEdit?: () => void;
+  onFileUploaded?: () => void;
 }) {
-  // All quality certs on the unit (used in summary card only)
-  const qualCerts = (extra.unit_certifications ?? []).filter(
-    (c) => c.standard_type === "quality" && c.certification_type,
-  );
+  const qualCerts = extra.unit_certifications ?? [];
 
   return (
     <div className="space-y-5">
@@ -1790,7 +2243,7 @@ function ClassTab({
             Average Score
           </p>
           <p className="mt-2 text-4xl font-bold text-white">
-            {cs.avg !== null ? cs.avg.toFixed(1) : "—"}
+            {safeToFixed(cs.avg)}
           </p>
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/20">
             <div
@@ -1836,97 +2289,123 @@ function ClassTab({
           <div className="pointer-events-none absolute -right-4 -bottom-4 h-20 w-20 rounded-full bg-white/10" />
         </div>
 
-        {/* Quality certs from unit */}
-        {qualCerts.length > 0 ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-            <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-sky-600">
-              Unit certifications
-            </p>
-            <div className="space-y-2.5">
-              {qualCerts.map((c) => (
-                <div
-                  key={c.id_certification}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-sky-100 bg-white px-3 py-2.5"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-sky-900">
-                      {c.certification_type}
-                    </p>
-                    {c.end_date && (
-                      <p className="text-[10px] text-sky-500 mt-0.5">
-                        Expires {c.end_date}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() =>
-                      setField("quality_certification", c.certification_type)
-                    }
-                    className="shrink-0 rounded-lg bg-sky-100 px-2.5 py-1 text-[10px] font-bold text-sky-700 transition hover:bg-sky-200"
-                  >
-                    Apply →
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 flex items-center justify-center text-xs text-slate-400">
-            No quality certifications on this unit
-          </div>
-        )}
+        {/* Certifications count */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-sky-600 p-5 shadow-md shadow-sky-500/30">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-white/70">
+            Unit Certifications
+          </p>
+          <p className="mt-2 text-4xl font-bold text-white leading-none">
+            {qualCerts.length}
+          </p>
+          <p className="mt-1.5 text-[11px] text-white/60">
+            {qualCerts.length === 1 ? "certification registered" : "certifications registered"}
+          </p>
+          <div className="pointer-events-none absolute -right-4 -bottom-4 h-20 w-20 rounded-full bg-white/10" />
+        </div>
       </div>
 
       {/* Criteria list */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
         <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04] px-5 py-4">
           <div>
-            <h2 className="text-sm font-bold text-[#062B49] dark:text-slate-100">11 Classification Criteria</h2>
+            <h2 className="text-sm font-bold text-[#062B49] dark:text-slate-100">
+              11 Classification Criteria
+            </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {readOnly
-                ? "Read-only — click \"Update criteria\" to modify and track a change."
+                ? 'Read-only — click "Update criteria" to modify and track a change.'
                 : "Select each criterion — the detail panel opens automatically."}
             </p>
           </div>
           {readOnly ? (
-            <button onClick={onRequestEdit}
-              className="flex items-center gap-1.5 rounded-xl border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] shadow-sm transition hover:bg-[#062B49]/5 dark:border-blue-400/30 dark:bg-white/[0.04] dark:text-blue-300 dark:hover:bg-white/[0.08]">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <button
+              onClick={onRequestEdit}
+              className="flex items-center gap-1.5 rounded-xl border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] shadow-sm transition hover:bg-[#062B49]/5 dark:border-blue-400/30 dark:bg-white/[0.04] dark:text-blue-300 dark:hover:bg-white/[0.08]"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
               Update criteria
             </button>
-          ) : extra.baseline_locked && (
-            <button onClick={onCancelEdit}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08]">
-              Cancel
-            </button>
+          ) : (
+            extra.baseline_locked && (
+              <button
+                onClick={onCancelEdit}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08]"
+              >
+                Cancel
+              </button>
+            )
           )}
         </div>
 
         {/* Edit mode warning */}
         {!readOnly && extra.baseline_locked && (
           <div className="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-900/20 dark:text-amber-300">
-            <svg className="h-4 w-4 shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="h-4 w-4 shrink-0 text-amber-500"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
-            You are updating class criteria. Changes will be saved with the evaluation date you set at the top — status will be recomputed.
+            You are updating class criteria. Changes will be saved with the
+            evaluation date you set at the top — status will be recomputed.
           </div>
         )}
 
-        <ClassCriteriaBody form={form} setField={setField} extra={extra}
-          criteriaDetails={criteriaDetails} onDetailChange={onDetailChange}
-          relationId={relationId} readOnly={readOnly} />
+        <ClassCriteriaBody
+          form={form}
+          setField={setField}
+          extra={extra}
+          criteriaDetails={criteriaDetails}
+          onDetailChange={onDetailChange}
+          relationId={relationId}
+          readOnly={readOnly}
+          onFileUploaded={onFileUploaded}
+        />
 
         {!readOnly && (
           <div className="flex items-center justify-between border-t border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4 dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04]">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-semibold text-[#062B49] dark:text-blue-300">{cs.scores.length}</span> of 11 criteria filled
-              {cs.avg !== null && <> · avg <span className="font-semibold text-[#062B49] dark:text-blue-300">{cs.avg.toFixed(1)}</span></>}
+              <span className="font-semibold text-[#062B49] dark:text-blue-300">
+                {cs.scores.length}
+              </span>{" "}
+              of 11 criteria filled
+              {cs.avg !== null && (
+                <>
+                  {" "}
+                  · avg{" "}
+                  <span className="font-semibold text-[#062B49] dark:text-blue-300">
+                    {safeToFixed(cs.avg)}
+                  </span>
+                </>
+              )}
             </p>
-            <button onClick={onSave} disabled={saving}
-              className="rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#062B49]/20 transition hover:bg-[#0C5381] disabled:opacity-50">
-              {saving ? "Saving…" : extra.baseline_locked ? "Save & Recompute Status" : "Save Class Evaluation"}
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#062B49]/20 transition hover:bg-[#0C5381] disabled:opacity-50"
+            >
+              {saving
+                ? "Saving…"
+                : extra.baseline_locked
+                  ? "Save & Recompute Status"
+                  : "Save Class Evaluation"}
             </button>
           </div>
         )}
@@ -1946,6 +2425,7 @@ function CriterionDetailPanel({
   selectedValue,
   relationId,
   onChange,
+  onFileUploaded,
 }: {
   pldKey: string;
   cfg: CriterionDetailConfig;
@@ -1953,6 +2433,7 @@ function CriterionDetailPanel({
   selectedValue: string;
   relationId: number;
   onChange: (field: keyof CriterionDetail, val: string) => void;
+  onFileUploaded?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -1961,11 +2442,14 @@ function CriterionDetailPanel({
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     try {
-      if (pldKey === "lta")
-        await supplierAPI.uploadLtaDocument(relationId, file);
-      else await supplierAPI.uploadEvaluationReference(relationId, file);
+      await supplierAPI.uploadRelationCriterionDocument(
+        relationId,
+        pldKey,
+        file,
+      );
       onChange("evidence_file_name", file.name);
       setFileMsg("Uploaded: " + file.name);
+      onFileUploaded?.();
     } catch {
       setFileMsg("Upload failed.");
     } finally {
@@ -2194,7 +2678,7 @@ function OperationalTab({
             <div className="flex items-center gap-3">
               {baselineAvg !== undefined && (
                 <span className="text-sm font-bold text-slate-700">
-                  Avg: {Number(baselineAvg).toFixed(1)}
+                  Avg: {safeToFixed(safeNum(baselineAvg))}
                 </span>
               )}
               {baselineGrade && (
@@ -2224,7 +2708,7 @@ function OperationalTab({
                     <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.08]">
                       <div
                         className={`h-full rounded-full transition-all ${ok ? "bg-emerald-500" : "bg-amber-400"}`}
-                        style={{ width: `${Math.min(score ?? 0, 100)}%` }}
+                        style={{ width: safeWidth(score) }}
                       />
                     </div>
                     <span className="text-xs text-slate-400 shrink-0 dark:text-slate-500">
@@ -2234,7 +2718,7 @@ function OperationalTab({
                   <span
                     className={`text-sm font-bold w-12 text-right ${ok ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}
                   >
-                    {score !== null ? score.toFixed(1) : "—"}
+                    {safeToFixed(score)}
                   </span>
                 </div>
               );
@@ -2267,7 +2751,7 @@ function OperationalTab({
           <div className="flex items-center gap-3">
             {avg !== null && (
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Avg: {avg.toFixed(1)}
+                Avg: {safeToFixed(avg)}
               </span>
             )}
             {grade && (
@@ -2313,7 +2797,7 @@ function OperationalTab({
                     <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
                       <div
                         className={`h-full rounded-full transition-all ${ok ? "bg-emerald-500" : "bg-amber-400"}`}
-                        style={{ width: `${Math.min(score ?? 0, 100)}%` }}
+                        style={{ width: safeWidth(score) }}
                       />
                     </div>
                     <span className="shrink-0 text-xs text-slate-400">
@@ -2344,8 +2828,390 @@ function OperationalTab({
 }
 
 // ---------------------------------------------------------------------------
-// Tab 3 — History & Documents
+// Tab 3 — History & Documents  (cycle audit timeline)
 // ---------------------------------------------------------------------------
+
+interface CycleHistoryEntry {
+  cycle_id: number;
+  cycle_type: string;
+  cycle_date: string | null;
+  submitted_by: string | null;
+  class_value: number | null;
+  operational_grade: string | null;
+  final_grade: string | null;
+  impact_score: number | null;
+  panel_decision: string | null;
+  strategic_mention: string | null;
+  class_criteria: Record<string, string | number | null> | null;
+  operational_scores: Record<string, number | string | null> | null;
+  class_criteria_diffs: Record<
+    string,
+    { from: string | null; to: string | null }
+  >;
+}
+
+const CYCLE_TYPE_STYLE: Record<
+  string,
+  { bg: string; text: string; dot: string }
+> = {
+  "Initial Self-Assessment": {
+    bg: "bg-amber-50 border-amber-200",
+    text: "text-amber-800",
+    dot: "bg-amber-400",
+  },
+  "Initial Re-evaluation": {
+    bg: "bg-orange-50 border-orange-200",
+    text: "text-orange-800",
+    dot: "bg-orange-400",
+  },
+  "Preliminary Re-evaluation": {
+    bg: "bg-orange-50 border-orange-200",
+    text: "text-orange-800",
+    dot: "bg-orange-400",
+  },
+  "Criteria Change Review": {
+    bg: "bg-blue-50 border-blue-200",
+    text: "text-blue-800",
+    dot: "bg-blue-400",
+  },
+  "Decision & Impact Update": {
+    bg: "bg-purple-50 border-purple-200",
+    text: "text-purple-800",
+    dot: "bg-purple-400",
+  },
+  "Operational Self-Assessment Refresh": {
+    bg: "bg-sky-50 border-sky-200",
+    text: "text-sky-800",
+    dot: "bg-sky-400",
+  },
+};
+
+const CRITERIA_LABEL: Record<string, string> = {
+  top: "Terms of Payment",
+  lta: "LTA",
+  productivity: "Productivity",
+  quality_certification: "Quality Cert.",
+  prod_lia_ins: "Prod. Liability Ins.",
+  competitiveness: "Competitiveness",
+  sqma: "SQMA",
+  family_coverage: "Family Coverage",
+  geo_coverage: "Geo Coverage",
+  cons_or_wd: "Consignment/WD",
+  financial_health: "Financial Health",
+};
+
+const OP_LABELS: Record<string, string> = {
+  management_system: "Management System",
+  customer_communication: "Customer Comm.",
+  development_design: "Development/Design",
+  production_manufacturing: "Production/Mfg.",
+  quality_audits: "Quality & Audits",
+  suppliers_subcontractors: "Suppliers & Subs.",
+  deliveries: "Deliveries",
+  environment_ethic_rules: "Environment & Ethics",
+};
+
+function deriveStatusColor(fg: string | null): string | null {
+  if (!fg) return null;
+  const n = fg.toUpperCase();
+  if (["A1", "B1", "A2", "B2"].includes(n))
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (["A3", "B3", "C1", "C2", "C3"].includes(n))
+    return "bg-amber-50 text-amber-700 ring-amber-200";
+  return "bg-red-50 text-red-700 ring-red-200";
+}
+
+function deriveStatusLabel(fg: string | null): string | null {
+  if (!fg) return null;
+  const n = fg.toUpperCase();
+  if (["A1", "B1", "A2", "B2"].includes(n)) return "Can Quote & Be Awarded";
+  if (["A3", "B3", "C1", "C2", "C3"].includes(n))
+    return "Can Quote / Not Awarded";
+  return "New Business on Hold";
+}
+
+function CycleCard({
+  entry,
+  isFirst,
+}: {
+  entry: CycleHistoryEntry;
+  isFirst: boolean;
+}) {
+  const [expanded, setExpanded] = useState(isFirst);
+  const style = CYCLE_TYPE_STYLE[entry.cycle_type] ?? {
+    bg: "bg-slate-50 border-slate-200",
+    text: "text-slate-700",
+    dot: "bg-slate-400",
+  };
+  const hasDiffs = Object.keys(entry.class_criteria_diffs).length > 0;
+  const hasOpScores =
+    !!entry.operational_scores &&
+    Object.entries(entry.operational_scores).some(
+      ([k, v]) => OP_LABELS[k] !== undefined && typeof v === "number",
+    );
+
+  const fmtDate = (d: string | null) => {
+    if (!d) return "—";
+    try {
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return "—";
+      return dt.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  return (
+    <div className="relative pl-6">
+      <span
+        className={`absolute left-[-1px] top-4 h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-white dark:ring-[#0d1929] ${style.dot}`}
+      />
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+        {/* Header row */}
+        <button
+          type="button"
+          onClick={() => setExpanded((p) => !p)}
+          className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${style.bg} ${style.text}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+              {entry.cycle_type}
+            </span>
+            {entry.class_value != null && (
+              <span
+                className={`rounded-lg px-2 py-0.5 text-xs font-bold ${
+                  entry.class_value === 1
+                    ? "bg-emerald-100 text-emerald-800"
+                    : entry.class_value === 2
+                      ? "bg-blue-100 text-blue-800"
+                      : entry.class_value === 3
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-red-100 text-red-800"
+                }`}
+              >
+                Class {entry.class_value}
+              </span>
+            )}
+            {entry.operational_grade && (
+              <span
+                className={`rounded-lg px-2 py-0.5 text-xs font-bold ${GRADE_CLR[entry.operational_grade] || ""}`}
+              >
+                Op {entry.operational_grade}
+              </span>
+            )}
+            {entry.final_grade && (
+              <span className="rounded-lg bg-[#062B49] px-2 py-0.5 text-xs font-bold text-white">
+                {entry.final_grade}
+              </span>
+            )}
+            {entry.final_grade && deriveStatusColor(entry.final_grade) && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${deriveStatusColor(entry.final_grade)}`}
+              >
+                {deriveStatusLabel(entry.final_grade)}
+              </span>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+              {fmtDate(entry.cycle_date)}
+            </span>
+            {entry.submitted_by && (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                {entry.submitted_by}
+              </span>
+            )}
+            <svg
+              className={`mt-1 h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
+        </button>
+
+        {/* Changed fields strip — always visible when diffs exist */}
+        {hasDiffs && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-amber-100 bg-amber-50/60 px-5 py-2.5 dark:border-amber-500/20 dark:bg-amber-900/10">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mr-1">
+              Changed
+            </span>
+            {Object.entries(entry.class_criteria_diffs).map(([field, diff]) => (
+              <span
+                key={field}
+                className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 py-0.5 text-[10px] dark:border-amber-500/30 dark:bg-amber-900/20"
+              >
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {CRITERIA_LABEL[field] ?? field}:
+                </span>
+                {diff.from && (
+                  <span className="text-red-500 line-through">{diff.from}</span>
+                )}
+                {diff.from && diff.to && (
+                  <span className="text-slate-400">→</span>
+                )}
+                {diff.to && (
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                    {diff.to}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Expanded detail */}
+        {expanded && (
+          <div className="border-t border-slate-100 dark:border-white/[0.06]">
+            {/* Class criteria snapshot */}
+            {entry.class_criteria && (
+              <div className="px-5 py-4">
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Class Criteria Snapshot
+                </p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+                  {Object.entries(CRITERIA_LABEL).map(([key, label]) => {
+                    const val = entry.class_criteria?.[key];
+                    const isDiff = key in entry.class_criteria_diffs;
+                    return (
+                      <div
+                        key={key}
+                        className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${isDiff ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}
+                      >
+                        <span className="text-[11px] shrink-0 text-slate-500 dark:text-slate-400">
+                          {label}
+                        </span>
+                        <span
+                          className={`text-[11px] font-semibold truncate max-w-[130px] ${val ? "text-slate-800 dark:text-slate-200" : "text-slate-300 dark:text-slate-600"}`}
+                        >
+                          {val != null ? String(val) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {entry.class_criteria.class_score != null && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1">
+                      <span className="text-[11px] shrink-0 text-slate-500 dark:text-slate-400">
+                        Score
+                      </span>
+                      <span className="text-[11px] font-bold text-[#062B49] dark:text-blue-300">
+                        {safeToFixed(safeNum(entry.class_criteria?.class_score))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Operational scores */}
+            {hasOpScores && (
+              <div className="border-t border-slate-100 dark:border-white/[0.06] px-5 py-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Operational Scores
+                    {entry.operational_scores?.source_type && (
+                      <span className="ml-2 normal-case font-normal">
+                        ({entry.operational_scores.source_type})
+                      </span>
+                    )}
+                  </p>
+                  {entry.operational_scores?.average_score != null && (
+                    <span
+                      className={`rounded-lg px-2.5 py-1 text-xs font-bold ${GRADE_CLR[String(entry.operational_scores.operational_grade)] || "bg-slate-100 text-slate-600"}`}
+                    >
+                      Avg{" "}
+                      {safeToFixed(safeNum(entry.operational_scores?.average_score))}{" "}
+                      · Grade{" "}
+                      {entry.operational_scores.operational_grade ?? "—"}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
+                  {Object.entries(OP_LABELS).map(([key, label]) => {
+                    const val = entry.operational_scores?.[key];
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1"
+                      >
+                        <span className="text-[11px] shrink-0 text-slate-500 dark:text-slate-400">
+                          {label}
+                        </span>
+                        <span
+                          className={`text-[11px] font-semibold ${val != null ? "text-slate-800 dark:text-slate-200" : "text-slate-300 dark:text-slate-600"}`}
+                        >
+                          {safeToFixed(safeNum(val), 0)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Decision footer */}
+            {(entry.panel_decision ||
+              (entry.strategic_mention && entry.strategic_mention !== "none") ||
+              entry.impact_score != null) && (
+              <div className="flex flex-wrap gap-4 border-t border-slate-100 dark:border-white/[0.06] px-5 py-3">
+                {entry.panel_decision && (
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      Panel:{" "}
+                    </span>
+                    {entry.panel_decision}
+                  </span>
+                )}
+                {entry.strategic_mention &&
+                  entry.strategic_mention !== "none" && (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        Strategic:{" "}
+                      </span>
+                      {entry.strategic_mention}
+                    </span>
+                  )}
+                {entry.impact_score != null && (
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      Impact:{" "}
+                    </span>
+                    <span
+                      className={
+                        entry.impact_score > 0
+                          ? "text-emerald-700"
+                          : entry.impact_score < 0
+                            ? "text-red-700"
+                            : ""
+                      }
+                    >
+                      {entry.impact_score > 0 ? "+" : ""}
+                      {entry.impact_score}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function HistoryTab({
   history,
@@ -2361,6 +3227,20 @@ function HistoryTab({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [cycles, setCycles] = useState<CycleHistoryEntry[]>([]);
+  const [cyclesLoading, setCyclesLoading] = useState(true);
+
+  useEffect(() => {
+    supplierAPI
+      .getCycleHistory(relationId)
+      .then((res: any) =>
+        setCycles(
+          Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [],
+        ),
+      )
+      .catch(() => setCycles([]))
+      .finally(() => setCyclesLoading(false));
+  }, [relationId]);
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -2390,86 +3270,136 @@ function HistoryTab({
 
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">
-      {/* Status history */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
-        <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Status History</h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            All grade and status changes for this relation
-          </p>
+      {/* Left — cycle timeline */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              Evaluation Cycle History
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Full audit trail — criteria snapshots and change diffs
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-white/[0.08] dark:text-slate-300">
+            {cycles.length} record{cycles.length !== 1 ? "s" : ""}
+          </span>
         </div>
-        {history.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">
-            No evaluation history yet.
+
+        {cyclesLoading ? (
+          <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white py-12 dark:border-white/[0.08] dark:bg-[#111e30]">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-[#062B49]" />
+            <span className="text-sm text-slate-400">Loading history…</span>
+          </div>
+        ) : cycles.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center dark:border-white/[0.08] dark:bg-[#111e30]">
+            <svg
+              className="h-8 w-8 text-slate-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            <p className="text-sm text-slate-400">
+              No evaluation cycles recorded yet.
+            </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:border-white/[0.06] dark:text-slate-500">
-                  {[
-                    "Date",
-                    "Grade",
-                    "Class",
-                    "Final Grade",
-                    "Status",
-                    "Changed by",
-                  ].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-white/[0.04]">
-                {history.map((entry) => (
-                  <tr key={entry.id_history} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
-                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
-                      {fmt(entry.changed_at)}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1">
-                        {entry.old_grade && (
-                          <span
-                            className={`rounded px-1.5 py-0.5 font-semibold ${GRADE_CLR[entry.old_grade] || ""}`}
-                          >
-                            {entry.old_grade}
-                          </span>
-                        )}
-                        {entry.new_grade &&
-                          entry.new_grade !== entry.old_grade && (
-                            <>
-                              <span className="text-slate-400 dark:text-slate-500">→</span>
-                              <span
-                                className={`rounded px-1.5 py-0.5 font-semibold ${GRADE_CLR[entry.new_grade] || ""}`}
-                              >
-                                {entry.new_grade}
-                              </span>
-                            </>
-                          )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
-                      {entry.new_class ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 font-bold text-slate-800 dark:text-slate-100">
-                      {entry.new_final_grade || "—"}
-                    </td>
-                    <td className="px-5 py-3 text-slate-500 max-w-[180px] truncate dark:text-slate-400">
-                      {entry.new_status || "—"}
-                    </td>
-                    <td className="px-5 py-3 text-slate-400 dark:text-slate-500">
-                      {entry.changed_by || "—"}
-                    </td>
+          <div className="relative space-y-3 border-l-2 border-slate-200 dark:border-white/[0.08]">
+            {cycles.map((entry, i) => (
+              <CycleCard key={entry.cycle_id} entry={entry} isFirst={i === 0} />
+            ))}
+          </div>
+        )}
+
+        {/* Status transitions compact table */}
+        {history.length > 0 && (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+            <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3">
+              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Status Transitions
+              </h3>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                Automatic log of every grade and status change
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:border-white/[0.06]">
+                    {[
+                      "Date",
+                      "Old → New Grade",
+                      "Class",
+                      "Final",
+                      "Status",
+                      "By",
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-2.5 text-left">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-white/[0.04]">
+                  {history.map((entry) => (
+                    <tr
+                      key={entry.id_history}
+                      className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02]"
+                    >
+                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {fmt(entry.changed_at)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1">
+                          {entry.old_grade && (
+                            <span
+                              className={`rounded px-1.5 py-0.5 font-bold ${GRADE_CLR[entry.old_grade] || ""}`}
+                            >
+                              {entry.old_grade}
+                            </span>
+                          )}
+                          {entry.new_grade &&
+                            entry.new_grade !== entry.old_grade && (
+                              <>
+                                <span className="text-slate-400">→</span>
+                                <span
+                                  className={`rounded px-1.5 py-0.5 font-bold ${GRADE_CLR[entry.new_grade] || ""}`}
+                                >
+                                  {entry.new_grade}
+                                </span>
+                              </>
+                            )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                        {entry.new_class ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 font-bold text-slate-800 dark:text-slate-100">
+                        {entry.new_final_grade || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-500 max-w-[160px] truncate dark:text-slate-400">
+                        {entry.new_status || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                        {entry.changed_by || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Documents */}
+      {/* Right — documents */}
       <div className="space-y-4">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
           <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
@@ -2481,7 +3411,6 @@ function HistoryTab({
             </p>
           </div>
           <div className="p-5">
-            {/* Upload */}
             <div
               onClick={() => fileRef.current?.click()}
               className="mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 transition hover:border-[#062B49]/30 hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.04]"
@@ -2513,56 +3442,63 @@ function HistoryTab({
                 if (f) handleUpload(f);
               }}
             />
-            {msg && <p className="mb-3 text-xs text-emerald-600">{msg}</p>}
-
-            {/* List */}
-            {!evalDocs || evalDocs.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-3">
-                No documents uploaded yet.
+            {msg && (
+              <p className="mb-3 text-xs text-emerald-600 dark:text-emerald-400">
+                {msg}
+              </p>
+            )}
+            {(evalDocs ?? []).length === 0 ? (
+              <p className="text-center text-xs text-slate-400">
+                No documents yet.
               </p>
             ) : (
               <div className="space-y-2">
-                {evalDocs.map((doc) => (
-                  <div
-                    key={doc.id_document}
-                    className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 dark:border-white/[0.06] dark:bg-white/[0.03]"
-                  >
-                    <svg
-                      className="h-4 w-4 shrink-0 text-slate-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                {(evalDocs ?? []).map((doc) => {
+                  const typeLabel =
+                    doc.document_type === "lta_agreement"
+                      ? "LTA"
+                      : doc.document_type === "evaluation_criterion_evidence"
+                        ? "Evidence"
+                        : "Reference";
+                  const typeCls =
+                    doc.document_type === "lta_agreement"
+                      ? "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400"
+                      : doc.document_type === "evaluation_criterion_evidence"
+                        ? "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                        : "bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400";
+                  return (
+                    <div
+                      key={doc.id_document}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 dark:border-white/[0.06] dark:bg-white/[0.03]"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
-                        {doc.document_name}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${typeCls}`}
+                          >
+                            {typeLabel}
+                          </span>
+                          <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {doc.document_name}
+                          </p>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {fmt(doc.uploaded_at)}
+                        </p>
                       </div>
-                      <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {doc.document_type === "lta_agreement"
-                          ? "LTA"
-                          : "Eval ref"}{" "}
-                        · {fmt(doc.uploaded_at)}
-                      </div>
+                      {doc.file_url && (
+                        <a
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400"
+                        >
+                          View
+                        </a>
+                      )}
                     </div>
-                    {doc.file_url && (
-                      <a
-                        href={doc.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-[#062B49] transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-blue-300 dark:hover:bg-white/[0.08]"
-                      >
-                        View
-                      </a>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2609,125 +3545,193 @@ function DecisionTab({
       {/* Locked banner */}
       {readOnly && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-600">
-          <svg className="h-4 w-4 shrink-0 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+          <svg
+            className="h-4 w-4 shrink-0 text-slate-400"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+              clipRule="evenodd"
+            />
           </svg>
-          Decision &amp; Impact was recorded with the initial self-assessment and <strong className="ml-1">cannot be modified</strong>.
+          Decision &amp; Impact was recorded with the initial self-assessment
+          and <strong className="ml-1">cannot be modified</strong>.
         </div>
       )}
 
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-      {/* Impact questions */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
-        <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Supplier Impact
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              6 strategic impact questions
-            </p>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        {/* Impact questions */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Supplier Impact
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                6 strategic impact questions
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] text-slate-400">Impact Score</p>
+              <p
+                className={`text-xl font-bold ${impact > 0 ? "text-emerald-700" : impact < 0 ? "text-red-700" : "text-slate-600"}`}
+              >
+                {impact > 0 ? "+" : ""}
+                {impact}
+              </p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-[11px] text-slate-400">Impact Score</p>
-            <p
-              className={`text-xl font-bold ${impact > 0 ? "text-emerald-700" : impact < 0 ? "text-red-700" : "text-slate-600"}`}
-            >
-              {impact > 0 ? "+" : ""}
-              {impact}
-            </p>
+          <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
+            {impactKeys.map((key, i) => {
+              const val = form[key] as string;
+              const score = val ? IMPACT_SCORES[val] : null;
+              return (
+                <div key={key} className="px-5 py-4">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="mr-1.5 inline-block w-5 shrink-0 text-slate-400 dark:text-slate-500">
+                        {i + 1}.
+                      </span>
+                      {IMPACT_QUESTIONS[i]}
+                    </p>
+                    {score !== null && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          score > 0
+                            ? "bg-emerald-50 text-emerald-700"
+                            : score < 0
+                              ? "bg-red-50 text-red-700"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {score > 0 ? `+${score}` : score}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {IMPACT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        disabled={readOnly}
+                        onClick={() =>
+                          !readOnly && setField(key, val === opt ? "" : opt)
+                        }
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${readOnly ? "cursor-not-allowed opacity-70" : ""} ${
+                          val === opt
+                            ? IMPACT_SCORES[opt] > 0
+                              ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              : IMPACT_SCORES[opt] < 0
+                                ? "border-red-400 bg-red-50 text-red-700 dark:border-red-500/50 dark:bg-red-900/30 dark:text-red-300"
+                                : "border-slate-400 bg-slate-100 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/20"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-        <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
-          {impactKeys.map((key, i) => {
-            const val = form[key] as string;
-            const score = val ? IMPACT_SCORES[val] : null;
-            return (
-              <div key={key} className="px-5 py-4">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    <span className="mr-1.5 inline-block w-5 shrink-0 text-slate-400 dark:text-slate-500">
-                      {i + 1}.
-                    </span>
-                    {IMPACT_QUESTIONS[i]}
-                  </p>
-                  {score !== null && (
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        score > 0
-                          ? "bg-emerald-50 text-emerald-700"
-                          : score < 0
-                            ? "bg-red-50 text-red-700"
-                            : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {score > 0 ? `+${score}` : score}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {IMPACT_OPTIONS.map((opt) => (
+
+        {/* Decision */}
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+            <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Strategic Mention
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Filled by Avocarbon Purchasing — multiple selections allowed
+                (e.g. Strategic + Directed).
+              </p>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-2">
+                {STRATEGIC_MENTION_OPTIONS.map((opt) => {
+                  const active =
+                    opt.value === "none"
+                      ? strategicMentions.has("none") ||
+                        strategicMentions.size === 0
+                      : strategicMentions.has(opt.value);
+                  return (
                     <button
-                      key={opt}
+                      key={opt.value}
                       type="button"
                       disabled={readOnly}
-                      onClick={() => !readOnly && setField(key, val === opt ? "" : opt)}
-                      className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${readOnly ? "cursor-not-allowed opacity-70" : ""} ${
-                        val === opt
-                          ? IMPACT_SCORES[opt] > 0
-                            ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-900/30 dark:text-emerald-300"
-                            : IMPACT_SCORES[opt] < 0
-                              ? "border-red-400 bg-red-50 text-red-700 dark:border-red-500/50 dark:bg-red-900/30 dark:text-red-300"
-                              : "border-slate-400 bg-slate-100 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/20"
+                      onClick={() => !readOnly && onToggleStrategic(opt.value)}
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${readOnly ? "cursor-not-allowed" : ""} ${
+                        active
+                          ? "border-[#062B49] bg-[#062B49] text-white shadow-sm dark:border-blue-500 dark:bg-blue-600"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-white/20"
                       }`}
                     >
-                      {opt}
+                      <span>{opt.label}</span>
+                      {active && opt.value !== "none" && (
+                        <svg
+                          className="h-4 w-4 opacity-80"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Decision */}
-      <div className="space-y-4">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
-          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Strategic Mention
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Filled by Avocarbon Purchasing — multiple selections allowed (e.g.
-              Strategic + Directed).
-            </p>
+              {/* Show combined label when multiple selected */}
+              {strategicMentions.size > 1 && (
+                <p className="mt-3 text-xs text-[#062B49] font-semibold">
+                  Selected: {Array.from(strategicMentions).join(" + ")}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="p-5">
-            <div className="grid grid-cols-2 gap-2">
-              {STRATEGIC_MENTION_OPTIONS.map((opt) => {
-                const active =
-                  opt.value === "none"
-                    ? strategicMentions.has("none") ||
-                      strategicMentions.size === 0
-                    : strategicMentions.has(opt.value);
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    disabled={readOnly}
-                    onClick={() => !readOnly && onToggleStrategic(opt.value)}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${readOnly ? "cursor-not-allowed" : ""} ${
-                      active
-                        ? "border-[#062B49] bg-[#062B49] text-white shadow-sm dark:border-blue-500 dark:bg-blue-600"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-white/20"
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
+            <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Committee Decision
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Panel decision — to be validated
+              </p>
+            </div>
+            <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
+              {PANEL_DECISION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() =>
+                    !readOnly && setField("panel_decision", opt.value)
+                  }
+                  className={`flex w-full items-center gap-3 px-5 py-4 text-left text-sm transition ${readOnly ? "cursor-not-allowed" : ""} ${
+                    form.panel_decision === opt.value
+                      ? "bg-[#062B49]/5 dark:bg-blue-500/10"
+                      : "hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+                  }`}
+                >
+                  <div
+                    className={`h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition ${
+                      form.panel_decision === opt.value
+                        ? "border-[#062B49] bg-[#062B49]"
+                        : "border-slate-300"
                     }`}
                   >
-                    <span>{opt.label}</span>
-                    {active && opt.value !== "none" && (
+                    {form.panel_decision === opt.value && (
                       <svg
-                        className="h-4 w-4 opacity-80"
+                        className="h-2.5 w-2.5 text-white"
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -2738,85 +3742,30 @@ function DecisionTab({
                         />
                       </svg>
                     )}
-                  </button>
-                );
-              })}
+                  </div>
+                  <span
+                    className={`font-medium ${form.panel_decision === opt.value ? "text-[#062B49] dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}
+                  >
+                    {opt.label}
+                  </span>
+                </button>
+              ))}
             </div>
-            {/* Show combined label when multiple selected */}
-            {strategicMentions.size > 1 && (
-              <p className="mt-3 text-xs text-[#062B49] font-semibold">
-                Selected: {Array.from(strategicMentions).join(" + ")}
-              </p>
-            )}
           </div>
-        </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
-          <div className="border-b border-slate-100 bg-slate-50 dark:border-white/[0.06] dark:bg-[#0d1929] px-5 py-3.5">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Committee Decision
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Panel decision — to be validated
-            </p>
-          </div>
-          <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
-            {PANEL_DECISION_OPTIONS.map((opt) => (
+          {!readOnly && (
+            <div className="flex justify-end">
               <button
-                key={opt.value}
-                type="button"
-                disabled={readOnly}
-                onClick={() => !readOnly && setField("panel_decision", opt.value)}
-                className={`flex w-full items-center gap-3 px-5 py-4 text-left text-sm transition ${readOnly ? "cursor-not-allowed" : ""} ${
-                  form.panel_decision === opt.value
-                    ? "bg-[#062B49]/5 dark:bg-blue-500/10"
-                    : "hover:bg-slate-50 dark:hover:bg-white/[0.03]"
-                }`}
+                onClick={onSave}
+                disabled={saving}
+                className="rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:opacity-50"
               >
-                <div
-                  className={`h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center transition ${
-                    form.panel_decision === opt.value
-                      ? "border-[#062B49] bg-[#062B49]"
-                      : "border-slate-300"
-                  }`}
-                >
-                  {form.panel_decision === opt.value && (
-                    <svg
-                      className="h-2.5 w-2.5 text-white"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                </div>
-                <span
-                  className={`font-medium ${form.panel_decision === opt.value ? "text-[#062B49] dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}
-                >
-                  {opt.label}
-                </span>
+                {saving ? "Saving…" : "Save Decision & Impact"}
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-
-        {!readOnly && (
-          <div className="flex justify-end">
-            <button
-              onClick={onSave}
-              disabled={saving}
-              className="rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save Decision & Impact"}
-            </button>
-          </div>
-        )}
       </div>
-    </div>
     </div>
   );
 }
