@@ -23,9 +23,11 @@ import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
 import PurchasingKpiPage from "./pages/PurchasingKpiPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 import GateApprovalPage from "./pages/GateApprovalPage";
+// import PublicDirectoryPage from "./pages/PublicDirectoryPage";
 // import CarbonFootprintPage from "./pages/CarbonFootprintPage";
-// import CertificationsTrackingPage from "./pages/CertificationsTrackingPage";
-// import DocumentsValidityPage from "./pages/DocumentsValidityPage";
+// // import SupplierDirectoryAdminPage from "./pages/SupplierDirectoryAdminPage";
+import CertificationsTrackingPage from "./pages/CertificationsTrackingPage";
+import DocumentsValidityPage from "./pages/DocumentsValidityPage";
 
 function ProtectedShell() {
   const location = useLocation();
@@ -59,6 +61,10 @@ const router = createBrowserRouter([
     path: "/approve/:token",
     element: <GateApprovalPage />,
   },
+  // {
+  //   path: "/directory",
+  //   element: <PublicDirectoryPage />,
+  // },
   {
     element: <ProtectedShell />,
     children: [
@@ -92,8 +98,18 @@ const router = createBrowserRouter([
       { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
       // { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },
-      // { path: "/suppliers/certifications", element: <CertificationsTrackingPage /> },
-      // { path: "/suppliers/documents-validity", element: <DocumentsValidityPage /> },
+      // {
+      //   path: "/suppliers/directory-admin",
+      //   element: <SupplierDirectoryAdminPage />,
+      // },
+      {
+        path: "/suppliers/certifications",
+        element: <CertificationsTrackingPage />,
+      },
+      {
+        path: "/suppliers/documents-validity",
+        element: <DocumentsValidityPage />,
+      },
       { path: "*", element: <Navigate to="/suppliers" replace /> },
     ],
   },

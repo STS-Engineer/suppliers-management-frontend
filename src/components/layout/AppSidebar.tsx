@@ -50,7 +50,7 @@ const PRIMARY_NAV: NavItem[] = [
         path: "/suppliers/development-plans",
       },
       // { name: "Carbon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
-      // { name: "Documents & Validity (SB1+SB6)", path: "/suppliers/documents-validity" },
+      // { name: "Directory Admin", path: "/suppliers/directory-admin" },
     ],
   },
   {
@@ -58,8 +58,12 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Evaluations",
     icon: ClipboardList,
     subItems: [
-      { name: "Evaluation Dashboard", path: "/evaluations" },
-      // { name: "Certifications Tracker", path: "/suppliers/certifications" },
+      { name: "Evaluation Scorecards", path: "/evaluations" },
+      { name: "Certifications Tracker", path: "/suppliers/certifications" },
+      {
+        name: "Criteria Validity Tracker",
+        path: "/suppliers/documents-validity",
+      },
     ],
   },
   {
