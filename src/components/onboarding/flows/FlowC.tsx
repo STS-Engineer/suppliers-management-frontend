@@ -125,6 +125,7 @@ const EMPTY_NEW_CONTACT: NewContact = {
 // ---------------------------------------------------------------------------
 
 const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+const serializeMultiSelect = (values: string[]) => values.length ? values.join(",") : undefined;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -144,10 +145,10 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
   const [mainPlants,         setMainPlants]         = useState("");
 
   // ── Product classification ────────────────────────────────────────────────
-  const [family,       setFamily]      = useState("");
-  const [subFamily,    setSubFamily]   = useState("");
-  const [productLine,  setProductLine] = useState("");
-  const [category,     setCategory]   = useState("");
+  const [family,       setFamily]      = useState<string[]>([]);
+  const [subFamily,    setSubFamily]   = useState<string[]>([]);
+  const [productLine,  setProductLine] = useState<string[]>([]);
+  const [category,     setCategory]    = useState<string[]>([]);
 
   // ── Sustainability ────────────────────────────────────────────────────────
   const [carbonFootprint,     setCarbonFootprint]     = useState("");
@@ -316,10 +317,10 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
           commodity_responsible: commodityResponsible || undefined,
           main_plants:           mainPlants          || undefined,
           // Product classification
-          family:                family              || undefined,
-          sub_family:            subFamily           || undefined,
-          product_line:          productLine         || undefined,
-          category:              category            || undefined,
+          family:                serializeMultiSelect(family),
+          sub_family:            serializeMultiSelect(subFamily),
+          product_line:          serializeMultiSelect(productLine),
+          category:              serializeMultiSelect(category),
           // Sustainability
           carbon_footprint:      carbonFootprint     || undefined,
           green_electricity_pct: greenElectricityPct || undefined,
