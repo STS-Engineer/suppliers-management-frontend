@@ -2,8 +2,12 @@
  * Supplier Unit Form Step
  */
 
-import React from "react";
+import React, { useCallback } from "react";
 import { UserPlus, X } from "lucide-react";
+import {
+  ALL_FAMILIES,
+  getSubFamiliesForFamilies,
+} from "../../data/familySubfamilyData";
 import {
   UnitFormData,
   ContactFormData,
@@ -50,66 +54,6 @@ const COUNTRIES = [
   "Other",
 ];
 
-const DEFAULT_FAMILIES = [
-  "Electronics",
-  "Electromechanical",
-  "Magnetics",
-  "Passive Components",
-  "Chemicals",
-  "Raw Materials",
-  "Metals",
-  "Plastics",
-  "Packaging",
-  "Mechanical Parts",
-  "PCB & Assemblies",
-  "Cables & Connectors",
-  "Software & Services",
-  "Tooling & Equipment",
-];
-
-const DEFAULT_CATEGORIES = [
-  "Ferrites",
-  "Chokes",
-  "Wire coils",
-  "Inductors",
-  "Transformers",
-  "Capacitors",
-  "Resistors",
-  "Diodes",
-  "MOSFETs",
-  "IGBTs",
-  "Sensors",
-  "Filters",
-  "Connectors",
-  "Switches",
-  "Relays",
-  "Motors",
-  "PCB Assemblies",
-  "Cables",
-  "Coatings",
-  "Laminates",
-];
-
-const DEFAULT_SUB_FAMILIES = [
-  "Ferrites",
-  "Inductors",
-  "Transformers",
-  "Capacitors",
-  "Resistors",
-  "Diodes",
-  "MOSFETs",
-  "IGBTs",
-  "Sensors",
-  "Filters",
-  "Connectors",
-  "Switches",
-  "Relays",
-  "Motors",
-  "Coatings",
-  "Adhesives",
-  "Laminates",
-  "Substrates",
-];
 
 const DEFAULT_PRODUCT_LINES = [
   "Power Electronics",
@@ -121,6 +65,25 @@ const DEFAULT_PRODUCT_LINES = [
   "Automation & Control",
   "Lighting",
   "Wireless & RF",
+];
+
+const DEFAULT_CATEGORIES = [
+  "Ferrites",
+  "Chokes",
+  "Wire coils",
+  "Inductors",
+  "Transformers",
+  "Capacitors",
+  "Resistors",
+  "Diodes",
+  "Sensors",
+  "Filters",
+  "Connectors",
+  "Switches",
+  "Relays",
+  "Motors",
+  "Coatings",
+  "Laminates",
 ];
 
 const EMPTY_CONTACT: ContactFormData = {
@@ -142,6 +105,24 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
 }) => {
   const contacts: ContactFormData[] = data.unit_contacts ?? [];
   const hasGroupContacts = groupContacts.some((c) => c.full_name.trim());
+
+  // Cascading: sub-family options depend on selected families
+  const availableSubFamilies = getSubFamiliesForFamilies(data.family);
+
+  // When families change, remove any selected sub-families that no longer belong
+  const handleFamilyChange = useCallback(
+    (newFamilies: string[]) => {
+      onChange("family", newFamilies);
+      if (newFamilies.length > 0) {
+        const allowed = getSubFamiliesForFamilies(newFamilies);
+        const cleaned = data.sub_family.filter((sf) => allowed.includes(sf));
+        if (cleaned.length !== data.sub_family.length) {
+          onChange("sub_family", cleaned);
+        }
+      }
+    },
+    [data.sub_family, onChange],
+  );
 
   const updateContact = (
     index: number,
@@ -294,11 +275,11 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
             label="Family"
             name="family"
             value={data.family}
-            onChange={(v) => onChange("family", v)}
+            onChange={handleFamilyChange}
             storageKey="unit_family"
-            defaultOptions={DEFAULT_FAMILIES}
-            placeholder="e.g., Electronics, Magnetics…"
-            helperText="Main product family for this unit"
+            defaultOptions={ALL_FAMILIES}
+            placeholder="Select or type a family…"
+            helperText="Product family (multiple allowed)"
           />
         </div>
 
@@ -309,9 +290,17 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
             value={data.sub_family}
             onChange={(v) => onChange("sub_family", v)}
             storageKey="unit_sub_family"
-            defaultOptions={DEFAULT_SUB_FAMILIES}
-            placeholder="e.g., Ferrites, Capacitors…"
-            helperText="Sub-category within the family"
+            availableOptions={availableSubFamilies}
+            placeholder={
+              data.family.length === 0
+                ? "Select a family first…"
+                : "Select sub-families…"
+            }
+            helperText={
+              data.family.length === 0
+                ? "Sub-families are filtered by selected families"
+                : `${availableSubFamilies.length} sub-families available`
+            }
           />
         </div>
 

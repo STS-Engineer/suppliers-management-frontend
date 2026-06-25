@@ -184,6 +184,8 @@ interface CreatableMultiSelectProps {
   onChange: (values: string[]) => void;
   storageKey: string;
   defaultOptions?: string[];
+  /** When provided, the dropdown shows only these options (cascading filter). */
+  availableOptions?: string[];
   placeholder?: string;
   required?: boolean;
   helperText?: string;
@@ -192,7 +194,8 @@ interface CreatableMultiSelectProps {
 
 export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
   label, name, value, onChange, storageKey,
-  defaultOptions = [], placeholder = "Search or create…",
+  defaultOptions = [], availableOptions,
+  placeholder = "Search or create…",
   required = false, helperText, error,
 }) => {
   const [options, setOptions] = useState<string[]>(() =>
@@ -215,7 +218,10 @@ export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filtered = options.filter(
+  // When availableOptions is provided use it as the source; otherwise use full options list.
+  const sourceOptions = availableOptions ?? options;
+
+  const filtered = sourceOptions.filter(
     (o) =>
       o.toLowerCase().includes(search.toLowerCase()) &&
       !value.includes(o)

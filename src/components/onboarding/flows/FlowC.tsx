@@ -7,7 +7,7 @@
  * Field set, validation, and business rules are aligned with SupplierUnitForm.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supplierAPI } from "../../../services/supplierOnboardingAPI";
 import {
   CERTIFICATION_STANDARD_TYPE_OPTIONS,
@@ -15,6 +15,10 @@ import {
 } from "../../../utils/onboarding";
 import { ContactResponse } from "../../../types/onboarding";
 import { CreatableMultiSelect } from "../FormElements";
+import {
+  ALL_FAMILIES,
+  getSubFamiliesForFamilies,
+} from "../../../data/familySubfamilyData";
 
 // ---------------------------------------------------------------------------
 // Constants — kept in sync with SupplierUnitForm
@@ -28,19 +32,6 @@ const COUNTRIES = [
   "Australia", "Morocco", "Tunisia", "Turkey", "Other",
 ];
 
-const DEFAULT_FAMILIES = [
-  "Electronics", "Electromechanical", "Magnetics", "Passive Components",
-  "Chemicals", "Raw Materials", "Metals", "Plastics", "Packaging",
-  "Mechanical Parts", "PCB & Assemblies", "Cables & Connectors",
-  "Software & Services", "Tooling & Equipment",
-];
-
-const DEFAULT_SUB_FAMILIES = [
-  "Ferrites", "Inductors", "Transformers", "Capacitors", "Resistors",
-  "Diodes", "MOSFETs", "IGBTs", "Sensors", "Filters", "Connectors",
-  "Switches", "Relays", "Motors", "Coatings", "Adhesives", "Laminates",
-  "Substrates",
-];
 
 const DEFAULT_PRODUCT_LINES = [
   "Power Electronics", "Signal Processing", "Thermal Management",
@@ -147,6 +138,16 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
   // ── Product classification ────────────────────────────────────────────────
   const [family,       setFamily]      = useState<string[]>([]);
   const [subFamily,    setSubFamily]   = useState<string[]>([]);
+
+  const availableSubFamilies = getSubFamiliesForFamilies(family);
+
+  const handleFamilyChange = useCallback((newFamilies: string[]) => {
+    setFamily(newFamilies);
+    if (newFamilies.length > 0) {
+      const allowed = getSubFamiliesForFamilies(newFamilies);
+      setSubFamily((prev) => prev.filter((sf) => allowed.includes(sf)));
+    }
+  }, []);
   const [productLine,  setProductLine] = useState<string[]>([]);
   const [category,     setCategory]    = useState<string[]>([]);
 
@@ -441,11 +442,11 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
                 label="Family"
                 name="family"
                 value={family}
-                onChange={setFamily}
+                onChange={handleFamilyChange}
                 storageKey="unit_family"
-                defaultOptions={DEFAULT_FAMILIES}
-                placeholder="e.g., Electronics, Magnetics…"
-                helperText="Main product family for this unit"
+                defaultOptions={ALL_FAMILIES}
+                placeholder="Select or type a family…"
+                helperText="Product family (multiple allowed)"
               />
             </div>
 
@@ -456,9 +457,13 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
                 value={subFamily}
                 onChange={setSubFamily}
                 storageKey="unit_sub_family"
-                defaultOptions={DEFAULT_SUB_FAMILIES}
-                placeholder="e.g., Ferrites, Capacitors…"
-                helperText="Sub-category within the family"
+                availableOptions={availableSubFamilies}
+                placeholder={family.length === 0 ? "Select a family first…" : "Select sub-families…"}
+                helperText={
+                  family.length === 0
+                    ? "Sub-families are filtered by selected families"
+                    : `${availableSubFamilies.length} sub-families available`
+                }
               />
             </div>
 
