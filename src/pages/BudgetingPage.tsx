@@ -577,7 +577,11 @@ export default function BudgetingPage() {
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
                           <BudgetStatusBadge status={item.budget_status} isAdditional={false} />
-                          {item.status_locked_at && <Lock size={10} className="text-slate-300" title="Locked" />}
+                          {item.status_locked_at && (
+                            <span title="Locked" className="inline-flex">
+                              <Lock size={10} className="text-slate-300" aria-hidden="true" />
+                            </span>
+                          )}
                         </div>
                       </td>
                     )}
@@ -674,3 +678,4 @@ export default function BudgetingPage() {
     </div>
   );
 }
+
