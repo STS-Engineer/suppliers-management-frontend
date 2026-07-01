@@ -101,9 +101,19 @@ export const FlowB: React.FC<FlowBProps> = ({
   const [supplierScope] = useState(groupScope ?? "local");
 
   // Annual spend
-  const [spendValue, setSpendValue] = useState("");
+  const [spendRaw, setSpendRaw] = useState("");
+  const [spendDisplay, setSpendDisplay] = useState("");
   const [spendCurrency, setSpendCurrency] = useState("EUR");
   const [fiscalYear, setFiscalYear] = useState(String(new Date().getFullYear()));
+
+  const spendValue = spendRaw;
+
+  const handleSpendChange = (input: string) => {
+    const digits = input.replace(/\D/g, "");
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    setSpendRaw(digits);
+    setSpendDisplay(formatted);
+  };
 
 
   // Contact step
@@ -590,55 +600,99 @@ export const FlowB: React.FC<FlowBProps> = ({
           </div>
         )}
 
-        {/* Step 4 — Owner */}
+        {/* Step 4 — Owner & Spend */}
         {step === 4 && (
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Supplier Owner Assignment</h4>
-              <p className="mt-1 text-xs text-slate-500">
-                The Avocarbon buyer or commodity leader responsible for this relation.
-              </p>
+          <div className="space-y-5">
+            {/* Owner */}
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Supplier Owner Assignment</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  The Avocarbon buyer or commodity leader responsible for this relation.
+                </p>
+              </div>
+
+              <FieldWrap label="Owner email *">
+                <input
+                  type="email"
+                  className={inputCls}
+                  placeholder="name@avocarbon.com"
+                  value={supplierOwner}
+                  onChange={(e) => setSupplierOwner(e.target.value)}
+                />
+              </FieldWrap>
+
+              {supplierScope === "global" && groupOwner && supplierOwner === groupOwner && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  <svg className="h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Using the global owner configured on the supplier group. Edit to override for this relation only.
+                </div>
+              )}
+
+              {supplierScope === "global" && groupOwner && supplierOwner !== groupOwner && supplierOwner.trim() !== "" && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-3.5 w-3.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Overriding group default for this relation.
+                  </div>
+                  <button
+                    type="button"
+                    className="ml-3 font-semibold text-amber-700 underline hover:text-amber-900"
+                    onClick={() => setSupplierOwner(groupOwner)}
+                  >
+                    Reset
+                  </button>
+                </div>
+              )}
             </div>
 
-            <FieldWrap label="Owner email *">
-              <input
-                type="email"
-                className={inputCls}
-                placeholder="name@avocarbon.com"
-                value={supplierOwner}
-                onChange={(e) => setSupplierOwner(e.target.value)}
-              />
-            </FieldWrap>
-
-            {/* Notice: using group default */}
-            {supplierScope === "global" && groupOwner && supplierOwner === groupOwner && (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                <svg className="h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                Using the global owner configured on the supplier group. Edit to override for this relation only.
+            {/* Annual spend */}
+            <div className="border-t border-slate-100 pt-5 space-y-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Annual Spend <span className="text-slate-400 font-normal">(optional)</span></h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Estimated purchasing volume for this unit–plant relation. Can be updated later from the relation details.
+                </p>
               </div>
-            )}
-
-            {/* Notice: overriding group default */}
-            {supplierScope === "global" && groupOwner && supplierOwner !== groupOwner && supplierOwner.trim() !== "" && (
-              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <div className="flex items-center gap-2">
-                  <svg className="h-3.5 w-3.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Overriding group default for this relation.
-                </div>
-                <button
-                  type="button"
-                  className="ml-3 font-semibold text-amber-700 underline hover:text-amber-900"
-                  onClick={() => setSupplierOwner(groupOwner)}
-                >
-                  Reset
-                </button>
+              <div className="grid grid-cols-3 gap-3">
+                <FieldWrap label="Fiscal Year">
+                  <input
+                    type="number"
+                    min={2000}
+                    max={2100}
+                    className={inputCls}
+                    placeholder={String(new Date().getFullYear())}
+                    value={fiscalYear}
+                    onChange={(e) => setFiscalYear(e.target.value)}
+                  />
+                </FieldWrap>
+                <FieldWrap label="Amount">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className={inputCls}
+                    placeholder="0"
+                    value={spendDisplay}
+                    onChange={(e) => handleSpendChange(e.target.value)}
+                  />
+                </FieldWrap>
+                <FieldWrap label="Currency">
+                  <select
+                    className={inputCls}
+                    value={spendCurrency}
+                    onChange={(e) => setSpendCurrency(e.target.value)}
+                  >
+                    {["EUR", "USD", "GBP", "JPY", "CNY", "MAD"].map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </FieldWrap>
               </div>
-            )}
-
+            </div>
           </div>
         )}
 
@@ -689,7 +743,16 @@ export const FlowB: React.FC<FlowBProps> = ({
 
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <ReviewRow label="Owner" value={supplierOwner || "—"} />
-              <ReviewRow label="Scope" value={supplierScope || "—"} last />
+              <ReviewRow label="Scope" value={supplierScope || "—"} />
+              <ReviewRow
+                label={`Annual Spend (FY ${fiscalYear})`}
+                value={
+                  spendValue
+                    ? `${parseInt(spendValue, 10).toLocaleString()} ${spendCurrency}`
+                    : "Not set — can be added later"
+                }
+                last
+              />
             </div>
           </div>
         )}

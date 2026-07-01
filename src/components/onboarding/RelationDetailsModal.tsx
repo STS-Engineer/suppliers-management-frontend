@@ -134,7 +134,15 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   const [spendLoading, setSpendLoading] = useState(false);
   const [spendError, setSpendError] = useState<string | null>(null);
   const [spendForm, setSpendForm] = useState({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
+  const [spendAmountDisplay, setSpendAmountDisplay] = useState("");
   const [spendSaving, setSpendSaving] = useState(false);
+
+  const handleSpendAmountChange = (input: string) => {
+    const digits = input.replace(/\D/g, "");
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    setSpendForm((f) => ({ ...f, spend_value: digits }));
+    setSpendAmountDisplay(formatted);
+  };
   const [deletingYear, setDeletingYear] = useState<number | null>(null);
 
   const relationId = workspace?.relation?.id_relation ?? null;
@@ -166,6 +174,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
         spend_currency: spendForm.spend_currency,
       });
       setSpendForm({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
+      setSpendAmountDisplay("");
       await loadSpend();
     } catch {
       setSpendError("Failed to save spend entry.");
@@ -825,13 +834,11 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       Amount
                     </label>
                     <input
-                      type="number"
-                      min={0}
-                      placeholder="0.00"
-                      value={spendForm.spend_value}
-                      onChange={(e) =>
-                        setSpendForm((f) => ({ ...f, spend_value: e.target.value }))
-                      }
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={spendAmountDisplay}
+                      onChange={(e) => handleSpendAmountChange(e.target.value)}
                       className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
                     />
                   </div>
