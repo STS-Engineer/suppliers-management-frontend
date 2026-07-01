@@ -68,22 +68,13 @@ const EMPTY_FORM: OnboardingFormData = {
     country: "",
     continent: "",
     area: "",
+    commodity: [],
     family: [],
     sub_family: [],
     product_line: [],
     website: "",
-    supplier_email: "",
-    commodity_responsible: "",
-    main_plants: "",
     carbon_footprint: "",
     green_electricity_pct: "",
-    copper_brass_pct: "",
-    category: [],
-    scope1_ghg: "",
-    scope2_ghg: "",
-    ghg_comments: "",
-    ghg_requested_date: "",
-    ghg_completion_pct: "",
     unit_contacts: [],
   },
   contacts: [
@@ -154,7 +145,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     supplier_owner: string;
   } | null>(null);
   const [showSiteAssignment, setShowSiteAssignment] = useState(false);
-  const [draftSaved, setDraftSaved] = useState(false);
+  const [draftSaved] = useState(false);
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
 
   const hasMeaningfulContactData = (contact: ContactFormData) =>
@@ -169,17 +160,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   const looksLikeEmail = (value: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-  const emptyToUndefined = (value: string) => {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
-  };
-
-  const cleanedUnitPayload = (unit: UnitFormData) => ({
-    ...unit,
-    ghg_requested_date: emptyToUndefined(unit.ghg_requested_date),
-    scope1_ghg: emptyToUndefined(unit.scope1_ghg),
-    scope2_ghg: emptyToUndefined(unit.scope2_ghg),
-  });
+  const cleanedUnitPayload = (unit: UnitFormData) => ({ ...unit });
 
   const formHasData =
     !!masterResponse === false &&
@@ -354,19 +335,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     }));
   };
 
-  const handleUnitBlur = (field: keyof UnitFormData) => {
-    if (field !== "supplier_email") return;
-    const value = formData.unit.supplier_email;
-    const emailError =
-      value.trim() && !looksLikeEmail(value)
-        ? "Enter a valid email address"
-        : undefined;
-    setErrors((prev) => ({
-      ...prev,
-      unit: { ...(prev.unit ?? {}), supplier_email: emailError },
-    }));
-  };
-
   const handleAddContact = () => {
     setFormData((prev) => ({
       ...prev,
@@ -477,9 +445,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         ) {
           groupErrors.supplier_owner = "Enter a valid email address";
         }
-        if (formData.group.supplier_type.length === 0) {
-          groupErrors.supplier_type = "Select at least one category";
-        }
         if (Object.keys(groupErrors).length > 0) {
           newErrors.group = groupErrors;
         }
@@ -490,12 +455,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         const unitErrors: Record<string, string> = {};
         if (!formData.unit.supplier_code) {
           unitErrors.supplier_code = "Supplier code is required";
-        }
-        if (
-          formData.unit.supplier_email.trim() &&
-          !looksLikeEmail(formData.unit.supplier_email)
-        ) {
-          unitErrors.supplier_email = "Enter a valid email address";
         }
         if (Object.keys(unitErrors).length > 0) {
           newErrors.unit = unitErrors;
@@ -509,7 +468,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
       case "contacts":
         const contactErrors: any = {};
-        let hasPrimaryContact = false;
         formData.contacts.forEach((contact, idx) => {
           const contactIdx = contactErrors[idx] || {};
           if (!contact.full_name) {
@@ -812,7 +770,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               errors={errors.unit || {}}
               unitContactErrors={errors.unit_contacts || {}}
               onChange={handleUnitChange}
-              onBlur={handleUnitBlur}
               groupContacts={formData.contacts}
             />
           )}

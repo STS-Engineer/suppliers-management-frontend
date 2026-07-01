@@ -6,16 +6,21 @@ import {
   ChevronDown,
   ChevronLeft,
   ClipboardList,
-  FileCheck,
   GitBranchPlus,
-  Leaf,
   PanelLeft,
+  ShieldCheck,
+  ShieldAlert,
   TrendingUp,
 } from "lucide-react";
 import { useSidebar } from "../../context/SidebarContext";
+import { useAuth } from "../../context/AuthContext";
+import { useNotifications } from "../../context/NotificationContext";
+import supplierAPI from "../../services/supplierOnboardingAPI";
 import { ThemeToggleButton } from "../common/ThemeToggleButton";
 import UserDropdown from "../header/UserDropdown";
 import logoAvocarbonWide from "../../assets/logo/logo-avocarbon.png";
+
+const APPROVER_ROLES = ["purchasing_manager", "vp_conversion", "purchasing_director", "supplier_owner"];
 
 type SubItem = {
   name: string;
@@ -49,7 +54,7 @@ const PRIMARY_NAV: NavItem[] = [
         name: "Development Plans (SB22)",
         path: "/suppliers/development-plans",
       },
-      // { name: "Carbon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
+      // { name: "src/pages/CertificationsTrackingPage.tsxon Footprint (SB8)", path: "/suppliers/carbon-footprint" },
       // { name: "Directory Admin", path: "/suppliers/directory-admin" },
     ],
   },
@@ -58,12 +63,12 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Evaluations",
     icon: ClipboardList,
     subItems: [
-      { name: "Evaluation Scorecards", path: "/evaluations" },
       { name: "Certifications Tracker", path: "/suppliers/certifications" },
       {
         name: "Criteria Validity Tracker",
         path: "/suppliers/documents-validity",
       },
+      { name: "Evaluation Scorecards", path: "/evaluations" },
     ],
   },
   {
@@ -76,6 +81,7 @@ const PRIMARY_NAV: NavItem[] = [
       { name: "Budgeting", path: "/purchasing-value/budgeting" },
       { name: "Recovery Plans", path: "/purchasing-value/recovery" },
       { name: "KPIs", path: "/purchasing-value/kpis" },
+      { name: "Action Plans", path: "/purchasing-value/action-plans" },
     ],
   },
   // {
@@ -117,6 +123,73 @@ function SidebarButton({
   );
 }
 
+function AdminNavLink({
+  to,
+  icon,
+  label,
+  sublabel,
+  badge = 0,
+  open,
+  onClick,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  sublabel: string;
+  badge?: number;
+  open: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <NavLink
+      to={to}
+      onClick={onClick}
+      title={!open ? label : undefined}
+      className={({ isActive }) =>
+        [
+          "group relative flex w-full items-center gap-2.5 rounded-[16px] border px-2.5 py-2.5 transition-all duration-200",
+          open ? "" : "justify-center",
+          isActive
+            ? "border-white/[0.2] bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.11))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_rgba(0,0,0,0.22)]"
+            : "border-transparent text-white/92 hover:border-white/[0.14] hover:bg-white/[0.09] hover:text-white",
+        ].join(" ")
+      }
+    >
+      <span
+        className={[
+          "relative grid shrink-0 place-items-center rounded-xl bg-white/[0.08] text-white/90 transition-all duration-200 group-hover:bg-white/[0.12] group-hover:text-white",
+          open ? "h-8 w-8" : "h-9 w-9",
+        ].join(" ")}
+      >
+        {icon}
+        {badge > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-[#0f1c2e]">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
+      </span>
+
+      {open && (
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="min-w-0">
+            <span className="block truncate text-[12.5px] font-bold tracking-[-0.01em] text-white">
+              {label}
+            </span>
+            <span className="mt-0.5 block truncate text-[10px] text-white/72">
+              {sublabel}
+            </span>
+          </span>
+          {badge > 0 && (
+            <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+        </span>
+      )}
+    </NavLink>
+  );
+}
+
 export default function AppSidebar() {
   const location = useLocation();
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
@@ -131,6 +204,26 @@ export default function AppSidebar() {
     toggleSidebar,
     toggleMobileSidebar,
   } = useSidebar();
+
+  const { user } = useAuth();
+  useNotifications();
+  const isApprover = APPROVER_ROLES.includes(user?.access_profile ?? "");
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  useEffect(() => {
+    if (!isApprover) return;
+    let cancelled = false;
+    const fetch = () =>
+      supplierAPI
+        .listAccountRequests("pending")
+        .then((res) => {
+          if (!cancelled) setPendingRequestCount(res.data.count ?? res.data.items.length);
+        })
+        .catch(() => {});
+    fetch();
+    const id = setInterval(fetch, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isApprover]);
 
   const open = isExpanded || isHovered || isMobileOpen;
   const accentColor = "#93c5fd";
@@ -347,6 +440,49 @@ export default function AppSidebar() {
               );
             })}
           </div>
+
+          {/* Administration — approvers only */}
+          {isApprover && (
+            <>
+              <div
+                className={
+                  open
+                    ? "mx-2 mb-3 mt-4 flex items-center gap-2"
+                    : "mx-3 my-3 h-px bg-white/[0.12]"
+                }
+              >
+                {open && (
+                  <>
+                    <span className="text-[9px] font-black uppercase tracking-[0.32em] text-sky-100/55">
+                      Administration
+                    </span>
+                    <span className="h-px flex-1 bg-white/[0.12]" />
+                  </>
+                )}
+              </div>
+
+              {user?.access_profile === "vp_conversion" && (
+                <AdminNavLink
+                  to="/account-requests"
+                  icon={<ShieldCheck size={15} />}
+                  label="Account Requests"
+                  sublabel="Approvals"
+                  badge={pendingRequestCount}
+                  open={open}
+                  onClick={closeMobile}
+                />
+              )}
+
+              <AdminNavLink
+                to="/relation-review"
+                icon={<ShieldAlert size={15} />}
+                label="Relation Review"
+                sublabel="Pending approvals"
+                open={open}
+                onClick={closeMobile}
+              />
+            </>
+          )}
         </nav>
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">

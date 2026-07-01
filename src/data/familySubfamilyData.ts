@@ -1,3 +1,28 @@
+export const ALL_COMMODITIES = [
+  "Plastic and Stamping",
+  "Wire",
+  "Material",
+  "Electronics",
+  "Sintered Parts",
+  "Other",
+];
+
+export const COMMODITY_FAMILIES: Record<string, string[]> = {
+  "Plastic and Stamping": ["Stamping_Deep_Drawing", "Molding"],
+  "Wire": ["Enameled_Wire", "Copper_Wire"],
+  "Material": ["Graphite", "Metallic_Powder", "Resin", "Adhesive", "Solder_Materials", "Other material"],
+  "Electronics": ["Electronic", "Ferrite"],
+  "Sintered Parts": ["Sintered_Part"],
+  "Other": ["Machined_Part", "Spring", "Packaging", "Other"],
+};
+
+/** Returns families available for the given selected commodities.
+ *  If no commodities are selected, returns the full family list. */
+export function getFamiliesForCommodities(commodities: string[]): string[] {
+  if (commodities.length === 0) return ALL_FAMILIES;
+  return [...new Set(commodities.flatMap((c) => COMMODITY_FAMILIES[c] ?? []))];
+}
+
 export const FAMILY_SUBFAMILIES: Record<string, string[]> = {
   Machined_Part: ["Metallic Machined Parts", "Other Machined Parts"],
   Electronic: [

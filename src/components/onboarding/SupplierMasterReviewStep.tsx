@@ -142,7 +142,6 @@ export const SupplierMasterReviewStep: React.FC<
                   ...data.unit.family,
                   ...data.unit.sub_family,
                   ...data.unit.product_line,
-                  ...data.unit.category,
                 ]
                   .filter(Boolean)
                   .join(" • ") || "Not set"}

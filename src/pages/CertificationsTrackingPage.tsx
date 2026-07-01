@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   AlertCircle,
   AlertTriangle,
@@ -467,10 +468,12 @@ function UnitGroupSection({
   onSave,
   onCancel,
   onFileUploaded,
+  canEdit,
 }: {
   group: UnitGroup;
   editingId: number | null;
   onEdit: (id: number) => void;
+  canEdit: boolean;
   onSave: (
     cert: SupplierCertificationResponse,
     draft: EditDraft,
@@ -592,7 +595,7 @@ function UnitGroupSection({
                       {st.text}
                     </span>
                     <DocCell url={cert.file_url} name={cert.file_name} />
-                    <button
+                    {canEdit && <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onEdit(isEditing ? -1 : cert.id_certification);
@@ -605,7 +608,7 @@ function UnitGroupSection({
                       title="Edit"
                     >
                       <Pencil size={11} />
-                    </button>
+                    </button>}
                   </div>
                 </td>
               </tr>
@@ -649,6 +652,8 @@ interface KpiCounts {
 // Main page
 // ---------------------------------------------------------------------------
 export default function CertificationsTrackingPage() {
+  const { user } = useAuth();
+  const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
   const [certs, setCerts] = useState<SupplierCertificationResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -1062,6 +1067,7 @@ export default function CertificationsTrackingPage() {
                     onSave={handleSave}
                     onCancel={() => setEditingId(null)}
                     onFileUploaded={handleFileUploaded}
+                    canEdit={isPrivileged}
                   />
                 ))
               )}

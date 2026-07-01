@@ -173,9 +173,46 @@ export type AccessIdentityRecord = {
   external_subject?: string | null;
   external_directory?: string | null;
   is_active: boolean;
+  registration_status: string;
   last_login_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+export type AccountRequestRecord = {
+  id_identity: number;
+  email: string;
+  full_name: string;
+  requested_role: string;
+  registration_status: string;
+  created_at?: string | null;
+};
+
+export type NotificationRecord = {
+  id: number;
+  notification_type: string;
+  title: string;
+  body?: string | null;
+  action_url?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+};
+
+export type PendingValidationRecord = {
+  group_id: number;
+  group_name: string | null;
+  group_code: string | null;
+  validation_status: string;
+  unit_id: number;
+  unit_code: string | null;
+  unit_country: string | null;
+  relation_id: number;
+  site_id: number;
+  site_name: string | null;
+  supplier_scope: string | null;
+  supplier_owner: string | null;
+  created_at: string | null;
 };
 
 class SupplierOnboardingAPI {
@@ -426,6 +463,299 @@ class SupplierOnboardingAPI {
         body: JSON.stringify(data),
       },
       "Failed to reset the password.",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account self-registration and approval workflow
+  // ---------------------------------------------------------------------------
+
+  async signUp(data: {
+    email: string;
+    full_name: string;
+    requested_role: string;
+  }): Promise<{
+    status: string;
+    data: { message: string; email: string };
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/signup`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to submit the account request.",
+    );
+  }
+
+  async forgotPassword(email: string): Promise<{
+    status: string;
+    data: { message: string };
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/forgot-password`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ email }),
+      },
+      "Failed to request a password reset.",
+    );
+  }
+
+  async verifyOtp(data: {
+    email: string;
+    otp: string;
+  }): Promise<{
+    status: string;
+    data: { reset_token: string; message: string };
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/verify-otp`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to verify the OTP.",
+    );
+  }
+
+  async resetPasswordWithToken(data: {
+    reset_token: string;
+    new_password: string;
+  }): Promise<{
+    status: string;
+    data: { email: string; changed_at: string };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/reset-password`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to reset the password.",
+    );
+  }
+
+  async activateAccount(data: {
+    token: string;
+    new_password: string;
+  }): Promise<{
+    status: string;
+    data: { email: string; changed_at: string };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/activate`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to activate the account.",
+    );
+  }
+
+  async listAccountRequests(status?: string): Promise<{
+    status: string;
+    data: { items: AccountRequestRecord[]; count: number };
+  }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.request(
+      `${this.baseUrl}/auth/account-requests${query}`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load account requests.",
+    );
+  }
+
+  async approveAccountRequest(
+    identityId: number,
+    message?: string,
+  ): Promise<{ status: string; data: { message: string } }> {
+    return this.request(
+      `${this.baseUrl}/auth/account-requests/${identityId}/approve`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ message: message ?? null }),
+      },
+      "Failed to approve the account request.",
+    );
+  }
+
+  async rejectAccountRequest(
+    identityId: number,
+    reason?: string,
+  ): Promise<{ status: string; data: { message: string } }> {
+    return this.request(
+      `${this.baseUrl}/auth/account-requests/${identityId}/reject`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ reason: reason ?? null }),
+      },
+      "Failed to reject the account request.",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notifications
+  // ---------------------------------------------------------------------------
+
+  async getUnreadNotificationCount(): Promise<{
+    status: string;
+    data: { count: number };
+  }> {
+    return this.request(
+      `${this.baseUrl}/notifications/unread-count`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to fetch notification count.",
+    );
+  }
+
+  async listNotifications(unreadOnly = false): Promise<{
+    status: string;
+    data: { items: NotificationRecord[]; count: number };
+  }> {
+    const query = unreadOnly ? "?unread_only=true" : "";
+    return this.request(
+      `${this.baseUrl}/notifications${query}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to fetch notifications.",
+    );
+  }
+
+  async markNotificationRead(id: number): Promise<{ status: string }> {
+    return this.request(
+      `${this.baseUrl}/notifications/${id}/read`,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to mark notification as read.",
+    );
+  }
+
+  async markAllNotificationsRead(): Promise<{ status: string }> {
+    return this.request(
+      `${this.baseUrl}/notifications/read-all`,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to mark all notifications as read.",
+    );
+  }
+
+  // ── Supplier Validation ────────────────────────────────────────────────────
+
+  async listPendingValidationSuppliers(): Promise<{
+    status: string;
+    data: PendingValidationRecord[];
+    total: number;
+  }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/pending-validation`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load pending validation suppliers.",
+    );
+  }
+
+  async approveSupplier(
+    groupId: number,
+    comment?: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/groups/${groupId}/approve`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment ?? null }),
+      },
+      "Failed to approve the supplier.",
+    );
+  }
+
+  async rejectSupplier(
+    groupId: number,
+    comment?: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/groups/${groupId}/reject`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment ?? null }),
+      },
+      "Failed to reject the supplier.",
+    );
+  }
+
+  // ── Relation Validation Flow ────────────────────────────────────────────────
+
+  async submitRelationForReview(
+    relationId: number,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/submit-for-review`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      "Failed to submit relation for review.",
+    );
+  }
+
+  async approveRelationReview(
+    relationId: number,
+    comment?: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/approve-review`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment ?? null }),
+      },
+      "Failed to approve relation.",
+    );
+  }
+
+  async rejectRelationReview(
+    relationId: number,
+    comment?: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/reject-review`,
+      {
+        method: "POST",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment ?? null }),
+      },
+      "Failed to reject relation.",
+    );
+  }
+
+  async resetRelationToDraft(
+    relationId: number,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/reset-to-draft`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to reset relation to draft.",
+    );
+  }
+
+  async listPendingRelationReviews(): Promise<{ status: string; data: any[]; total: number }> {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/pending-review`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load pending relation reviews.",
     );
   }
 
@@ -1376,6 +1706,8 @@ class SupplierOnboardingAPI {
       payback_score?: number;
       lead_time_score?: number;
       difficulty_score?: number;
+      priority_locked?: boolean;
+      priority_category_override?: string;
       // STP — scope & volumes
       scope_in?: string;
       scope_out?: string;
@@ -1435,6 +1767,7 @@ class SupplierOnboardingAPI {
         material_same_spec?: string;
         same_tooling?: string;
         same_dimension?: string;
+        same_process?: string;
       };
       // STP — benefits
       stp_benefits?: {
@@ -1587,6 +1920,22 @@ class SupplierOnboardingAPI {
         body: JSON.stringify({ decisions, decided_by: decidedBy }),
       },
       "Failed to save budget.",
+    );
+  }
+
+  async getBudgetYearClosure(fiscalYear: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/budget-years/${fiscalYear}/closure`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load budget year closure status.",
+    );
+  }
+
+  async closeBudgetYear(fiscalYear: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/budget-years/${fiscalYear}/close`,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to close budget year.",
     );
   }
 
@@ -1851,6 +2200,56 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async listAllActionItems(params?: { responsible_email?: string; status?: string; opportunity_id?: number }) {
+    const q = new URLSearchParams();
+    if (params?.responsible_email) q.set("responsible_email", params.responsible_email);
+    if (params?.status) q.set("status", params.status);
+    if (params?.opportunity_id != null) q.set("opportunity_id", String(params.opportunity_id));
+    const qs = q.toString() ? `?${q}` : "";
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/all-items${qs}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load action items.",
+    );
+  }
+
+  async uploadActionEvidence(
+    opportunityId: number,
+    actionPlanId: number,
+    sujetIdx: number,
+    actionIdx: number,
+    file: File,
+  ) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("auth_token");
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence?sujet_idx=${sujetIdx}&action_idx=${actionIdx}`,
+      { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData },
+      "Failed to upload evidence.",
+    );
+  }
+
+  async updateActionItemStatus(
+    planId: number,
+    sujetIdx: number,
+    actionIdx: number,
+    status: string,
+    implementationDate?: string,
+  ) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+      status,
+    });
+    if (implementationDate) q.set("implementation_date", implementationDate);
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/${planId}/item-status?${q}`,
+      { method: "PATCH", headers: this.getAuthHeaders() },
+      "Failed to update action status.",
+    );
+  }
+
   // ========================================================================
   // Relation Evaluation Document APIs
   // ========================================================================
@@ -1920,7 +2319,21 @@ class SupplierOnboardingAPI {
 
   /** URL for downloading the pre-filled XLSX with all active supplier–plant relations */
   getEvaluationPrefilledTemplateUrl(): string {
-    return `${this.baseUrl}/evaluations/template/prefilled`;
+    return `${this.baseUrl}/evaluations/template/prefilled?filter=all`;
+  }
+
+  /** URL for downloading the pre-filled XLSX filtered to overdue/due-soon/never-evaluated only */
+  getEvaluationDueOnlyTemplateUrl(): string {
+    return `${this.baseUrl}/evaluations/template/prefilled?filter=due`;
+  }
+
+  /** POST /evaluations/trigger-notifications — notify vp_conversion + purchasing_director of overdue/due evaluations */
+  async triggerEvaluationNotifications() {
+    return this.request(
+      `${this.baseUrl}/evaluations/trigger-notifications`,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to send evaluation notifications.",
+    );
   }
 
   /**
@@ -1961,6 +2374,25 @@ class SupplierOnboardingAPI {
     const a = document.createElement("a");
     a.href = url;
     a.download = "evaluation_prefilled.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  /** Download the pre-filled template filtered to overdue/due-soon/never-evaluated only. */
+  async downloadDueOnlyTemplate(): Promise<void> {
+    const token = localStorage.getItem("auth_token");
+    const response = await fetch(this.getEvaluationDueOnlyTemplateUrl(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "evaluation_due_only.xlsx";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2085,12 +2517,29 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async getCertificationsSummary(params?: {
+    standard_type?: string;
+    q?: string;
+  }): Promise<{ total: number; unfiltered_total: number; expired: number; expiring: number; valid: number; no_date: number; quality_expired: number }> {
+    const query = new URLSearchParams();
+    if (params?.standard_type) query.set("standard_type", params.standard_type);
+    if (params?.q) query.set("q", params.q);
+    const qs = query.toString();
+    const res = await this.request<{ data: { total: number; unfiltered_total: number; expired: number; expiring: number; valid: number; no_date: number; quality_expired: number } }>(
+      `${this.baseUrl}/suppliers/certifications/summary${qs ? `?${qs}` : ""}`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load certifications summary.",
+    );
+    return res.data;
+  }
+
   async listAllCertifications(params?: {
     skip?: number;
     limit?: number;
     standard_type?: string;
     expired_only?: boolean;
     expiring_days?: number;
+    valid_only?: boolean;
     q?: string;
   }): Promise<{ items: SupplierCertificationResponse[]; total: number; skip: number; limit: number }> {
     const query = new URLSearchParams();
@@ -2099,6 +2548,7 @@ class SupplierOnboardingAPI {
     if (params?.standard_type) query.set("standard_type", params.standard_type);
     if (params?.expired_only) query.set("expired_only", "true");
     if (params?.expiring_days !== undefined) query.set("expiring_days", String(params.expiring_days));
+    if (params?.valid_only) query.set("valid_only", "true");
     if (params?.q) query.set("q", params.q);
     const qs = query.toString();
     const res = await this.request<{ data: { items: SupplierCertificationResponse[]; total: number; skip: number; limit: number } }>(
@@ -2130,6 +2580,159 @@ class SupplierOnboardingAPI {
         body: JSON.stringify(data),
       },
       "Failed to update relation.",
+    );
+  }
+
+  // ── Committee Review ──────────────────────────────────────────────────
+
+  async initiateCommitteeReview(relationId: number) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ relation_id: relationId }),
+      },
+      "Failed to initiate committee review.",
+    );
+  }
+
+  async getLatestCommitteeReview(relationId: number) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/relation/${relationId}`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load committee review.",
+    );
+  }
+
+  async getCommitteeReview(reviewId: number) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/${reviewId}`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load committee review.",
+    );
+  }
+
+  async submitCommitteeFinalDecision(
+    reviewId: number,
+    decision: "approved" | "rejected",
+    comments?: string,
+  ) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/${reviewId}/final-decision`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ decision, comments }),
+      },
+      "Failed to submit final decision.",
+    );
+  }
+
+  async listCommitteeMembers() {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/members/list`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load committee members.",
+    );
+  }
+
+  async createCommitteeMember(data: {
+    name: string;
+    position: string;
+    email: string;
+    is_active?: boolean;
+  }) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/members`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to create committee member.",
+    );
+  }
+
+  async updateCommitteeMember(
+    idMember: number,
+    data: Partial<{ name: string; position: string; email: string; is_active: boolean }>,
+  ) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/members/${idMember}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update committee member.",
+    );
+  }
+
+  // ── Committee Vote (public — no auth) ─────────────────────────────────
+
+  async getCommitteeVoteForm(token: string) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/vote/${token}`,
+      {},
+      "Failed to load committee vote form.",
+    );
+  }
+
+  // ── Annual Spend by Year ──────────────────────────────────────────────────
+
+  async listRelationSpend(relationId: number) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/spend`,
+      { headers: this.getAuthHeaders() },
+      "Failed to load annual spend history.",
+    );
+  }
+
+  async upsertRelationSpend(
+    relationId: number,
+    fiscalYear: number,
+    data: { spend_value: number; spend_currency: string },
+  ) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/spend/${fiscalYear}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to save spend entry.",
+    );
+  }
+
+  async deleteRelationSpend(relationId: number, fiscalYear: number) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/spend/${fiscalYear}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to delete spend entry.",
+    );
+  }
+
+  async submitCommitteeVote(
+    token: string,
+    decision: "approved" | "rejected",
+    comments?: string,
+    suggestedSupplierStatus?: string,
+    suggestedStrategicMention?: string,
+  ) {
+    return this.request(
+      `${this.baseUrl}/committee-reviews/vote/${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          comments,
+          suggested_supplier_status: suggestedSupplierStatus || null,
+          suggested_strategic_mention: suggestedStrategicMention || null,
+        }),
+      },
+      "Failed to submit committee vote.",
     );
   }
 }

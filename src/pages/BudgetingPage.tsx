@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import { RefreshCw, ExternalLink, CheckCircle2, Clock, ClipboardList, X, Save } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  RefreshCw,
+  ExternalLink,
+  CheckCircle2,
+  ClipboardList,
+  X,
+  Save,
+  TrendingDown,
+  TrendingUp,
+  Lock,
+} from "lucide-react";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -18,15 +28,37 @@ interface BudgetYearItem {
   applicable_amount?: number | null;
   currency?: string | null;
   fx_rate_to_eur?: number | null;
-  applicable_amount_eur?: number | null; // amount converted to EUR (group reporting)
+  applicable_amount_eur?: number | null;
   portion_kind?: string | null;
-  budget_status?: string | null; // commit decision (manual): "Budgeted" | "Not budgeted"
-  suggested_status?: string | null; // validation (auto, phase-derived): "Validate" | "In progress"
-  status_locked_at?: string | null; // set once a manual Create-Budget decision is made
+  budget_status?: string | null;
+  suggested_status?: string | null;
+  is_additional?: boolean;
+  status_locked_at?: string | null;
+  eoy_forecast_eur?: number | null;
+  expected_annual_saving_eur?: number | null;
+  actual_ytd_eur?: number | null;
+  delta_ytd_eur?: number | null;
+  delta_eoy_budget?: number | null;
+  real_start_date?: string | null;
+  duration_months?: number | null;
+}
+
+interface BudgetClosure {
+  fiscal_year: number;
+  closed_at: string;
+  closed_by: string;
 }
 
 interface Summary {
   total: number;
+  total_baseline: number;
+  total_additional: number;
+  baseline_budgeted_eur: number;
+  additional_accepted_eur: number;
+  total_budget_eur: number;
+  additional_pending: number;
+  additional_accepted: number;
+  additional_rejected: number;
   total_applicable: number;
   total_budgeted: number;
   total_opportunity: number;
@@ -36,7 +68,6 @@ interface Summary {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// EUR formatter for consolidated (reporting) figures
 const fmt = (n?: number | null) =>
   n == null
     ? "—"
@@ -46,7 +77,17 @@ const fmt = (n?: number | null) =>
         maximumFractionDigits: 0,
       }).format(n);
 
-// Currency-aware formatter for per-opportunity (transaction-currency) amounts
+const fmtDate = (s?: string | null) =>
+  s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+const fmtDuration = (months?: number | null) => {
+  if (months == null) return "—";
+  if (months < 12) return `${months} mo`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return m === 0 ? `${y} yr` : `${y} yr ${m} mo`;
+};
+
 const CUR_SYMBOL: Record<string, string> = { EUR: "€", USD: "$", RMB: "¥", INR: "₹" };
 const fmtCur = (n?: number | null, currency?: string | null) => {
   if (n == null) return "—";
@@ -72,87 +113,104 @@ const _CY = new Date().getFullYear();
 const YEARS = Array.from({ length: 10 }, (_, i) => _CY - 2 + i);
 
 function budgetYearWindowLabel(year: number) {
-  return `01 Dec ${year - 1} - 30 Nov ${year}`;
+  return `01 Jan ${year} – 31 Dec ${year}`;
 }
 
-// Validation dimension (auto, from the opportunity's phase)
-function ValidationBadge({ status }: { status?: string | null }) {
-  if (status === "Validate") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-        <CheckCircle2 size={11} /> Validated
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-      <Clock size={11} /> Forecast
-    </span>
-  );
-}
-
-// Budget-commitment dimension (manual, set in Create Budget): Empty / Opportunity / Budgeted
-function BudgetBadge({ status }: { status?: string | null }) {
+function BudgetStatusBadge({ status, isAdditional }: { status?: string | null; isAdditional?: boolean }) {
   if (status === "Budgeted") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-        <CheckCircle2 size={11} /> Budgeted
+        <CheckCircle2 size={11} /> {isAdditional ? "Accepted" : "Budgeted"}
       </span>
     );
   }
-  if (status === "Opportunity") {
+  if (status === "Empty") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-        Opportunity
+      <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500">
+        {isAdditional ? "Rejected" : "Excluded"}
       </span>
     );
   }
+  // Opportunity = Pending for additional, Opportunity for baseline
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-400">
-      Empty
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+      {isAdditional ? "Pending" : "Opportunity"}
     </span>
   );
 }
+
+// Shared table columns (used in both sections)
+const COL_HEADER = "px-3 py-2.5 font-semibold";
 
 export default function BudgetingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
+  const isPrivileged = ["vp_conversion", "purchasing_director"].includes(
+    (user as { access_profile?: string })?.access_profile ?? "",
+  );
 
   const [fiscalYear, setFiscalYear] = useState<number>(new Date().getFullYear());
   const [items, setItems] = useState<BudgetYearItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [closure, setClosure] = useState<BudgetClosure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Create-Budget selection mode — per-opportunity 3-state decision
+  // Create-Budget mode — only for baseline rows (before closure)
   const [selectMode, setSelectMode] = useState(false);
   const [decisions, setDecisions] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Sorting state (read-only mode)
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Close Budget Year
+  const [closing, setClosing] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
+  // Additional decisions — inline edits on additional rows
+  const [additionalDecisions, setAdditionalDecisions] = useState<Record<number, string>>({});
+  const [savingAdditional, setSavingAdditional] = useState(false);
+
+  const loadRequestRef = useRef(0);
 
   async function load(year: number) {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await supplierAPI.listBudgetYears(year);
-      const data = (res as { data: { items: BudgetYearItem[]; summary: Summary } }).data;
+      if (requestId !== loadRequestRef.current) return;
+      const data = (res as { data: { items: BudgetYearItem[]; summary: Summary; closure: BudgetClosure | null } }).data;
       setItems(data.items);
       setSummary(data.summary);
-      // seed the editable decisions from the current per-year budget status
-      const seed: Record<number, string> = {};
+      setClosure(data.closure ?? null);
+      const baselineSeed: Record<number, string> = {};
+      const additionalSeed: Record<number, string> = {};
       data.items.forEach((i) => {
-        seed[i.opportunity_id] = i.budget_status || "Opportunity";
+        if (i.is_additional) additionalSeed[i.opportunity_id] = i.budget_status || "Opportunity";
+        else baselineSeed[i.opportunity_id] = i.budget_status || "Opportunity";
       });
-      setDecisions(seed);
+      setDecisions(baselineSeed);
+      setAdditionalDecisions(additionalSeed);
     } catch (err: unknown) {
+      if (requestId !== loadRequestRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to load budget records");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
+    }
+  }
+
+  async function closeYear() {
+    setShowCloseConfirm(false);
+    setClosing(true);
+    setError(null);
+    try {
+      await supplierAPI.closeBudgetYear(fiscalYear);
+      await load(fiscalYear);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to close budget year.");
+    } finally {
+      setClosing(false);
     }
   }
 
@@ -161,47 +219,23 @@ export default function BudgetingPage() {
     setSelectMode(false);
   }, [fiscalYear]);
 
-  const setDecision = (oppId: number, status: string) =>
-    setDecisions((prev) => ({ ...prev, [oppId]: status }));
+  // ── Create Budget (baseline only) ─────────────────────────────────────────
 
-  // Sorting helper — toggle col, flip dir on re-click
-  function toggleSort(col: string) {
-    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir("asc"); }
-  }
-  const sortIndicator = (col: string) =>
-    sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+  const baselineItems = items.filter((i) => !i.is_additional);
+  const additionalItems = items.filter((i) => i.is_additional);
 
-  const sortedItems = [...items].sort((a, b) => {
-    if (!sortCol) return 0;
-    let av: string | number | null = null;
-    let bv: string | number | null = null;
-    if (sortCol === "name") { av = a.opportunity_name ?? ""; bv = b.opportunity_name ?? ""; }
-    else if (sortCol === "plant") { av = a.plant_name ?? ""; bv = b.plant_name ?? ""; }
-    else if (sortCol === "type") { av = a.opportunity_type ?? ""; bv = b.opportunity_type ?? ""; }
-    else if (sortCol === "phase") { av = a.phase_status ?? ""; bv = b.phase_status ?? ""; }
-    else if (sortCol === "saving") { av = a.applicable_amount_eur ?? a.applicable_amount ?? 0; bv = b.applicable_amount_eur ?? b.applicable_amount ?? 0; }
-    if (av === null) av = ""; if (bv === null) bv = "";
-    const cmp = typeof av === "number" ? av - (bv as number) : String(av).localeCompare(String(bv));
-    return sortDir === "asc" ? cmp : -cmp;
-  });
-
-  // Consolidated in EUR (opportunities may be in EUR/USD/RMB/INR)
-  const budgetedTotal = items
+  const baselineBudgetedCount = baselineItems.filter((i) => decisions[i.opportunity_id] === "Budgeted").length;
+  const baselineBudgetedTotal = baselineItems
     .filter((i) => decisions[i.opportunity_id] === "Budgeted")
-    .reduce((sum, i) => sum + (i.applicable_amount_eur ?? i.applicable_amount ?? 0), 0);
-  const budgetedCount = items.filter(
-    (i) => decisions[i.opportunity_id] === "Budgeted",
-  ).length;
+    .reduce((s, i) => s + (i.applicable_amount_eur ?? i.applicable_amount ?? 0), 0);
 
   async function saveBudget() {
     setShowConfirm(false);
     setSaving(true);
     setError(null);
     try {
-      // H3 — deduplicate by opportunity_id (defensive: shouldn't happen, but guard it)
       const seen = new Set<number>();
-      const payload = items
+      const payload = baselineItems
         .filter((i) => { if (seen.has(i.opportunity_id)) return false; seen.add(i.opportunity_id); return true; })
         .map((i) => ({ opportunity_id: i.opportunity_id, budget_status: decisions[i.opportunity_id] || "Opportunity" }));
       await supplierAPI.assignBudget(fiscalYear, payload, userEmail);
@@ -214,273 +248,428 @@ export default function BudgetingPage() {
     }
   }
 
+  // ── Additional decisions ───────────────────────────────────────────────────
+
+  const additionalChanged = additionalItems.some(
+    (i) => additionalDecisions[i.opportunity_id] !== (i.budget_status || "Opportunity"),
+  );
+
+  async function saveAdditionalDecisions() {
+    setSavingAdditional(true);
+    setError(null);
+    try {
+      const seen = new Set<number>();
+      const payload = additionalItems
+        .filter((i) => { if (seen.has(i.opportunity_id)) return false; seen.add(i.opportunity_id); return true; })
+        .map((i) => ({ opportunity_id: i.opportunity_id, budget_status: additionalDecisions[i.opportunity_id] || "Opportunity" }));
+      await supplierAPI.assignBudget(fiscalYear, payload, userEmail);
+      await load(fiscalYear);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save additional decisions");
+    } finally {
+      setSavingAdditional(false);
+    }
+  }
+
+  // ── Table helpers ─────────────────────────────────────────────────────────
+
+  function OppNameCell({ item }: { item: BudgetYearItem }) {
+    return (
+      <td className="px-3 py-2.5">
+        <button
+          onClick={() => navigate(`/purchasing-value?opp=${item.opportunity_id}`)}
+          className="flex items-center gap-1 font-semibold text-slate-700 hover:text-blue-600"
+        >
+          {item.opportunity_name || `Opportunity ${item.opportunity_id}`}
+          <ExternalLink size={10} className="text-slate-300" />
+        </button>
+        {item.purchasing_owner && <div className="text-[10px] text-slate-400">{item.purchasing_owner}</div>}
+      </td>
+    );
+  }
+
+  function CommonCells({ item }: { item: BudgetYearItem }) {
+    return (
+      <>
+        <td className="px-3 py-2.5 text-slate-600">{item.plant_name || "—"}</td>
+        <td className="px-3 py-2.5">
+          {item.opportunity_type && (
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${TYPE_COLORS[item.opportunity_type] || "bg-slate-100 text-slate-600"}`}>
+              {item.opportunity_type}
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-slate-600">{item.phase_status || "—"}</td>
+        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{fmtDate(item.real_start_date)}</td>
+        <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDuration(item.duration_months)}</td>
+        <td className="px-3 py-2.5">
+          {item.portion_kind && (
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${PORTION_COLORS[item.portion_kind] || "bg-slate-100 text-slate-600"}`}>
+              {item.portion_kind}
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-right font-semibold text-slate-800">
+          {fmtCur(item.applicable_amount, item.currency)}
+          {item.currency && item.currency !== "EUR" && item.applicable_amount_eur != null && (
+            <div className="text-[10px] font-normal text-slate-400">= {fmt(item.applicable_amount_eur)}</div>
+          )}
+        </td>
+        <td className="px-3 py-2.5 text-right text-slate-700">{fmt(item.eoy_forecast_eur)}</td>
+        <td className="px-3 py-2.5 text-right">
+          {item.delta_eoy_budget == null ? (
+            <span className="text-slate-400">—</span>
+          ) : item.delta_eoy_budget >= 0 ? (
+            <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-600">
+              <TrendingUp size={11} />{fmt(item.delta_eoy_budget)}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 font-semibold text-red-500">
+              <TrendingDown size={11} />{fmt(item.delta_eoy_budget)}
+            </span>
+          )}
+        </td>
+      </>
+    );
+  }
+
+  function TableHead({ showDecisionCol }: { showDecisionCol: boolean }) {
+    return (
+      <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400">
+        <tr>
+          {showDecisionCol && <th className={COL_HEADER}>Decision</th>}
+          <th className={COL_HEADER}>Opportunity</th>
+          <th className={COL_HEADER}>Plant</th>
+          <th className={COL_HEADER}>Type</th>
+          <th className={COL_HEADER}>Phase</th>
+          <th className={COL_HEADER}>Deployment Start</th>
+          <th className={COL_HEADER}>Savings Duration</th>
+          <th className={COL_HEADER}>Portion</th>
+          <th className={`${COL_HEADER} text-right`}>Saving FY {fiscalYear}</th>
+          <th className={`${COL_HEADER} text-right`}>EOY Forecast</th>
+          <th className={`${COL_HEADER} text-right`}>Δ EOY−Budget</th>
+          {!showDecisionCol && <th className={COL_HEADER}>Status</th>}
+        </tr>
+      </thead>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
-      {/* Page header */}
-      <div className="flex items-start justify-between">
+    <div className="w-full space-y-6 px-6 py-8">
+
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Budgeting</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {selectMode
-              ? `Create Budget ${fiscalYear} — tick the opportunities to commit to this budget year (forecast or validated).`
-              : "Budget-year view of estimated savings. Use Create Budget to commit opportunities — including forecast ones — to a year."}
-          </p>
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            This page follows the budget-year window, not the calendar year.
+              ? `Create Budget ${fiscalYear} — set Budgeted / Excluded / Opportunity for each baseline opportunity.`
+              : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ confirmed opps only`}
           </p>
         </div>
-        <p className="mt-0.5 text-[11px] text-slate-400">
-          Budget year {fiscalYear}: {budgetYearWindowLabel(fiscalYear)} · daily prorata
-        </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <select
             value={fiscalYear}
             onChange={(e) => setFiscalYear(parseInt(e.target.value))}
             disabled={selectMode}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 disabled:opacity-50"
           >
-            {YEARS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
+            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
+
           {!selectMode ? (
             <>
-              <button
-                onClick={() => load(fiscalYear)}
-                disabled={loading}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
+              <button onClick={() => load(fiscalYear)} disabled={loading}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                 <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
               </button>
-              <button
-                onClick={() => setSelectMode(true)}
-                disabled={loading}
-                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                <ClipboardList size={12} /> Create Budget
-              </button>
+              {!closure && (
+                <span title={!isPrivileged ? "Purchasing Director or VP Conversion only" : undefined}
+                  className={!isPrivileged ? "cursor-not-allowed" : undefined}>
+                  <button onClick={() => setSelectMode(true)}
+                    disabled={loading || !isPrivileged || baselineItems.length === 0}
+                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-40">
+                    <ClipboardList size={12} /> Create Budget
+                  </button>
+                </span>
+              )}
+              {!closure && (
+                <span title={!isPrivileged ? "Purchasing Director or VP Conversion only" : undefined}
+                  className={!isPrivileged ? "cursor-not-allowed" : undefined}>
+                  <button onClick={() => setShowCloseConfirm(true)}
+                    disabled={loading || !isPrivileged || baselineItems.length === 0}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40">
+                    <Lock size={12} /> Close Budget {fiscalYear}
+                  </button>
+                </span>
+              )}
             </>
           ) : (
             <>
-              <button
-                onClick={() => {
-                  setSelectMode(false);
-                  load(fiscalYear);
-                }}
-                disabled={saving}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
+              <button onClick={() => { setSelectMode(false); load(fiscalYear); }} disabled={saving}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                 <X size={12} /> Cancel
               </button>
-              <button
-                onClick={() => setShowConfirm(true)}
-                disabled={saving || items.length === 0}
-                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />} Save budget
+              <button onClick={() => setShowConfirm(true)}
+                disabled={saving || baselineItems.length === 0}
+                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-40">
+                {saving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />} Save Budget
               </button>
             </>
           )}
         </div>
       </div>
 
-      {selectMode && items.length > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm">
-          <span className="text-blue-700">
-            <strong>{budgetedCount}</strong> of {items.length} opportunit
-            {items.length === 1 ? "y" : "ies"} set to <strong>Budgeted</strong> for {fiscalYear}
-          </span>
-          <span className="font-semibold text-blue-800">Budgeted total: {fmt(budgetedTotal)}</span>
-        </div>
-      )}
-
-      {/* Confirmation modal — H1: locks are irreversible, require explicit confirmation */}
+      {/* ── Modals ── */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="mb-2 text-base font-bold text-slate-800">Confirm budget commitment</h3>
-            <p className="mb-1 text-sm text-slate-600">
-              You are about to lock the budget decisions for <strong>FY {fiscalYear}</strong>:
-            </p>
             <p className="mb-4 rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
-              {budgetedCount} opportunit{budgetedCount === 1 ? "y" : "ies"} → Budgeted · Total {fmt(budgetedTotal)}
+              {baselineBudgetedCount} opportunit{baselineBudgetedCount === 1 ? "y" : "ies"} → Budgeted · {fmt(baselineBudgetedTotal)}
             </p>
             <p className="mb-5 text-xs text-slate-500">
-              Budget decisions are <strong>locked</strong> once saved — they cannot be changed automatically. Make sure the selection is correct.
+              Decisions are saved but <strong>the budget is not closed yet</strong>. Use <em>Close Budget</em> to lock the baseline permanently.
             </p>
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveBudget}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-              >
-                Confirm & save
+              <button onClick={() => setShowConfirm(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button onClick={saveBudget}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Confirm & save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloseConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="mb-2 text-base font-bold text-slate-800">Close Budget {fiscalYear}?</h3>
+            <ul className="mb-4 space-y-1.5 text-xs text-slate-600 list-disc list-inside">
+              <li>All <strong>Budgeted</strong> baseline rows are <strong>locked</strong> — the baseline cannot change.</li>
+              <li>Any new Phase 3+ opp with real_start_date in {fiscalYear} will appear as <strong className="text-violet-700">Additional</strong>.</li>
+              <li>This action is <strong>irreversible</strong>.</li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowCloseConfirm(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button onClick={closeYear} disabled={closing}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+                {closing ? <RefreshCw size={11} className="animate-spin" /> : <Lock size={11} />} Close Budget {fiscalYear}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Summary KPIs — hidden in Create Budget mode to avoid confusion with live local totals (M3) */}
-      {summary && !selectMode && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-              Opportunities in {fiscalYear}
-            </p>
-            <p className="mt-1 text-2xl font-bold text-slate-800">{summary.total}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">{budgetYearWindowLabel(fiscalYear)}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-              Estimated saving in {fiscalYear} (EUR)
-            </p>
-            <p className="mt-1 text-lg font-bold text-slate-800">{fmt(summary.total_applicable)}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">
-              All statuses: Budgeted + Opportunity + Empty
-            </p>
-          </div>
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-500">
-              Committed budget (EUR)
-            </p>
-            <p className="mt-1 text-lg font-bold text-blue-700">{fmt(summary.total_budgeted)}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">
-              Opportunity: {fmt(summary.total_opportunity)} · Empty: {fmt(summary.total_empty)}
-            </p>
-          </div>
+      {/* ── Closure banner ── */}
+      {closure && (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+          <Lock size={14} className="shrink-0 text-emerald-600" />
+          <span>
+            Budget <strong>{closure.fiscal_year}</strong> officially closed on{" "}
+            <strong>{new Date(closure.closed_at).toLocaleDateString("en-GB")}</strong> by{" "}
+            <strong>{closure.closed_by}</strong>. Baseline is locked.
+            New qualifying opportunities are automatically marked{" "}
+            <span className="font-semibold text-violet-700">Additional</span>.
+          </span>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* ── 3 KPI Cards ── */}
+      {summary && !selectMode && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Card 1 — Initial Baseline */}
+          <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Initial Baseline Budget
+            </p>
+            <p className="mt-1 text-2xl font-bold text-blue-700">{fmt(summary.baseline_budgeted_eur)}</p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              {summary.total_baseline} opportunit{summary.total_baseline !== 1 ? "ies" : "y"} · Budgeted &amp; locked at closure
+            </p>
+          </div>
+
+          {/* Card 2 — Additional */}
+          <div className={`rounded-xl border p-4 shadow-sm ${summary.total_additional > 0 ? "border-violet-100 bg-violet-50/40" : "border-slate-100 bg-white"}`}>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Additional (post-closure)
+            </p>
+            <p className={`mt-1 text-2xl font-bold ${summary.total_additional > 0 ? "text-violet-700" : "text-slate-300"}`}>
+              {fmt(summary.additional_accepted_eur)}
+            </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              {summary.additional_accepted} accepted · {summary.additional_pending} pending · {summary.additional_rejected} rejected
+            </p>
+          </div>
+
+          {/* Card 3 — Total Budget */}
+          <div className="rounded-xl border border-slate-100 bg-slate-800 p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Total Budget {fiscalYear}
+            </p>
+            <p className="mt-1 text-2xl font-bold text-white">{fmt(summary.total_budget_eur)}</p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Baseline {fmt(summary.baseline_budgeted_eur)} + Additional {fmt(summary.additional_accepted_eur)}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full text-left text-xs">
-          <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400">
-            <tr>
-              {selectMode && <th className="px-3 py-2.5 font-semibold">Set status</th>}
-              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("name")}>Opportunity{sortIndicator("name")}</th>
-              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("plant")}>Plant{sortIndicator("plant")}</th>
-              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("type")}>Type{sortIndicator("type")}</th>
-              <th className="cursor-pointer select-none px-3 py-2.5 font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("phase")}>Phase{sortIndicator("phase")}</th>
-              <th className="px-3 py-2.5 font-semibold">Validation</th>
-              <th className="px-3 py-2.5 font-semibold">Budget</th>
-              <th className="px-3 py-2.5 font-semibold">Portion</th>
-              <th className="cursor-pointer select-none px-3 py-2.5 text-right font-semibold hover:text-slate-600" onClick={() => !selectMode && toggleSort("saving")}>Saving (Budget {fiscalYear}){sortIndicator("saving")}</th>
-            </tr>
-          </thead>
-          {/* L4 — derive colSpan from column count so adding a column doesn't break loading rows */}
-          <tbody className="divide-y divide-slate-50">
-            {loading && (
-              <tr>
-                <td colSpan={selectMode ? 9 : 8} className="px-3 py-8 text-center text-slate-400">
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && items.length === 0 && (
-              <tr>
-                <td colSpan={selectMode ? 9 : 8} className="px-3 py-8 text-center text-slate-400">
-                  No opportunities generate savings in budget year {fiscalYear}.
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              sortedItems.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/60">
-                  {selectMode && (
-                    <td className="px-3 py-2.5">
-                      <select
-                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none focus:border-blue-400"
-                        value={decisions[item.opportunity_id] || "Opportunity"}
-                        onChange={(e) => setDecision(item.opportunity_id, e.target.value)}
-                      >
-                        <option value="Empty">Empty (rien)</option>
-                        <option value="Opportunity">Opportunity</option>
-                        <option value="Budgeted">Budgeted</option>
-                      </select>
-                    </td>
-                  )}
-                  <td className="px-3 py-2.5">
-                    <button
-                      onClick={() =>
-                        navigate(`/purchasing-value?opp=${item.opportunity_id}`)
-                      }
-                      className="flex items-center gap-1 font-semibold text-slate-700 hover:text-blue-600"
-                    >
-                      {item.opportunity_name || `Opportunity ${item.opportunity_id}`}
-                      <ExternalLink size={10} className="text-slate-300" />
-                    </button>
-                    {item.purchasing_owner && (
-                      <div className="text-[10px] text-slate-400">{item.purchasing_owner}</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-600">{item.plant_name || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    {item.opportunity_type && (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          TYPE_COLORS[item.opportunity_type] || "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {item.opportunity_type}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-600">{item.phase_status || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <ValidationBadge status={item.suggested_status} />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <BudgetBadge status={selectMode ? decisions[item.opportunity_id] : item.budget_status} />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {item.portion_kind && (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          PORTION_COLORS[item.portion_kind] || "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {item.portion_kind}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-semibold text-slate-800">
-                    {fmtCur(item.applicable_amount, item.currency)}
-                    {item.currency && item.currency !== "EUR" && item.applicable_amount_eur != null && (
-                      <div className="text-[10px] font-normal text-slate-400">
-                        = {fmt(item.applicable_amount_eur)}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+      {/* ── Create Budget live counter ── */}
+      {selectMode && baselineItems.length > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm">
+          <span className="text-blue-700">
+            <strong>{baselineBudgetedCount}</strong> of {baselineItems.length} set to <strong>Budgeted</strong>
+          </span>
+          <span className="font-semibold text-blue-800">Total: {fmt(baselineBudgetedTotal)}</span>
+        </div>
+      )}
 
-      <p className="text-[11px] text-slate-500">
-        Budget year note: this screen uses the 01 Dec to 30 Nov budget window and allocates savings by actual-day prorata.
-      </p>
+      {loading && (
+        <div className="flex justify-center py-10">
+          <RefreshCw size={20} className="animate-spin text-slate-300" />
+        </div>
+      )}
+
+      {!loading && items.length === 0 && (
+        <div className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
+          No Phase 3+ opportunities with confirmed real start date in FY {fiscalYear}.
+        </div>
+      )}
+
+      {/* ══ Section 1 — Baseline Budget ══════════════════════════════════════ */}
+      {!loading && baselineItems.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+              Baseline Budget
+            </span>
+            {closure && <Lock size={10} className="text-slate-300" />}
+            <span className="text-[11px] text-slate-400">— {baselineItems.length} opportunit{baselineItems.length !== 1 ? "ies" : "y"}</span>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
+            <table className="w-full text-left text-xs">
+              <TableHead showDecisionCol={selectMode} />
+              <tbody className="divide-y divide-slate-50">
+                {baselineItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/60">
+                    {selectMode && (
+                      <td className="px-3 py-2.5">
+                        <select
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none focus:border-blue-400"
+                          value={decisions[item.opportunity_id] || "Opportunity"}
+                          onChange={(e) => setDecisions((p) => ({ ...p, [item.opportunity_id]: e.target.value }))}
+                        >
+                          <option value="Opportunity">Opportunity</option>
+                          <option value="Budgeted">Budgeted</option>
+                          <option value="Empty">Excluded</option>
+                        </select>
+                      </td>
+                    )}
+                    <OppNameCell item={item} />
+                    <CommonCells item={item} />
+                    {!selectMode && (
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <BudgetStatusBadge status={item.budget_status} isAdditional={false} />
+                          {item.status_locked_at && <Lock size={10} className="text-slate-300" title="Locked" />}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Section 2 — Additional Opportunities ═════════════════════════════ */}
+      {!loading && closure && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase tracking-widest text-violet-500">
+                Additional Opportunities
+              </span>
+              {additionalItems.length > 0 ? (
+                <span className="text-[11px] text-slate-400">
+                  — {additionalItems.length} opportunit{additionalItems.length !== 1 ? "ies" : "y"} added after budget closure
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400">— none yet</span>
+              )}
+              {summary && summary.additional_pending > 0 && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  {summary.additional_pending} pending decision
+                </span>
+              )}
+            </div>
+            {additionalChanged && isPrivileged && (
+              <button
+                onClick={saveAdditionalDecisions}
+                disabled={savingAdditional}
+                className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {savingAdditional ? <RefreshCw size={11} className="animate-spin" /> : <Save size={11} />}
+                Save decisions
+              </button>
+            )}
+          </div>
+          {additionalItems.length === 0 ? (
+            <div className="rounded-xl border-2 border-dashed border-violet-100 py-8 text-center">
+              <p className="text-sm font-semibold text-violet-400">No additional opportunities yet</p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                When a Phase 3+ opportunity with a {fiscalYear} real start date is confirmed after budget closure,
+                it will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-violet-100 bg-white shadow-sm">
+              <table className="w-full text-left text-xs">
+                <TableHead showDecisionCol={false} />
+                <tbody className="divide-y divide-slate-50">
+                  {additionalItems.map((item) => (
+                    <tr key={item.id} className="hover:bg-violet-50/30">
+                      <OppNameCell item={item} />
+                      <CommonCells item={item} />
+                      <td className="px-3 py-2.5">
+                        {isPrivileged ? (
+                          <select
+                            className="rounded-lg border border-violet-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none focus:border-violet-400"
+                            value={additionalDecisions[item.opportunity_id] || "Opportunity"}
+                            onChange={(e) => setAdditionalDecisions((p) => ({ ...p, [item.opportunity_id]: e.target.value }))}
+                          >
+                            <option value="Opportunity">Pending</option>
+                            <option value="Budgeted">Accepted</option>
+                            <option value="Empty">Rejected</option>
+                          </select>
+                        ) : (
+                          <BudgetStatusBadge status={item.budget_status} isAdditional={true} />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="px-1 text-[10px] text-slate-400">
+            Opportunities that reached Phase 3 after budget {fiscalYear} was closed.
+            Accept to include their savings in the Additional total, Reject to exclude.
+          </p>
+        </div>
+      )}
+
       <p className="text-[11px] text-slate-400">
-        Savings are split pro-rata by actual days across budget years from the project start date
-        (real start once in Phase 3, otherwise the expected/planned start). Per-opportunity amounts
-        are shown in their own currency; the <strong>KPI totals are consolidated in EUR</strong>
-        (group reporting currency). Any opportunity with savings in the budget year can be committed via{" "}
-        <strong>Create Budget</strong> — <strong>Validated</strong> = Phase 3 started,{" "}
-        <strong>Forecast</strong> = not yet. The committed choice is locked.
+        Only <strong>Phase 3 / Phase 4 / Completed</strong> opportunities with a confirmed real start date appear here.
+        Savings are split pro-rata by actual days across calendar years (01 Jan – 31 Dec).
+        Amounts in transaction currency; KPI totals consolidated in <strong>EUR</strong>.
       </p>
     </div>
   );

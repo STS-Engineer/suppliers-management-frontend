@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   AlertCircle,
   AlertTriangle,
@@ -348,6 +349,7 @@ function ResultsPanel({
   onReset,
   resetting,
   onRefresh,
+  canReset,
   refreshing,
 }: {
   allEntries: CriterionEntry[];
@@ -357,6 +359,7 @@ function ResultsPanel({
   resetting: boolean;
   onRefresh: () => void;
   refreshing: boolean;
+  canReset: boolean;
 }) {
   const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
   const [search, setSearch] = useState("");
@@ -522,7 +525,7 @@ function ResultsPanel({
           </button>
 
           {/* Reset all expired */}
-          {expiredEntries.length > 0 &&
+          {canReset && expiredEntries.length > 0 &&
             (confirmReset ? (
               <>
                 <span className="text-xs text-red-600 dark:text-red-400">
@@ -758,6 +761,8 @@ function ResultsPanel({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DocumentsValidityPage() {
+  const { user } = useAuth();
+  const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
   const [relations, setRelations] = useState<SitePanelRelation[]>([]);
   const [sites, setSites] = useState<Record<number, string>>({});
   const [total, setTotal] = useState(0);
@@ -783,7 +788,7 @@ export default function DocumentsValidityPage() {
     for (const item of relations) {
       const relId = item.relation.id_relation;
       map[relId] = {
-        supplierName: item.group?.nom ?? `Supplier #${relId}`,
+        supplierName: item.unit?.supplier_code ?? item.group?.nom ?? `Supplier #${relId}`,
         siteName:
           sites[item.relation.id_site!] ?? `Site #${item.relation.id_site}`,
       };
@@ -1064,6 +1069,7 @@ export default function DocumentsValidityPage() {
             resetting={resetting}
             onRefresh={() => runScan()}
             refreshing={scanning}
+            canReset={isPrivileged}
           />
         )}
       </div>

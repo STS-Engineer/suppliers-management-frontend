@@ -200,10 +200,12 @@ function RecoveryCard({
   item,
   userEmail,
   onRefresh,
+  isViewer = false,
 }: {
   item: RecoveryItem;
   userEmail: string;
   onRefresh: () => void;
+  isViewer?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
@@ -346,7 +348,7 @@ function RecoveryCard({
             </details>
           )}
         </div>
-        {item.recovery_status !== "Done" && (
+        {item.recovery_status !== "Done" && !isViewer && (
           <button
             onClick={() => setEditing((v) => !v)}
             className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
@@ -373,6 +375,7 @@ function RecoveryCard({
 export default function PurchasingRecoveryPage() {
   const { user } = useAuth();
   const userEmail = user?.email ?? "";
+  const isViewer = user?.access_profile === "viewer";
 
   const [items, setItems] = useState<RecoveryItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -421,7 +424,7 @@ export default function PurchasingRecoveryPage() {
   });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
+    <div className="w-full space-y-6 px-6 py-8">
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
@@ -563,7 +566,7 @@ export default function PurchasingRecoveryPage() {
                 </p>
               </div>
               {sorted.filter((i) => i.is_overdue).map((item) => (
-                <RecoveryCard key={item.financial_line_id} item={item} userEmail={userEmail} onRefresh={load} />
+                <RecoveryCard key={item.financial_line_id} item={item} userEmail={userEmail} onRefresh={load} isViewer={isViewer} />
               ))}
               <div className="flex items-center gap-2 pt-2">
                 <TrendingDown size={12} className="text-slate-400" />
@@ -574,7 +577,7 @@ export default function PurchasingRecoveryPage() {
             </>
           )}
           {sorted.filter((i) => !i.is_overdue).map((item) => (
-            <RecoveryCard key={item.financial_line_id} item={item} userEmail={userEmail} onRefresh={load} />
+            <RecoveryCard key={item.financial_line_id} item={item} userEmail={userEmail} onRefresh={load} isViewer={isViewer} />
           ))}
         </div>
       )}

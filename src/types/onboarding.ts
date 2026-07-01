@@ -27,24 +27,14 @@ export interface UnitFormData {
   continent: string;
   area: string;
   // Product classification
+  commodity: string[];
   family: string[];
   sub_family: string[];
   product_line: string[];
   // Additional unit info
   website: string;
-  supplier_email: string;
-  commodity_responsible: string;
-  main_plants: string;
   carbon_footprint: string;
   green_electricity_pct: string;
-  copper_brass_pct: string;
-  category: string[];
-  // GHG data
-  scope1_ghg: string;
-  scope2_ghg: string;
-  ghg_comments: string;
-  ghg_requested_date: string;
-  ghg_completion_pct: string;
   unit_contacts: ContactFormData[];
 }
 
@@ -307,14 +297,7 @@ export type OnboardingStep =
   | 'configuration'
   | 'review';
 
-type SubmittedUnitFormData = Omit<
-  UnitFormData,
-  "ghg_requested_date" | "scope1_ghg" | "scope2_ghg"
-> & {
-  ghg_requested_date?: string;
-  scope1_ghg?: string;
-  scope2_ghg?: string;
-};
+type SubmittedUnitFormData = UnitFormData;
 
 type SubmittedCertificationFormData = Omit<
   CertificationFormData,
@@ -408,6 +391,7 @@ export interface SupplierGroupSummary {
   multi_site?: boolean;
   exit_supplier?: boolean;
   strategic_reason?: string;
+  validation_status?: string;
   created_at?: string;
   updated_at?: string;
   units?: SupplierUnitResponse[];
@@ -430,27 +414,19 @@ export interface SupplierUnitResponse {
   area?: string | null;
   product_type?: string;
   product_category?: string;
+  commodity?: string | null;
   family?: string | null;
   sub_family?: string | null;
   product_line?: string | null;
-  category?: string | null;
   website?: string | null;
-  supplier_email?: string | null;
-  commodity_responsible?: string | null;
-  main_plants?: string | null;
   carbon_footprint?: string | null;
   green_electricity_pct?: string | null;
-  copper_brass_pct?: string | null;
-  scope1_ghg?: number | null;
-  scope2_ghg?: number | null;
-  ghg_comments?: string | null;
-  ghg_requested_date?: string | null;
-  ghg_completion_pct?: string | null;
   amount_value?: number | null;
   amount_currency?: string;
   strategique?: boolean;
   monopolistique?: boolean;
   directed?: boolean;
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -524,6 +500,7 @@ export interface SupplierSiteRelation {
   quality_cert_required?: string | null;
   delivery_status?: string | null;
   req_ap_date?: string | null;
+  is_active?: boolean;
 }
 
 // Carbon Footprint (SB8)
@@ -609,6 +586,9 @@ export interface SitePanelRelation {
   unit: SupplierUnitResponse;
   group: SupplierGroupSummary;
   group_categories: string[];
+  has_development_plan?: boolean;
+  development_plan_status?: string | null;
+  committee_review_status?: string | null;
 }
 
 export interface SitePanelBundle {

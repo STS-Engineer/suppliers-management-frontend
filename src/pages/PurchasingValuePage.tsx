@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowRight,
@@ -28,7 +29,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
+import supplierAPI, {
+  SupplierApiError,
+} from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
 
@@ -163,6 +166,7 @@ interface Opp {
   difficulty_score?: number;
   priority_score?: number;
   priority_category?: string;
+  priority_locked?: boolean;
   comments?: string;
   validation_request_sent_at?: string;
   created_at?: string;
@@ -224,6 +228,7 @@ interface Opp {
     portion_kind?: string;
     suggested_status?: string;
     budget_status?: string;
+    status_locked_at?: string | null;
   }[];
   cash_inventory_gap?: number;
   cash_ap_gap?: number;
@@ -247,6 +252,7 @@ interface Opp {
     material_same_spec?: string;
     same_tooling?: string;
     same_dimension?: string;
+    same_process?: string;
   };
   // STP — benefits (JSONB)
   stp_benefits?: {
@@ -681,7 +687,14 @@ function CreateModal({
 // ---------------------------------------------------------------------------
 // Detail Drawer tabs
 // ---------------------------------------------------------------------------
-type Tab = "overview" | "edit" | "gate" | "financial" | "project" | "files";
+type Tab =
+  | "overview"
+  | "edit"
+  | "gate"
+  | "financial"
+  | "project"
+  | "files"
+  | "action-plan";
 
 function OverviewTab({ opp }: { opp: Opp }) {
   const pldReady =
@@ -895,23 +908,25 @@ function FormSection({
   title,
   defaultOpen = true,
   accent,
+  highlight,
   children,
 }: {
   title: React.ReactNode;
   defaultOpen?: boolean;
   accent?: string;
+  highlight?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className={`rounded-xl border bg-white ${highlight ? "border-orange-400" : "border-slate-200"}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-4 py-2.5 text-left"
       >
         <span
-          className={`text-[10px] font-bold uppercase tracking-widest ${accent ?? "text-slate-400"}`}
+          className={`text-[10px] font-bold uppercase tracking-widest ${highlight ? "text-orange-500" : (accent ?? "text-slate-400")}`}
         >
           {title}
         </span>
@@ -977,6 +992,7 @@ function EditTab({
   }, [opp.supplier_id, opp.plant_id, opp.opportunity_id]);
 
   const isPhase0 = opp.phase_status === "Phase 0";
+  const gateHighlight = isPhase0;
   const goApplied = opp.validation_decision === "Go";
   const stpEditablePhases = ["Assigned", "Phase 0", "Phase 1"];
   const showStpSection = isSourced;
@@ -992,11 +1008,15 @@ function EditTab({
     !stpEditablePhases.includes(opp.phase_status ?? "") || pendingApproval;
   const isStpPhase23 =
     isSourced && ["Phase 2", "Phase 3"].includes(opp.phase_status ?? "");
-  const hasPendingSTPRevision =
-    isStpPhase23 && !!opp.pending_stp_revision;
+  const hasPendingSTPRevision = isStpPhase23 && !!opp.pending_stp_revision;
   // Budget status is derived from validation (Validate→Budgeted). The financial
   // baseline locks once the opportunity is validated/budgeted.
   const isBudgeted = opp.validation_status === "Budgeted";
+  const isFxLocked =
+    (opp.budget_years ?? []).some((by) => by.budget_status === "Budgeted") ||
+    (opp.financial_lines ?? []).some((fl) =>
+      (fl.monthly_financials ?? []).some((m) => m.actual_saving != null),
+    );
   const locked = isBudgeted;
 
   const phaseNote: Record<string, string> = {
@@ -1042,6 +1062,9 @@ function EditTab({
     payback_score: opp.payback_score ?? ("" as number | ""),
     lead_time_score: opp.lead_time_score ?? ("" as number | ""),
     difficulty_score: opp.difficulty_score ?? ("" as number | ""),
+    // forced_priority = the manually overridden category; "" = auto (PLD)
+    forced_priority:
+      opp.priority_locked && opp.priority_category ? opp.priority_category : "",
     // STP
     scope_in: opp.scope_in ?? "",
     scope_out: opp.scope_out ?? "",
@@ -1146,6 +1169,7 @@ function EditTab({
     material_same_spec: opp.stp_risks?.material_same_spec ?? "",
     same_tooling: opp.stp_risks?.same_tooling ?? "",
     same_dimension: opp.stp_risks?.same_dimension ?? "",
+    same_process: opp.stp_risks?.same_process ?? "",
     // stp_benefits — flattened for form inputs
     benefit_if_we_do: opp.stp_benefits?.if_we_do ?? "",
     benefit_if_not: opp.stp_benefits?.if_not ?? "",
@@ -1175,13 +1199,19 @@ function EditTab({
 
   // STP revision request modal (Phase 2/3)
   const [stpRevModal, setStpRevModal] = useState(false);
-  const [stpRevForm, setStpRevForm] = useState({ director_email: "", note: "" });
+  const [stpRevForm, setStpRevForm] = useState({
+    director_email: "",
+    note: "",
+  });
   const [stpRevLoading, setStpRevLoading] = useState(false);
   const [stpRevError, setStpRevError] = useState<string | null>(null);
 
   // STP revision decision modal (Director)
   const [stpDecModal, setStpDecModal] = useState(false);
-  const [stpDecForm, setStpDecForm] = useState({ decision: "Approved", note: "" });
+  const [stpDecForm, setStpDecForm] = useState({
+    decision: "Approved",
+    note: "",
+  });
   const [stpDecLoading, setStpDecLoading] = useState(false);
   const [stpDecError, setStpDecError] = useState<string | null>(null);
 
@@ -1248,31 +1278,32 @@ function EditTab({
       : _pldTotalInv > 0
         ? 999
         : 0;
-  const livePScore = !isSourced
-    ? form.payback_score
-      ? Number(form.payback_score)
-      : null
-    : !_pldHasInvData
-      ? null
-      : _pldPaybackMonths === 0
-        ? 1
-        : _pldPaybackMonths <= 2
-          ? 2
-          : _pldPaybackMonths <= 4
-            ? 3
-            : _pldPaybackMonths <= 12
-              ? 4
-              : 5;
+  // Auto-calculated P from investment/savings (STP types only)
+  const _autoP = !_pldHasInvData
+    ? null
+    : _pldPaybackMonths === 0
+      ? 1
+      : _pldPaybackMonths <= 2
+        ? 2
+        : _pldPaybackMonths <= 4
+          ? 3
+          : _pldPaybackMonths <= 12
+            ? 4
+            : 5;
+  // Manual value in form overrides auto-calc for both STP and non-STP types
+  const livePScore = form.payback_score
+    ? Number(form.payback_score)
+    : isSourced
+      ? _autoP
+      : null;
   const _pldTotalWeeks =
     (parseInt(form.phase1_weeks || "0") || 0) +
     (parseInt(form.phase2_weeks || "0") || 0) +
     (parseInt(form.phase3_weeks || "0") || 0);
   const _pldLeadMonths = _pldTotalWeeks / 4.33;
-  const liveLScore = !isSourced
-    ? form.lead_time_score
-      ? Number(form.lead_time_score)
-      : null
-    : _pldTotalWeeks === 0
+  // Auto-calculated L from phase weeks (STP types only)
+  const _autoL =
+    _pldTotalWeeks === 0
       ? null
       : _pldLeadMonths < 1
         ? 1
@@ -1283,6 +1314,12 @@ function EditTab({
             : _pldLeadMonths < 6
               ? 4
               : 5;
+  // Manual value in form overrides auto-calc for both STP and non-STP types
+  const liveLScore = form.lead_time_score
+    ? Number(form.lead_time_score)
+    : isSourced
+      ? _autoL
+      : null;
   const liveDScore = form.difficulty_score
     ? Number(form.difficulty_score)
     : null;
@@ -1383,10 +1420,19 @@ function EditTab({
       const month = d.getMonth();
       const day = d.getDate();
       const target = new Date(year, month + offsetMonths, 1);
-      const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-      return new Date(target.getFullYear(), target.getMonth(), Math.min(day, lastDay));
+      const lastDay = new Date(
+        target.getFullYear(),
+        target.getMonth() + 1,
+        0,
+      ).getDate();
+      return new Date(
+        target.getFullYear(),
+        target.getMonth(),
+        Math.min(day, lastDay),
+      );
     };
-    const budgetYearForDate = (d: Date) => (d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear());
+    const budgetYearForDate = (d: Date) =>
+      d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
     const budgetYearEndExclusive = (fy: number) => new Date(fy, 11, 1);
     const acc: Record<number, number> = {};
     const overallEnd = addMonthsPreserveDay(start, months);
@@ -1398,7 +1444,8 @@ function EditTab({
       const windowEnd = addMonthsPreserveDay(start, (i + 1) * 12);
       if (windowStart >= overallEnd) break;
       const effectiveEnd = windowEnd < overallEnd ? windowEnd : overallEnd;
-      const windowDays = (windowEnd.getTime() - windowStart.getTime()) / 86400000;
+      const windowDays =
+        (windowEnd.getTime() - windowStart.getTime()) / 86400000;
       if (windowDays <= 0 || effectiveEnd <= windowStart) continue;
 
       let cursor = windowStart;
@@ -1507,6 +1554,20 @@ function EditTab({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Client-side FX guard — catch the obvious case before hitting the API.
+    if (form.currency && form.currency !== "EUR") {
+      const rate = parseFloat(form.fx_rate_to_eur ?? "0");
+      if (!rate || rate <= 0) {
+        setError(
+          `FX rate to EUR is required for ${form.currency} opportunities. ` +
+            `Enter the conversion rate (e.g. 0.920000 means 1 ${form.currency} = 0.92 EUR) ` +
+            `before saving. Without it, consolidated KPI totals will be wrong.`,
+        );
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
 
@@ -1530,9 +1591,11 @@ function EditTab({
         real_start_date: form.real_start_date || undefined,
         change_mode: form.change_mode || undefined,
         currency: form.currency || undefined,
-        fx_rate_to_eur: form.fx_rate_to_eur
-          ? parseFloat(form.fx_rate_to_eur)
-          : undefined,
+        fx_rate_to_eur: isFxLocked
+          ? undefined
+          : form.fx_rate_to_eur
+            ? parseFloat(form.fx_rate_to_eur)
+            : undefined,
         assumptions_summary: form.assumptions_summary || undefined,
         comments: form.comments || undefined,
         purchasing_owner: form.purchasing_owner || undefined,
@@ -1540,6 +1603,8 @@ function EditTab({
         payback_score: livePScore ?? undefined,
         lead_time_score: liveLScore ?? undefined,
         difficulty_score: liveDScore ?? undefined,
+        priority_locked: form.forced_priority !== "" ? true : false,
+        priority_category_override: form.forced_priority || undefined,
         scope_in: form.scope_in || undefined,
         scope_out: form.scope_out || undefined,
         customers: form.customers || undefined,
@@ -1643,6 +1708,7 @@ function EditTab({
           material_same_spec: form.material_same_spec || undefined,
           same_tooling: form.same_tooling || undefined,
           same_dimension: form.same_dimension || undefined,
+          same_process: form.same_process || undefined,
         },
         stp_benefits: {
           if_we_do: form.benefit_if_we_do || undefined,
@@ -1678,7 +1744,10 @@ function EditTab({
         onRefresh(res.data as Opp);
       }
     } catch (err: unknown) {
-      if (err instanceof SupplierApiError && err.errorCode === "STP_REQUIRES_APPROVAL") {
+      if (
+        err instanceof SupplierApiError &&
+        err.errorCode === "STP_REQUIRES_APPROVAL"
+      ) {
         setStpRevModal(true);
       } else {
         setError(err instanceof Error ? err.message : "Failed");
@@ -1698,27 +1767,59 @@ function EditTab({
         director_email: stpRevForm.director_email.trim(),
         note: stpRevForm.note.trim(),
         requested_by: userEmail,
-        current_price: form.current_price ? parseFloat(form.current_price) : undefined,
-        proposed_price: form.proposed_price ? parseFloat(form.proposed_price) : undefined,
-        current_price_n1: form.current_price_n1 ? parseFloat(form.current_price_n1) : undefined,
-        current_price_n2: form.current_price_n2 ? parseFloat(form.current_price_n2) : undefined,
-        current_price_n3: form.current_price_n3 ? parseFloat(form.current_price_n3) : undefined,
-        proposed_price_n1: form.proposed_price_n1 ? parseFloat(form.proposed_price_n1) : undefined,
-        proposed_price_n2: form.proposed_price_n2 ? parseFloat(form.proposed_price_n2) : undefined,
-        proposed_price_n3: form.proposed_price_n3 ? parseFloat(form.proposed_price_n3) : undefined,
-        annual_quantity_n1: form.annual_quantity_n1 ? parseInt(form.annual_quantity_n1) : undefined,
-        annual_quantity_n2: form.annual_quantity_n2 ? parseInt(form.annual_quantity_n2) : undefined,
-        annual_quantity_n3: form.annual_quantity_n3 ? parseInt(form.annual_quantity_n3) : undefined,
-        annual_quantity_n4: form.annual_quantity_n4 ? parseInt(form.annual_quantity_n4) : undefined,
-        bonus_before: form.bonus_before ? parseFloat(form.bonus_before) : undefined,
-        bonus_after: form.bonus_after ? parseFloat(form.bonus_after) : undefined,
+        current_price: form.current_price
+          ? parseFloat(form.current_price)
+          : undefined,
+        proposed_price: form.proposed_price
+          ? parseFloat(form.proposed_price)
+          : undefined,
+        current_price_n1: form.current_price_n1
+          ? parseFloat(form.current_price_n1)
+          : undefined,
+        current_price_n2: form.current_price_n2
+          ? parseFloat(form.current_price_n2)
+          : undefined,
+        current_price_n3: form.current_price_n3
+          ? parseFloat(form.current_price_n3)
+          : undefined,
+        proposed_price_n1: form.proposed_price_n1
+          ? parseFloat(form.proposed_price_n1)
+          : undefined,
+        proposed_price_n2: form.proposed_price_n2
+          ? parseFloat(form.proposed_price_n2)
+          : undefined,
+        proposed_price_n3: form.proposed_price_n3
+          ? parseFloat(form.proposed_price_n3)
+          : undefined,
+        annual_quantity_n1: form.annual_quantity_n1
+          ? parseInt(form.annual_quantity_n1)
+          : undefined,
+        annual_quantity_n2: form.annual_quantity_n2
+          ? parseInt(form.annual_quantity_n2)
+          : undefined,
+        annual_quantity_n3: form.annual_quantity_n3
+          ? parseInt(form.annual_quantity_n3)
+          : undefined,
+        annual_quantity_n4: form.annual_quantity_n4
+          ? parseInt(form.annual_quantity_n4)
+          : undefined,
+        bonus_before: form.bonus_before
+          ? parseFloat(form.bonus_before)
+          : undefined,
+        bonus_after: form.bonus_after
+          ? parseFloat(form.bonus_after)
+          : undefined,
       });
       setStpRevModal(false);
       setStpRevForm({ director_email: "", note: "" });
       const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(fresh.data as Opp);
     } catch (err: unknown) {
-      setStpRevError(err instanceof Error ? err.message : "Failed to submit revision request.");
+      setStpRevError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit revision request.",
+      );
     } finally {
       setStpRevLoading(false);
     }
@@ -1739,7 +1840,9 @@ function EditTab({
       const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(fresh.data as Opp);
     } catch (err: unknown) {
-      setStpDecError(err instanceof Error ? err.message : "Failed to record decision.");
+      setStpDecError(
+        err instanceof Error ? err.message : "Failed to record decision.",
+      );
     } finally {
       setStpDecLoading(false);
     }
@@ -1750,573 +1853,653 @@ function EditTab({
   const label = "mb-1 block text-xs font-semibold text-slate-600";
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
-      {error && (
-        <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      {phaseNote[opp.phase_status ?? ""] && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-700">
-          {phaseNote[opp.phase_status ?? ""]}
+    <>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && (
+          <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
+            {error}
+          </p>
+        )}
+        {phaseNote[opp.phase_status ?? ""] && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-700">
+            {phaseNote[opp.phase_status ?? ""]}
+          </div>
+        )}
+        <div className="order-1">
+          <label className={label}>Opportunity Name</label>
+          <input
+            className={inp}
+            value={form.opportunity_name}
+            onChange={(e) => set("opportunity_name", e.target.value)}
+          />
         </div>
-      )}
-      <div className="order-1">
-        <label className={label}>Opportunity Name</label>
-        <input
-          className={inp}
-          value={form.opportunity_name}
-          onChange={(e) => set("opportunity_name", e.target.value)}
-        />
-      </div>
-      <div className="order-2">
-        <label className={label}>Description</label>
-        <textarea
-          rows={2}
-          className={`${inp} resize-none`}
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-        />
-      </div>
-      {/* Other fields (baseline + alerts + PLD) — shown AFTER the STP study */}
-      <div className="order-4 flex flex-col gap-4">
-        {/* ---- FINANCIAL BASELINE (locked once Budgeted) ---- */}
-        <div
-          className={`rounded-xl p-4 space-y-3 ${locked ? "bg-slate-50 border border-slate-200" : ""}`}
-        >
-          {locked && (
-            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-400">
-              <Lock size={10} /> Financial baseline — locked (real start date
-              entered)
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>
-                {isSourced ? "EBITDA Period (€)" : "Est. Annual Saving (€)"}
-                <span className="ml-1 font-normal text-slate-400">
-                  {isSourced ? "— auto, all years (N…N+3)" : ""}
-                </span>
-              </label>
-              {isSourced ? (
-                <div
-                  className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
-                >
-                  {autoSaving != null
-                    ? `€${autoSaving.toLocaleString("en-GB")}`
-                    : opp.expected_annual_saving != null
-                      ? fmt(opp.expected_annual_saving)
-                      : "—"}
-                </div>
-              ) : (
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  disabled={locked}
-                  className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                  value={form.expected_annual_saving}
-                  onChange={(e) =>
-                    set("expected_annual_saving", e.target.value)
-                  }
-                />
-              )}
-              {isSourced && (
-                <p className="text-[10px] text-emerald-600 mt-0.5">
-                  Sum of the EBITDA savings across all fulfilled years (EBITDA
-                  Period).
-                </p>
-              )}
-            </div>
-            <div>
-              <label className={label}>
-                Cash Impact (€){" "}
-                <span className="font-normal text-slate-400">
-                  {isSourced
-                    ? "— auto: Inventory gap + AP gap"
-                    : "— total cash estimate, locked when Budgeted"}
-                </span>
-              </label>
-              {isSourced ? (
-                <div
-                  className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
-                >
-                  {autoCashImpact != null
-                    ? `€${autoCashImpact.toLocaleString("en-GB")}`
-                    : opp.cash_impact != null
-                      ? fmt(opp.cash_impact)
-                      : "—"}
-                </div>
-              ) : (
-                <input
-                  type="number"
-                  step="0.01"
-                  disabled={locked}
-                  className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                  value={form.cash_impact}
-                  onChange={(e) => set("cash_impact", e.target.value)}
-                />
-              )}
-            </div>
-            <div>
-              <label className={label}>
-                Duration (months){" "}
-                <span className="font-normal text-slate-400">
-                  — saving period length
-                </span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="120"
-                step="1"
-                disabled={locked}
-                className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.duration_months}
-                onChange={(e) => set("duration_months", e.target.value)}
-              />
-              {computedEndDate && (
-                <p className="mt-1 text-[10.5px] text-slate-500">
-                  → Planned end:{" "}
-                  <span className="font-semibold text-slate-700">
-                    {computedEndDate}
-                  </span>
-                </p>
-              )}
-            </div>
-            <div>
-              <label className={label}>
-                Planned Start (estimated savings start){" "}
-                <span className="font-normal text-slate-400">
-                  — when real savings are expected to begin; drives planned end
-                  &amp; the budget split
-                </span>
-              </label>
-              <input
-                type="date"
-                className={inp}
-                value={form.planned_start_date}
-                onChange={(e) => set("planned_start_date", e.target.value)}
-              />
-              {computedEndDate && (
-                <p className="mt-1 text-[10.5px] text-slate-500">
-                  → Planned end:{" "}
-                  <span className="font-semibold text-slate-700">
-                    {computedEndDate}
-                  </span>
-                </p>
-              )}
-              {recommendedSavingsStart &&
-                recommendedSavingsStart.iso !== form.planned_start_date && (
-                  <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-blue-600">
-                    <span>
-                      Recommended (study start + Phase 1–3 weeks):{" "}
-                      <span className="font-semibold">
-                        {recommendedSavingsStart.label}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        set("planned_start_date", recommendedSavingsStart.iso)
-                      }
-                      className="rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700 hover:bg-blue-100"
-                    >
-                      Apply
-                    </button>
-                  </p>
-                )}
-              {form.planned_start_date &&
-                form.planned_start_date !== opp.planned_start_date &&
-                ["Phase 0", "Phase 1", "Phase 2", "Assigned"].includes(
-                  opp.phase_status ?? "",
-                ) && (
-                  <p className="mt-1 text-[10.5px] text-amber-600 font-medium">
-                    ⚠ Date changed — monthly savings profile will be rebuilt
-                    from {form.planned_start_date}
-                  </p>
-                )}
-              {form.planned_start_date &&
-                form.planned_start_date !== opp.planned_start_date &&
-                ["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
-                  <p className="mt-1 text-[10.5px] text-blue-600 font-medium">
-                    ℹ Savings have started — use Deployment Start Date (real) to
-                    rebuild the profile.
-                  </p>
-                )}
-            </div>
-            {/* Phase 2 date — when execution work began */}
-            {["Phase 2", "Phase 3", "Phase 4"].includes(
-              opp.phase_status ?? "",
-            ) && (
-              <div>
-                <label className={label}>
-                  Execution Start Date
-                  <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
-                    Phase 2
-                  </span>
-                  <span className="ml-1 font-normal text-slate-400">
-                    — when work began (tooling, qualification, supplier
-                    contacted)
-                  </span>
-                </label>
-                <input
-                  type="date"
-                  className={inp}
-                  value={form.execution_start_date}
-                  onChange={(e) => set("execution_start_date", e.target.value)}
-                />
+        <div className="order-2">
+          <label className={label}>Description</label>
+          <textarea
+            rows={2}
+            className={`${inp} resize-none`}
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+          />
+        </div>
+        {/* Other fields (baseline + alerts + PLD) — shown AFTER the STP study */}
+        <div className="order-4 flex flex-col gap-4">
+          {/* ---- FINANCIAL BASELINE (locked once Budgeted) ---- */}
+          <div
+            className={`rounded-xl p-4 space-y-3 ${locked ? "bg-slate-50 border border-slate-200" : ""}`}
+          >
+            {locked && (
+              <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-400">
+                <Lock size={10} /> Financial baseline — locked (real start date
+                entered)
               </div>
             )}
-            {/* Phase 3 date — when savings actually started flowing */}
-            {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={label}>
-                  Deployment Start Date (Real Savings Start)
-                  <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-600">
-                    Phase 3
-                  </span>
+                  {isSourced ? "EBITDA Period (€)" : "Est. Annual Saving (€)"}
                   <span className="ml-1 font-normal text-slate-400">
-                    — when PPAP validated and Longrun/new parts entered
-                    production
+                    {isSourced ? "— auto, all years (N…N+3)" : ""}
+                  </span>
+                </label>
+                {isSourced ? (
+                  <div
+                    className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
+                  >
+                    {autoSaving != null
+                      ? `€${autoSaving.toLocaleString("en-GB")}`
+                      : opp.expected_annual_saving != null
+                        ? fmt(opp.expected_annual_saving)
+                        : "—"}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={locked}
+                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    value={form.expected_annual_saving}
+                    onChange={(e) =>
+                      set("expected_annual_saving", e.target.value)
+                    }
+                  />
+                )}
+                {isSourced && (
+                  <p className="text-[10px] text-emerald-600 mt-0.5">
+                    Sum of the EBITDA savings across all fulfilled years (EBITDA
+                    Period).
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={label}>
+                  Cash Impact (€){" "}
+                  <span className="font-normal text-slate-400">
+                    {isSourced
+                      ? "— auto: Inventory gap + AP gap"
+                      : "— total cash estimate, locked when Budgeted"}
+                  </span>
+                </label>
+                {isSourced ? (
+                  <div
+                    className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
+                  >
+                    {autoCashImpact != null
+                      ? `€${autoCashImpact.toLocaleString("en-GB")}`
+                      : opp.cash_impact != null
+                        ? fmt(opp.cash_impact)
+                        : "—"}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={locked}
+                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    value={form.cash_impact}
+                    onChange={(e) => set("cash_impact", e.target.value)}
+                  />
+                )}
+              </div>
+              <div>
+                <label className={gateHighlight && !(opp.duration_months && opp.duration_months > 0) ? "mb-1 block text-xs font-semibold text-orange-500" : label}>
+                  Duration (months){" "}
+                  <span className="font-normal text-slate-400">
+                    — saving period length
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  step="1"
+                  disabled={locked}
+                  className={`${gateHighlight && !(opp.duration_months && opp.duration_months > 0) ? "w-full rounded-xl border border-orange-400 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" : inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                  value={form.duration_months}
+                  onChange={(e) => set("duration_months", e.target.value)}
+                />
+                {computedEndDate && (
+                  <p className="mt-1 text-[10.5px] text-slate-500">
+                    → Planned end:{" "}
+                    <span className="font-semibold text-slate-700">
+                      {computedEndDate}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={gateHighlight && !opp.planned_start_date ? "mb-1 block text-xs font-semibold text-orange-500" : label}>
+                  Planned Start (estimated savings start){" "}
+                  <span className="font-normal text-slate-400">
+                    — when real savings are expected to begin; drives planned
+                    end &amp; the budget split
                   </span>
                 </label>
                 <input
                   type="date"
-                  className={inp}
-                  value={form.real_start_date}
-                  onChange={(e) => set("real_start_date", e.target.value)}
+                  className={gateHighlight && !opp.planned_start_date ? "w-full rounded-xl border border-orange-400 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" : inp}
+                  value={form.planned_start_date}
+                  onChange={(e) => set("planned_start_date", e.target.value)}
                 />
-                {form.real_start_date &&
-                  opp.planned_start_date &&
-                  form.real_start_date !== opp.planned_start_date && (
-                    <p className="text-[10px] text-amber-600 mt-0.5">
-                      ⚠ Differs from planned start (
-                      {fmtDate(opp.planned_start_date)}) — saving will
-                      automatically rebuild the monthly profile.
+                {computedEndDate && (
+                  <p className="mt-1 text-[10.5px] text-slate-500">
+                    → Planned end:{" "}
+                    <span className="font-semibold text-slate-700">
+                      {computedEndDate}
+                    </span>
+                  </p>
+                )}
+                {recommendedSavingsStart &&
+                  recommendedSavingsStart.iso !== form.planned_start_date && (
+                    <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-blue-600">
+                      <span>
+                        Recommended (study start + Phase 1–3 weeks):{" "}
+                        <span className="font-semibold">
+                          {recommendedSavingsStart.label}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          set("planned_start_date", recommendedSavingsStart.iso)
+                        }
+                        className="rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        Apply
+                      </button>
                     </p>
                   )}
-                {/* R9 data-loss warning — rebuilding from a later start deletes the
-                  months before it, including any actuals already entered there. */}
-                {form.real_start_date &&
-                  form.real_start_date !== (opp.real_start_date ?? "") &&
-                  (() => {
-                    const newStart = form.real_start_date.slice(0, 7);
-                    const droppedActuals = (
-                      opp.financial_lines[0]?.monthly_financials ?? []
-                    ).filter(
-                      (m) =>
-                        m.period_month != null &&
-                        m.actual_saving != null &&
-                        m.period_month.slice(0, 7) < newStart,
+                {form.planned_start_date &&
+                  form.planned_start_date !== opp.planned_start_date &&
+                  ["Phase 0", "Phase 1", "Phase 2", "Assigned"].includes(
+                    opp.phase_status ?? "",
+                  ) && (
+                    <p className="mt-1 text-[10.5px] text-amber-600 font-medium">
+                      ⚠ Date changed — monthly savings profile will be rebuilt
+                      from {form.planned_start_date}
+                    </p>
+                  )}
+                {form.planned_start_date &&
+                  form.planned_start_date !== opp.planned_start_date &&
+                  ["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
+                    <p className="mt-1 text-[10.5px] text-blue-600 font-medium">
+                      ℹ Savings have started — use Deployment Start Date (real)
+                      to rebuild the profile.
+                    </p>
+                  )}
+              </div>
+              {/* Phase 2 date — when execution work began */}
+              {["Phase 2", "Phase 3", "Phase 4"].includes(
+                opp.phase_status ?? "",
+              ) && (
+                <div>
+                  <label className={label}>
+                    Execution Start Date
+                    <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
+                      Phase 2
+                    </span>
+                    <span className="ml-1 font-normal text-slate-400">
+                      — when work began (tooling, qualification, supplier
+                      contacted)
+                    </span>
+                  </label>
+                  <input
+                    type="date"
+                    className={inp}
+                    value={form.execution_start_date}
+                    onChange={(e) =>
+                      set("execution_start_date", e.target.value)
+                    }
+                  />
+                </div>
+              )}
+              {/* Phase 3 date — when savings actually started flowing */}
+              {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
+                <div>
+                  <label className={label}>
+                    Deployment Start Date (Real Savings Start)
+                    <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-600">
+                      Phase 3
+                    </span>
+                    <span className="ml-1 font-normal text-slate-400">
+                      — when PPAP validated and Longrun/new parts entered
+                      production
+                    </span>
+                  </label>
+                  {(() => {
+                    const isLocked =
+                      opp.budget_years?.some(
+                        (by) => by.status_locked_at != null,
+                      ) ?? false;
+                    return isLocked ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                        🔒 Real start date is <strong>locked</strong> — this
+                        opportunity is committed in a closed budget. Contact
+                        your purchasing director to modify.
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="date"
+                          className={inp}
+                          value={form.real_start_date}
+                          onChange={(e) =>
+                            set("real_start_date", e.target.value)
+                          }
+                        />
+                        {form.real_start_date &&
+                          opp.planned_start_date &&
+                          form.real_start_date !== opp.planned_start_date && (
+                            <p className="text-[10px] text-amber-600 mt-0.5">
+                              ⚠ Differs from planned start (
+                              {fmtDate(opp.planned_start_date)}) — saving will
+                              automatically rebuild the monthly profile.
+                            </p>
+                          )}
+                      </>
                     );
-                    return droppedActuals.length > 0 ? (
-                      <p className="mt-1 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-[10px] font-semibold text-red-700">
-                        ⚠ {droppedActuals.length} month
-                        {droppedActuals.length !== 1 ? "s" : ""} before the new
-                        start already{" "}
-                        {droppedActuals.length !== 1 ? "have" : "has"} actual
-                        savings entered. Changing the real start will DELETE
-                        those months and their realized savings. Record/export
-                        them before saving.
-                      </p>
-                    ) : null;
                   })()}
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>
-                Change Mode{" "}
-                <span className="font-normal text-slate-400">
-                  — confirmed in Phase 1 by PM
-                </span>
-              </label>
-              <select
-                className={inp}
-                value={normalizeChangeMode(form.change_mode)}
-                onChange={(e) => set("change_mode", e.target.value)}
-              >
-                <option value="">— To be confirmed in Phase 1 —</option>
-                <option>Standard</option>
-                <option>Silent</option>
-              </select>
-            </div>
-            <div>
-              <label className={label}>Currency</label>
-              <select
-                className={inp}
-                value={form.currency}
-                onChange={(e) => {
-                  const c = e.target.value;
-                  set("currency", c);
-                  // EUR has no conversion — reset the rate so a stale non-1 value from a
-                  // previous currency can't be saved against EUR.
-                  if (c === "EUR") set("fx_rate_to_eur", "1");
-                }}
-              >
-                {["EUR", "USD", "RMB", "INR"].map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={label}>
-                FX rate → EUR{" "}
-                <span className="font-normal text-slate-400">
-                  — {form.currency || "EUR"} amount × rate = EUR (for group
-                  reporting)
-                </span>
-              </label>
-              <input
-                type="number"
-                step="0.000001"
-                disabled={form.currency === "EUR"}
-                className={`${inp} ${form.currency === "EUR" ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                value={form.currency === "EUR" ? "1" : form.fx_rate_to_eur}
-                onChange={(e) => set("fx_rate_to_eur", e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-        {/* Alert recipients — required for delay alerts and escalations */}
-        {!isPhase0 && (!form.purchasing_owner || !form.conversion_owner) && (
-          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700 flex items-start gap-2">
-            <span className="shrink-0 mt-0.5">⚠</span>
-            <span>
-              <strong>
-                Purchasing Owner and Conversion Owner are required
-              </strong>{" "}
-              to receive missing data alerts and escalation emails.
-            </span>
-          </div>
-        )}
-        {!isPhase0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>
-                Purchasing Owner
-                <span className="ml-1 text-red-400">*</span>
-                <span className="ml-1.5 font-normal text-slate-400">
-                  — receives tracking alerts
-                </span>
-              </label>
-              <input
-                type="email"
-                className={`${inp} ${!form.purchasing_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-                placeholder="purchasing.manager@avocarbon.com"
-                value={form.purchasing_owner}
-                onChange={(e) => set("purchasing_owner", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={label}>
-                Conversion Owner
-                <span className="ml-1 text-red-400">*</span>
-                <span className="ml-1.5 font-normal text-slate-400">
-                  — enters monthly actuals
-                </span>
-              </label>
-              <input
-                type="email"
-                className={`${inp} ${!form.conversion_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-                placeholder="buyer@avocarbon.com"
-                value={form.conversion_owner}
-                onChange={(e) => set("conversion_owner", e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-        {/* PLD scoring — compact */}
-        <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
-              PLD
-            </span>
-            <div className="flex items-center gap-1.5 text-[11px]">
-              {livePScore != null && (
-                <span className="text-slate-500">
-                  P=<b className="text-slate-700">{livePScore}</b>
-                </span>
-              )}
-              {liveLScore != null && (
-                <span className="text-slate-400">
-                  × L=<b className="text-slate-700">{liveLScore}</b>
-                </span>
-              )}
-              {liveDScore != null && (
-                <span className="text-slate-400">
-                  × D=<b className="text-slate-700">{liveDScore}</b>
-                </span>
-              )}
-              {pScore != null ? (
-                <>
-                  <span className="text-slate-400">=</span>
-                  <span className="font-black text-blue-700 text-sm">
-                    {pScore}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}
-                  >
-                    {pCat}
-                  </span>
-                </>
-              ) : (
-                <span className="text-slate-300 text-[10px]">incomplete</span>
+                  {/* R9 data-loss warning — rebuilding from a later start deletes the
+                  months before it, including any actuals already entered there. */}
+                  {form.real_start_date &&
+                    form.real_start_date !== (opp.real_start_date ?? "") &&
+                    (() => {
+                      const newStart = form.real_start_date.slice(0, 7);
+                      const droppedActuals = (
+                        opp.financial_lines[0]?.monthly_financials ?? []
+                      ).filter(
+                        (m) =>
+                          m.period_month != null &&
+                          m.actual_saving != null &&
+                          m.period_month.slice(0, 7) < newStart,
+                      );
+                      return droppedActuals.length > 0 ? (
+                        <p className="mt-1 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 text-[10px] font-semibold text-red-700">
+                          ⚠ {droppedActuals.length} month
+                          {droppedActuals.length !== 1 ? "s" : ""} before the
+                          new start already{" "}
+                          {droppedActuals.length !== 1 ? "have" : "has"} actual
+                          savings entered. Changing the real start will DELETE
+                          those months and their realized savings. Record/export
+                          them before saving.
+                        </p>
+                      ) : null;
+                    })()}
+                </div>
               )}
             </div>
-          </div>
-
-          {isSourced && (
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
-              {/* P */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                    P
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={label}>
+                  Change Mode{" "}
+                  <span className="font-normal text-slate-400">
+                    — confirmed in Phase 1 by PM
                   </span>
-                  <span className="text-slate-500 font-medium">Pay-back</span>
-                </div>
-                <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-                  {_pldHasInvData ? (
-                    <span
-                      className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
-                    >
-                      {_pldPaybackMonths === 0
-                        ? "0 mo."
-                        : _pldPaybackMonths >= 999
-                          ? "∞"
-                          : `${_pldPaybackMonths.toFixed(1)} mo.`}
-                      {livePScore != null && (
-                        <span className="ml-1 text-slate-400">
-                          → {livePScore}
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="text-slate-300">fill costs + saving</span>
-                  )}
-                </div>
-                <div className="text-[9px] text-slate-400 space-y-0.5">
-                  {(
-                    [
-                      ["0 mo.", "1 ★"],
-                      ["≤2 mo.", "2"],
-                      ["≤4 mo.", "3"],
-                      ["≤12 mo.", "4"],
-                      [">12 mo.", "5"],
-                    ] as [string, string][]
-                  ).map(([v, s]) => (
-                    <div
-                      key={s}
-                      className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                    >
-                      <span>{v}</span>
-                      <span>{s}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* L */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                    L
-                  </span>
-                  <span className="text-slate-500 font-medium">Lead-time</span>
-                </div>
-                <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-                  {_pldTotalWeeks > 0 ? (
-                    <span
-                      className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
-                    >
-                      {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
-                      {liveLScore != null && (
-                        <span className="ml-1 text-slate-400">
-                          → {liveLScore}
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="text-slate-300">fill phase weeks</span>
-                  )}
-                </div>
-                <div className="text-[9px] text-slate-400 space-y-0.5">
-                  {(
-                    [
-                      ["<1m", "1 ★"],
-                      ["<2m", "2"],
-                      ["<4m", "3"],
-                      ["<6m", "4"],
-                      ["≥6m", "5"],
-                    ] as [string, string][]
-                  ).map(([v, s]) => (
-                    <div
-                      key={s}
-                      className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                    >
-                      <span>{v}</span>
-                      <span>{s}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* D */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                    D
-                  </span>
-                  <span className="text-slate-500 font-medium">Difficulty</span>
-                </div>
+                </label>
                 <select
-                  className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
-                  value={liveDScore ?? ""}
-                  onChange={(e) =>
-                    set("difficulty_score", e.target.value as unknown as number)
-                  }
+                  className={inp}
+                  value={normalizeChangeMode(form.change_mode)}
+                  onChange={(e) => set("change_mode", e.target.value)}
                 >
-                  <option value="">— select —</option>
-                  <option value="1">1 — Easy</option>
-                  <option value="2">2 — Relatively easy</option>
-                  <option value="3">3 — Moderately difficult</option>
-                  <option value="4">4 — Difficult</option>
-                  <option value="5">5 — Very Difficult</option>
+                  <option value="">— To be confirmed in Phase 1 —</option>
+                  <option>Standard</option>
+                  <option>Silent</option>
                 </select>
-                <div className="text-[9px] text-slate-400 space-y-0.5">
-                  {(
-                    [
-                      ["Easy", "1 ★"],
-                      ["Rel. easy", "2"],
-                      ["Moderate", "3"],
-                      ["Difficult", "4"],
-                      ["Very diff.", "5"],
-                    ] as [string, string][]
-                  ).map(([v, s]) => (
-                    <div
-                      key={s}
-                      className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                    >
-                      <span>{v}</span>
-                      <span>{s}</span>
-                    </div>
+              </div>
+              <div>
+                <label className={label}>Currency</label>
+                <select
+                  className={inp}
+                  value={form.currency}
+                  onChange={(e) => {
+                    const c = e.target.value;
+                    set("currency", c);
+                    // EUR has no conversion — reset the rate so a stale non-1 value from a
+                    // previous currency can't be saved against EUR.
+                    if (c === "EUR") set("fx_rate_to_eur", "1");
+                  }}
+                >
+                  {["EUR", "USD", "RMB", "INR"].map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
-                </div>
+                </select>
+              </div>
+              <div>
+                <label className={label}>
+                  FX rate → EUR{" "}
+                  <span className="font-normal text-slate-400">
+                    — {form.currency || "EUR"} amount × rate = EUR (for group
+                    reporting)
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  disabled={form.currency === "EUR" || isFxLocked}
+                  className={`${inp} ${
+                    form.currency === "EUR" || isFxLocked
+                      ? "bg-slate-100 cursor-not-allowed text-slate-500"
+                      : !form.fx_rate_to_eur ||
+                          parseFloat(form.fx_rate_to_eur) <= 0
+                        ? "border-amber-400 focus:border-amber-500 focus:ring-amber-100"
+                        : ""
+                  }`}
+                  value={form.currency === "EUR" ? "1" : form.fx_rate_to_eur}
+                  onChange={(e) => set("fx_rate_to_eur", e.target.value)}
+                />
+                {isFxLocked && form.currency !== "EUR" && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    FX rate is locked — a Budgeted commitment or actual saving
+                    has been recorded.
+                  </p>
+                )}
+                {form.currency !== "EUR" &&
+                  (!form.fx_rate_to_eur ||
+                    parseFloat(form.fx_rate_to_eur) <= 0) && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-700">
+                      <AlertTriangle size={10} className="shrink-0" />
+                      Required — without this rate, all KPI and budget totals
+                      for this opportunity will be wrong (counted at 1:1).
+                    </p>
+                  )}
+              </div>
+            </div>
+          </div>
+          {/* Alert recipients — required for delay alerts and escalations */}
+          {!isPhase0 && (!form.purchasing_owner || !form.conversion_owner) && (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-700 flex items-start gap-2">
+              <span className="shrink-0 mt-0.5">⚠</span>
+              <span>
+                <strong>
+                  Purchasing Owner and Conversion Owner are required
+                </strong>{" "}
+                to receive missing data alerts and escalation emails.
+              </span>
+            </div>
+          )}
+          {!isPhase0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={label}>
+                  Purchasing Owner
+                  <span className="ml-1 text-red-400">*</span>
+                  <span className="ml-1.5 font-normal text-slate-400">
+                    — receives tracking alerts
+                  </span>
+                </label>
+                <input
+                  type="email"
+                  className={`${inp} ${!form.purchasing_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
+                  placeholder="purchasing.manager@avocarbon.com"
+                  value={form.purchasing_owner}
+                  onChange={(e) => set("purchasing_owner", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className={label}>
+                  Conversion Owner
+                  <span className="ml-1 text-red-400">*</span>
+                  <span className="ml-1.5 font-normal text-slate-400">
+                    — enters monthly actuals
+                  </span>
+                </label>
+                <input
+                  type="email"
+                  className={`${inp} ${!form.conversion_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
+                  placeholder="buyer@avocarbon.com"
+                  value={form.conversion_owner}
+                  onChange={(e) => set("conversion_owner", e.target.value)}
+                />
               </div>
             </div>
           )}
-        </div>
-        {/* Manual PLD scores — Negotiation and Cash have no STP workbook */}
-        {!isSourced && (
+          {/* PLD scoring — compact */}
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
+                PLD
+              </span>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                {livePScore != null && (
+                  <span className="text-slate-500">
+                    P=<b className="text-slate-700">{livePScore}</b>
+                  </span>
+                )}
+                {liveLScore != null && (
+                  <span className="text-slate-400">
+                    × L=<b className="text-slate-700">{liveLScore}</b>
+                  </span>
+                )}
+                {liveDScore != null && (
+                  <span className="text-slate-400">
+                    × D=<b className="text-slate-700">{liveDScore}</b>
+                  </span>
+                )}
+                {pScore != null ? (
+                  <>
+                    <span className="text-slate-400">=</span>
+                    <span className="font-black text-blue-700 text-sm">
+                      {pScore}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}
+                    >
+                      {pCat}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-300 text-[10px]">incomplete</span>
+                )}
+              </div>
+            </div>
+
+            {isSourced && (
+              <div className="grid grid-cols-3 gap-2 text-[10px]">
+                {/* P */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                      P
+                    </span>
+                    <span className="text-slate-500 font-medium">Pay-back</span>
+                  </div>
+                  <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                    {_pldHasInvData ? (
+                      <span
+                        className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                      >
+                        {_pldPaybackMonths === 0
+                          ? "0 mo."
+                          : _pldPaybackMonths >= 999
+                            ? "∞"
+                            : `${_pldPaybackMonths.toFixed(1)} mo.`}
+                        {livePScore != null && (
+                          <span className="ml-1 text-slate-400">
+                            → {livePScore}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">
+                        fill costs + saving
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[9px] text-slate-400 space-y-0.5">
+                    {(
+                      [
+                        ["0 mo.", "1 ★"],
+                        ["≤2 mo.", "2"],
+                        ["≤4 mo.", "3"],
+                        ["≤12 mo.", "4"],
+                        [">12 mo.", "5"],
+                      ] as [string, string][]
+                    ).map(([v, s]) => (
+                      <div
+                        key={s}
+                        className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                      >
+                        <span>{v}</span>
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* L */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                      L
+                    </span>
+                    <span className="text-slate-500 font-medium">
+                      Lead-time
+                    </span>
+                  </div>
+                  <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                    {_pldTotalWeeks > 0 ? (
+                      <span
+                        className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                      >
+                        {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
+                        {liveLScore != null && (
+                          <span className="ml-1 text-slate-400">
+                            → {liveLScore}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">fill phase weeks</span>
+                    )}
+                  </div>
+                  <div className="text-[9px] text-slate-400 space-y-0.5">
+                    {(
+                      [
+                        ["<1m", "1 ★"],
+                        ["<2m", "2"],
+                        ["<4m", "3"],
+                        ["<6m", "4"],
+                        ["≥6m", "5"],
+                      ] as [string, string][]
+                    ).map(([v, s]) => (
+                      <div
+                        key={s}
+                        className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                      >
+                        <span>{v}</span>
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* D */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                      D
+                    </span>
+                    <span className="text-slate-500 font-medium">
+                      Difficulty
+                    </span>
+                  </div>
+                  <select
+                    className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
+                    value={liveDScore ?? ""}
+                    onChange={(e) =>
+                      set(
+                        "difficulty_score",
+                        e.target.value as unknown as number,
+                      )
+                    }
+                  >
+                    <option value="">— select —</option>
+                    <option value="1">1 — Easy</option>
+                    <option value="2">2 — Relatively easy</option>
+                    <option value="3">3 — Moderately difficult</option>
+                    <option value="4">4 — Difficult</option>
+                    <option value="5">5 — Very Difficult</option>
+                  </select>
+                  <div className="text-[9px] text-slate-400 space-y-0.5">
+                    {(
+                      [
+                        ["Easy", "1 ★"],
+                        ["Rel. easy", "2"],
+                        ["Moderate", "3"],
+                        ["Difficult", "4"],
+                        ["Very diff.", "5"],
+                      ] as [string, string][]
+                    ).map(([v, s]) => (
+                      <div
+                        key={s}
+                        className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                      >
+                        <span>{v}</span>
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          {/* PLD scores — manual for Negotiation/Cash, auto-calc with override for STP */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              PLD Scores — Manual Entry
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                PLD Scores
+              </p>
+              {isSourced && (
+                <p className="text-[10px] text-slate-400 text-right leading-relaxed">
+                  P &amp; L auto-calculated — set to override, clear to reset
+                </p>
+              )}
+            </div>
+            {isSourced && (
+              <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-[10.5px] text-blue-700 flex flex-wrap gap-3">
+                <span>
+                  Auto P: <strong>{_autoP ?? "—"}</strong>
+                </span>
+                <span>
+                  Auto L: <strong>{_autoL ?? "—"}</strong>
+                </span>
+                {(form.payback_score || form.lead_time_score) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      set("payback_score", "" as unknown as number);
+                      set("lead_time_score", "" as unknown as number);
+                    }}
+                    className="ml-auto text-blue-500 hover:text-blue-700 underline text-[10px]"
+                  >
+                    Reset P &amp; L to auto
+                  </button>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={label}>
@@ -2385,1317 +2568,1437 @@ function EditTab({
                 </select>
               </div>
             </div>
-          </div>
-        )}
-        <div>
-          <label className={label}>Comments</label>
-          <textarea
-            rows={2}
-            className={`${inp} resize-none`}
-            value={form.comments}
-            onChange={(e) => set("comments", e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* STP study — only for Sourcing / Technical Productivity, same form & save */}
-      {showStpSection && (
-        <div className="order-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
-            <FileText size={11} /> STP Study — Sourcing &amp; Technical
-            Productivity
-          </p>
-          <p className="text-[11px] text-slate-500">
-            Workbook-aligned inputs. Prices &amp; quantities below drive the
-            savings estimate shown in the Financial baseline above.
-          </p>
-
-          {stpReadOnly && (
-            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              {pendingApproval ? (
-                <>
-                  <strong>STP awaiting a gate decision.</strong> It has been
-                  submitted for review, so it is locked to keep it identical to
-                  the version the reviewer received. It unlocks if the gate
-                  returns it for rework.
-                </>
-              ) : isStpPhase23 ? (
-                <div className="flex flex-col gap-2">
-                  <p>
-                    <strong>STP locked in execution.</strong> Prices and quantities
-                    are committed. If renegotiation with the supplier changes the
-                    baseline, submit a revision request — the Purchasing Director
-                    will receive an email and must approve before values are updated.
-                  </p>
-                  {!hasPendingSTPRevision && (
-                    <button
-                      type="button"
-                      onClick={() => setStpRevModal(true)}
-                      className="self-start rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                    >
-                      Request Revision
-                    </button>
-                  )}
-                </div>
+            {/* Force priority override */}
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-[10.5px] font-semibold text-slate-500 shrink-0">
+                  Force priority:
+                </span>
+                <select
+                  className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                  value={form.forced_priority}
+                  onChange={(e) => set("forced_priority", e.target.value)}
+                >
+                  <option value="">— auto (P×L×D) —</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+              {form.forced_priority ? (
+                <p className="text-[10px] text-amber-600 flex items-center gap-1">
+                  <AlertTriangle size={10} /> Manual override active — PLD score
+                  ignored
+                </p>
               ) : (
-                <>
-                  <strong>STP locked.</strong> Prices, quantities and the
-                  savings baseline can be filled and revised in Phase 0–1. From
-                  Phase 2 onward the opportunity is committed to execution, so
-                  the STP is read-only here.
-                  {isBudgeted &&
-                    " Changing a committed baseline requires a reviewed Revise, not a silent edit."}
-                </>
+                <p className="text-[10px] text-slate-400">
+                  Auto: P×L×D ={" "}
+                  {pScore != null ? (
+                    <span className="font-semibold">{pScore}</span>
+                  ) : (
+                    "—"
+                  )}{" "}
+                  →{" "}
+                  <span className="font-semibold">{pCat ?? "—"}</span>
+                </p>
               )}
             </div>
-          )}
+          </div>
+          <div>
+            <label className={label}>Comments</label>
+            <textarea
+              rows={2}
+              className={`${inp} resize-none`}
+              value={form.comments}
+              onChange={(e) => set("comments", e.target.value)}
+            />
+          </div>
+        </div>
 
-          {/* Pending revision banner — shown while awaiting Director decision */}
-          {hasPendingSTPRevision && (() => {
-            const rev = opp.pending_stp_revision as Record<string, unknown>;
-            const requested_at = rev.requested_at as string | undefined;
-            const director_email = rev.director_email as string | undefined;
-            const note = rev.note as string | undefined;
-            const proposed = rev.proposed_fields as Record<string, unknown> | undefined;
-            const preview = rev.computed_preview as Record<string, unknown> | undefined;
-            return (
-              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
-                    <Clock size={13} /> Revision pending Director approval
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setStpDecModal(true)}
-                    className="rounded-lg bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
-                  >
-                    Approve / Reject
-                  </button>
-                </div>
-                {director_email && (
-                  <p className="text-xs text-blue-700">
-                    Sent to <strong>{director_email}</strong>
-                    {requested_at && ` on ${new Date(requested_at).toLocaleDateString("en-GB")}`}
-                  </p>
-                )}
-                {note && (
-                  <p className="text-xs text-blue-600 italic">"{note}"</p>
-                )}
-                {proposed && (
-                  <div className="text-xs text-blue-700 grid grid-cols-2 gap-x-4 gap-y-0.5 pt-1">
-                    {(["current_price", "proposed_price", "proposed_price_n1", "proposed_price_n2", "proposed_price_n3"] as const).map((k) =>
-                      proposed[k] != null ? (
-                        <span key={k}><span className="font-semibold">{k.replace(/_/g, " ")}</span>: {String(proposed[k])}</span>
-                      ) : null
-                    )}
-                    {preview && preview.period_saving != null && (
-                      <span className="col-span-2 font-semibold text-blue-800 pt-0.5">
-                        Projected saving: €{Number(preview.period_saving).toLocaleString("en-GB")}
-                      </span>
+        {/* STP study — only for Sourcing / Technical Productivity, same form & save */}
+        {showStpSection && (
+          <div className="order-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+              <FileText size={11} /> STP Study — Sourcing &amp; Technical
+              Productivity
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Workbook-aligned inputs. Prices &amp; quantities below drive the
+              savings estimate shown in the Financial baseline above.
+            </p>
+
+            {stpReadOnly && (
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {pendingApproval ? (
+                  <>
+                    <strong>STP awaiting a gate decision.</strong> It has been
+                    submitted for review, so it is locked to keep it identical
+                    to the version the reviewer received. It unlocks if the gate
+                    returns it for rework.
+                  </>
+                ) : isStpPhase23 ? (
+                  <div className="flex flex-col gap-2">
+                    <p>
+                      <strong>STP locked in execution.</strong> Prices and
+                      quantities are committed. If renegotiation with the
+                      supplier changes the baseline, submit a revision request —
+                      the Purchasing Director will receive an email and must
+                      approve before values are updated.
+                    </p>
+                    {!hasPendingSTPRevision && (
+                      <button
+                        type="button"
+                        onClick={() => setStpRevModal(true)}
+                        className="self-start rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                      >
+                        Request Revision
+                      </button>
                     )}
                   </div>
+                ) : (
+                  <>
+                    <strong>STP locked.</strong> Prices, quantities and the
+                    savings baseline can be filled and revised in Phase 0–1.
+                    From Phase 2 onward the opportunity is committed to
+                    execution, so the STP is read-only here.
+                    {isBudgeted &&
+                      " Changing a committed baseline requires a reviewed Revise, not a silent edit."}
+                  </>
                 )}
-              </div>
-            );
-          })()}
-
-          <fieldset
-            disabled={stpReadOnly}
-            className={stpReadOnly ? "space-y-4 opacity-80" : "space-y-4"}
-          >
-            {/* Why checkboxes */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Why
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {[
-                  ["reason_productivity", "Productivity"],
-                  ["reason_quality", "Quality"],
-                  ["reason_capacity", "Capacity"],
-                ].map(([k, lbl]) => (
-                  <label
-                    key={k}
-                    className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      className="accent-blue-600"
-                      checked={form[k as keyof typeof form] as boolean}
-                      onChange={(e) =>
-                        set(k, e.target.checked as unknown as string)
-                      }
-                    />
-                    {lbl}
-                  </label>
-                ))}
-                <input
-                  className={`${inp} flex-1 min-w-[120px]`}
-                  placeholder="Other..."
-                  value={form.reason_other}
-                  onChange={(e) => set("reason_other", e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Scope, customers, plants & annual quantities */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Scope &amp; Customers
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={label}>Scope IN (part numbers)</label>
-                  <input
-                    disabled={locked}
-                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                    placeholder="27102500010"
-                    value={form.scope_in}
-                    onChange={(e) => set("scope_in", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={label}>Scope OUT</label>
-                  <input
-                    disabled={locked}
-                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                    placeholder="NA"
-                    value={form.scope_out}
-                    onChange={(e) => set("scope_out", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={label}>Customers</label>
-                  <input
-                    className={inp}
-                    placeholder="Valeo, Multipe..."
-                    value={form.customers}
-                    onChange={(e) => set("customers", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={label}>Main Avocarbon Plant</label>
-                  <select
-                    className={inp}
-                    value={form.plant_id}
-                    onChange={(e) => set("plant_id", e.target.value)}
-                  >
-                    <option value="">— Select plant —</option>
-                    {sites.map((s) => (
-                      <option key={s.id_site} value={s.id_site}>
-                        {s.site_name}
-                        {s.city ? ` · ${s.city}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={label}>Secondary plants</label>
-                  <input
-                    className={inp}
-                    placeholder="Kunshan, Tianjin..."
-                    value={form.secondary_plants}
-                    onChange={(e) => set("secondary_plants", e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="border-t border-slate-100 pt-3">
-                <p className={label}>
-                  Annual Quantities{" "}
-                  <span className="font-normal text-slate-400">
-                    — N1 is used to auto-calc the first-year saving
-                  </span>
-                </p>
-                <div className="grid grid-cols-4 gap-3">
-                  {(
-                    [
-                      ["annual_quantity_n1", "N1"],
-                      ["annual_quantity_n2", "N2"],
-                      ["annual_quantity_n3", "N3"],
-                      ["annual_quantity_n4", "N4"],
-                    ] as [string, string][]
-                  ).map(([k, lbl]) => (
-                    <div key={k}>
-                      <label className={label}>{lbl}</label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        disabled={locked}
-                        className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                        value={fmtIntInput(
-                          form[k as keyof typeof form] as string,
-                        )}
-                        onChange={(e) => set(k, stripInt(e.target.value))}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Initial Step */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Initial Step
-              </p>
-              <p className="text-[11px] text-slate-500">
-                Has the current supplier been formally given a chance to
-                decrease the price?
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={label}>Answer</label>
-                  <select
-                    className={inp}
-                    value={form.supplier_asked}
-                    onChange={(e) => set("supplier_asked", e.target.value)}
-                  >
-                    <option value="">— Select —</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={label}>Result / explanation</label>
-                  <input
-                    className={inp}
-                    placeholder="e.g. Declined to match price"
-                    value={form.supplier_asked_result}
-                    onChange={(e) =>
-                      set("supplier_asked_result", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Current supplier class evaluation — read from existing DB (PldClassEvaluationInput) */}
-            {currentSupplierEval && (
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
-                  Current Supplier — Latest Class Evaluation (from panel)
-                </p>
-                <p className="text-[10px] text-emerald-500">
-                  This data is read from the existing supplier evaluation — no
-                  need to re-enter it.
-                </p>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
-                  {[
-                    ["Supplier status", "supplier_status"],
-                    ["Class", "class_value_relation"],
-                    ["Operational grade", "operational_grade"],
-                    ["Final grade", "final_grade"],
-                    ["Panel decision", "panel_decision"],
-                    ["TOP (payment terms)", "top"],
-                    ["LTA", "lta"],
-                    ["Competitiveness", "competitiveness"],
-                    ["SQMA", "sqma"],
-                    ["Financial health", "financial_health"],
-                    ["Geo coverage", "geo_coverage"],
-                    ["Family coverage", "family_coverage"],
-                  ].map(([lbl, key]) =>
-                    currentSupplierEval[key] != null ? (
-                      <div key={key} className="flex items-center gap-2">
-                        <span className="text-slate-400 w-36 shrink-0">
-                          {lbl}
-                        </span>
-                        <span className="font-semibold text-slate-700">
-                          {String(currentSupplierEval[key])}
-                        </span>
-                      </div>
-                    ) : null,
-                  )}
-                </div>
               </div>
             )}
 
-            {/* Supplier before/after — full STP comparison */}
-            <FormSection
-              title="Supplier Comparison (Before → After)"
-              defaultOpen={true}
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={label}>Current Supplier — Before</label>
-                  {isPhase0 ? (
-                    <>
-                      <select
-                        className={inp}
-                        value={form.supplier_id}
-                        onChange={(e) => set("supplier_id", e.target.value)}
+            {/* Pending revision banner — shown while awaiting Director decision */}
+            {hasPendingSTPRevision &&
+              (() => {
+                const rev = opp.pending_stp_revision as Record<string, unknown>;
+                const requested_at = rev.requested_at as string | undefined;
+                const director_email = rev.director_email as string | undefined;
+                const note = rev.note as string | undefined;
+                const proposed = rev.proposed_fields as
+                  | Record<string, unknown>
+                  | undefined;
+                const preview = rev.computed_preview as
+                  | Record<string, unknown>
+                  | undefined;
+                return (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+                        <Clock size={13} /> Revision pending Director approval
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setStpDecModal(true)}
+                        className="rounded-lg bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
                       >
-                        <option value="">— Select current supplier —</option>
-                        {suppliersForPlant.map((s) => (
-                          <option
-                            key={s.id_supplier_unit}
-                            value={s.id_supplier_unit}
-                          >
-                            {[s.group_name, s.supplier_code, s.city]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </option>
-                        ))}
-                      </select>
-                      {suppliersForPlant.length === 0 && opp.plant_id && (
-                        <p className="text-[10px] text-amber-500 mt-1">
-                          No suppliers linked to this plant yet.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    (() => {
-                      const before = suppliersForPlant.find(
-                        (s) =>
-                          s.id_supplier_unit ===
-                          (opp.supplier_id ??
-                            parseInt(form.supplier_id || "0")),
-                      );
-                      return (
-                        <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 min-h-[28px]">
-                          {before
-                            ? [
-                                before.group_name,
-                                before.supplier_code,
-                                before.city,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")
-                            : opp.supplier_id
-                              ? `ID ${opp.supplier_id}`
-                              : "—"}
-                        </div>
-                      );
-                    })()
-                  )}
-                </div>
-                <div>
-                  <label className={label}>Proposed New Supplier — After</label>
-                  {isPhase0 ? (
-                    <>
+                        Approve / Reject
+                      </button>
+                    </div>
+                    {director_email && (
+                      <p className="text-xs text-blue-700">
+                        Sent to <strong>{director_email}</strong>
+                        {requested_at &&
+                          ` on ${new Date(requested_at).toLocaleDateString("en-GB")}`}
+                      </p>
+                    )}
+                    {note && (
+                      <p className="text-xs text-blue-600 italic">"{note}"</p>
+                    )}
+                    {proposed && (
+                      <div className="text-xs text-blue-700 grid grid-cols-2 gap-x-4 gap-y-0.5 pt-1">
+                        {(
+                          [
+                            "current_price",
+                            "proposed_price",
+                            "proposed_price_n1",
+                            "proposed_price_n2",
+                            "proposed_price_n3",
+                          ] as const
+                        ).map((k) =>
+                          proposed[k] != null ? (
+                            <span key={k}>
+                              <span className="font-semibold">
+                                {k.replace(/_/g, " ")}
+                              </span>
+                              : {String(proposed[k])}
+                            </span>
+                          ) : null,
+                        )}
+                        {preview && preview.period_saving != null && (
+                          <span className="col-span-2 font-semibold text-blue-800 pt-0.5">
+                            Projected saving: €
+                            {Number(preview.period_saving).toLocaleString(
+                              "en-GB",
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+            <fieldset
+              disabled={stpReadOnly}
+              className={stpReadOnly ? "space-y-4 opacity-80" : "space-y-4"}
+            >
+              {/* Why checkboxes */}
+              <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Why
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    ["reason_productivity", "Productivity"],
+                    ["reason_quality", "Quality"],
+                    ["reason_capacity", "Capacity"],
+                  ].map(([k, lbl]) => (
+                    <label
+                      key={k}
+                      className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
+                    >
                       <input
-                        className={inp}
-                        placeholder="Longrun, Haihe... (free text in Phase 0)"
-                        value={form.proposed_supplier_name}
+                        type="checkbox"
+                        className="accent-blue-600"
+                        checked={form[k as keyof typeof form] as boolean}
                         onChange={(e) =>
-                          set("proposed_supplier_name", e.target.value)
+                          set(k, e.target.checked as unknown as string)
                         }
                       />
-                      <p className="text-[9.5px] text-slate-400 mt-0.5">
-                        Free text in Phase 0 — link to panel from Phase 1
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <select
-                        className={inp}
-                        value={form.proposed_supplier_id}
-                        onChange={(e) =>
-                          set("proposed_supplier_id", e.target.value)
-                        }
-                      >
-                        <option value="">— Select from panel —</option>
-                        {suppliersForPlant.map((s) => (
-                          <option
-                            key={s.id_supplier_unit}
-                            value={s.id_supplier_unit}
-                          >
-                            {[s.group_name, s.supplier_code, s.city]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </option>
-                        ))}
-                      </select>
-                      {opp.proposed_supplier_name && (
-                        <p className="text-[9.5px] text-slate-400 mt-0.5">
-                          Phase 0 candidate:{" "}
-                          <span className="font-medium text-slate-600">
-                            {opp.proposed_supplier_name}
-                          </span>
-                        </p>
-                      )}
-                      {suppliersForPlant.length === 0 && opp.plant_id && (
-                        <p className="text-[10px] text-amber-500 mt-1">
-                          No suppliers linked to this plant yet.
-                        </p>
-                      )}
-                    </>
-                  )}
+                      {lbl}
+                    </label>
+                  ))}
+                  <input
+                    className={`${inp} flex-1 min-w-[120px]`}
+                    placeholder="Other..."
+                    value={form.reason_other}
+                    onChange={(e) => set("reason_other", e.target.value)}
+                  />
                 </div>
               </div>
-              {/* Logistics: Before / After table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-1/3">
-                        Field
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
-                        Before
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
-                        After
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Country — Before is derived from the selected supplier (form.supplier_id) */}
-                    {(() => {
-                      const currentSupplierCountry =
-                        suppliersForPlant.find(
+
+              {/* Scope, customers, plants & annual quantities */}
+              <div className={`rounded-xl border bg-white p-3 space-y-3 ${gateHighlight && !opp.scope_in ? "border-orange-400" : "border-slate-200"}`}>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${gateHighlight && !opp.scope_in ? "text-orange-500" : "text-slate-400"}`}>
+                  Scope &amp; Customers
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Scope IN (part numbers)</label>
+                    <input
+                      disabled={locked}
+                      className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                      placeholder="27102500010"
+                      value={form.scope_in}
+                      onChange={(e) => set("scope_in", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Scope OUT</label>
+                    <input
+                      disabled={locked}
+                      className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                      placeholder="NA"
+                      value={form.scope_out}
+                      onChange={(e) => set("scope_out", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Customers</label>
+                    <input
+                      className={inp}
+                      placeholder="Valeo, Multipe..."
+                      value={form.customers}
+                      onChange={(e) => set("customers", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Main Avocarbon Plant</label>
+                    <select
+                      className={inp}
+                      value={form.plant_id}
+                      onChange={(e) => set("plant_id", e.target.value)}
+                    >
+                      <option value="">— Select plant —</option>
+                      {sites.map((s) => (
+                        <option key={s.id_site} value={s.id_site}>
+                          {s.site_name}
+                          {s.city ? ` · ${s.city}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={label}>Secondary plants</label>
+                    <input
+                      className={inp}
+                      placeholder="Kunshan, Tianjin..."
+                      value={form.secondary_plants}
+                      onChange={(e) => set("secondary_plants", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="border-t border-slate-100 pt-3">
+                  <p className={label}>
+                    Annual Quantities{" "}
+                    <span className="font-normal text-slate-400">
+                      — N1 is used to auto-calc the first-year saving
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-4 gap-3">
+                    {(
+                      [
+                        ["annual_quantity_n1", "N1"],
+                        ["annual_quantity_n2", "N2"],
+                        ["annual_quantity_n3", "N3"],
+                        ["annual_quantity_n4", "N4"],
+                      ] as [string, string][]
+                    ).map(([k, lbl]) => (
+                      <div key={k}>
+                        <label className={label}>{lbl}</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          disabled={locked}
+                          className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                          value={fmtIntInput(
+                            form[k as keyof typeof form] as string,
+                          )}
+                          onChange={(e) => set(k, stripInt(e.target.value))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Initial Step */}
+              <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Initial Step
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Has the current supplier been formally given a chance to
+                  decrease the price?
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Answer</label>
+                    <select
+                      className={inp}
+                      value={form.supplier_asked}
+                      onChange={(e) => set("supplier_asked", e.target.value)}
+                    >
+                      <option value="">— Select —</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={label}>Result / explanation</label>
+                    <input
+                      className={inp}
+                      placeholder="e.g. Declined to match price"
+                      value={form.supplier_asked_result}
+                      onChange={(e) =>
+                        set("supplier_asked_result", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Current supplier class evaluation — read from existing DB (PldClassEvaluationInput) */}
+              {currentSupplierEval && (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                    Current Supplier — Latest Class Evaluation (from panel)
+                  </p>
+                  <p className="text-[10px] text-emerald-500">
+                    This data is read from the existing supplier evaluation — no
+                    need to re-enter it.
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+                    {[
+                      ["Supplier status", "supplier_status"],
+                      ["Class", "class_value_relation"],
+                      ["Operational grade", "operational_grade"],
+                      ["Final grade", "final_grade"],
+                      ["Panel decision", "panel_decision"],
+                      ["TOP (payment terms)", "top"],
+                      ["LTA", "lta"],
+                      ["Competitiveness", "competitiveness"],
+                      ["SQMA", "sqma"],
+                      ["Financial health", "financial_health"],
+                      ["Geo coverage", "geo_coverage"],
+                      ["Family coverage", "family_coverage"],
+                    ].map(([lbl, key]) =>
+                      currentSupplierEval[key] != null ? (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-slate-400 w-36 shrink-0">
+                            {lbl}
+                          </span>
+                          <span className="font-semibold text-slate-700">
+                            {String(currentSupplierEval[key])}
+                          </span>
+                        </div>
+                      ) : null,
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Supplier before/after — full STP comparison */}
+              <FormSection
+                title="Supplier Comparison (Before → After)"
+                defaultOpen={true}
+                highlight={gateHighlight && !(opp.current_price && opp.proposed_price)}
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Current Supplier — Before</label>
+                    {isPhase0 ? (
+                      <>
+                        <select
+                          className={inp}
+                          value={form.supplier_id}
+                          onChange={(e) => set("supplier_id", e.target.value)}
+                        >
+                          <option value="">— Select current supplier —</option>
+                          {suppliersForPlant.map((s) => (
+                            <option
+                              key={s.id_supplier_unit}
+                              value={s.id_supplier_unit}
+                            >
+                              {[s.group_name, s.supplier_code, s.city]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </option>
+                          ))}
+                        </select>
+                        {suppliersForPlant.length === 0 && opp.plant_id && (
+                          <p className="text-[10px] text-amber-500 mt-1">
+                            No suppliers linked to this plant yet.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      (() => {
+                        const before = suppliersForPlant.find(
                           (s) =>
                             s.id_supplier_unit ===
-                            (parseInt(form.supplier_id || "0") ||
-                              opp.supplier_id),
-                        )?.city ?? null;
-                      return (
-                        <tr className="border-t border-slate-100">
+                            (opp.supplier_id ??
+                              parseInt(form.supplier_id || "0")),
+                        );
+                        return (
+                          <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 min-h-[28px]">
+                            {before
+                              ? [
+                                  before.group_name,
+                                  before.supplier_code,
+                                  before.city,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")
+                              : opp.supplier_id
+                                ? `ID ${opp.supplier_id}`
+                                : "—"}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                  <div>
+                    <label className={label}>
+                      Proposed New Supplier — After
+                    </label>
+                    {isPhase0 ? (
+                      <>
+                        <input
+                          className={inp}
+                          placeholder="Longrun, Haihe... (free text in Phase 0)"
+                          value={form.proposed_supplier_name}
+                          onChange={(e) =>
+                            set("proposed_supplier_name", e.target.value)
+                          }
+                        />
+                        <p className="text-[9.5px] text-slate-400 mt-0.5">
+                          Free text in Phase 0 — link to panel from Phase 1
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          className={inp}
+                          value={form.proposed_supplier_id}
+                          onChange={(e) =>
+                            set("proposed_supplier_id", e.target.value)
+                          }
+                        >
+                          <option value="">— Select from panel —</option>
+                          {suppliersForPlant.map((s) => (
+                            <option
+                              key={s.id_supplier_unit}
+                              value={s.id_supplier_unit}
+                            >
+                              {[s.group_name, s.supplier_code, s.city]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </option>
+                          ))}
+                        </select>
+                        {opp.proposed_supplier_name && (
+                          <p className="text-[9.5px] text-slate-400 mt-0.5">
+                            Phase 0 candidate:{" "}
+                            <span className="font-medium text-slate-600">
+                              {opp.proposed_supplier_name}
+                            </span>
+                          </p>
+                        )}
+                        {suppliersForPlant.length === 0 && opp.plant_id && (
+                          <p className="text-[10px] text-amber-500 mt-1">
+                            No suppliers linked to this plant yet.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+                {/* Logistics: Before / After table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500 w-1/3">
+                          Field
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                          Before
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                          After
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Country — Before is derived from the selected supplier (form.supplier_id) */}
+                      {(() => {
+                        const currentSupplierCountry =
+                          suppliersForPlant.find(
+                            (s) =>
+                              s.id_supplier_unit ===
+                              (parseInt(form.supplier_id || "0") ||
+                                opp.supplier_id),
+                          )?.city ?? null;
+                        return (
+                          <tr className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 font-semibold text-slate-500">
+                              Country
+                            </td>
+                            <td className="px-3 py-1.5">
+                              {currentSupplierCountry ? (
+                                <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700">
+                                  {currentSupplierCountry}{" "}
+                                  <span className="font-normal text-emerald-500">
+                                    (from panel)
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 text-[10px]">
+                                  Select supplier above
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <input
+                                className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                                placeholder="China"
+                                value={form.country_after}
+                                onChange={(e) =>
+                                  set("country_after", e.target.value)
+                                }
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                      {(
+                        [
+                          [
+                            "incoterms_before",
+                            "incoterms_after",
+                            "Incoterms",
+                            "DDP",
+                            "EXW",
+                          ],
+                          [
+                            "top_days_before",
+                            "top_days_after",
+                            "TOP (days)",
+                            "45",
+                            "105",
+                          ],
+                          [
+                            "transit_days_before",
+                            "transit_days_after",
+                            "Transit time (days)",
+                            "3",
+                            "6",
+                          ],
+                          [
+                            "bonus_before",
+                            "bonus_after",
+                            "Bonus / business link",
+                            "0",
+                            "0",
+                          ],
+                        ] as [string, string, string, string, string][]
+                      ).map(([kb, ka, lbl, ph1, ph2]) => (
+                        <tr key={kb} className="border-t border-slate-100">
                           <td className="px-3 py-1.5 font-semibold text-slate-500">
-                            Country
+                            {lbl}
                           </td>
                           <td className="px-3 py-1.5">
-                            {currentSupplierCountry ? (
-                              <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700">
-                                {currentSupplierCountry}{" "}
-                                <span className="font-normal text-emerald-500">
-                                  (from panel)
-                                </span>
-                              </span>
+                            <input
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              placeholder={ph1}
+                              value={form[kb as keyof typeof form] as string}
+                              onChange={(e) => set(kb, e.target.value)}
+                            />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              placeholder={ph2}
+                              value={form[ka as keyof typeof form] as string}
+                              onChange={(e) => set(ka, e.target.value)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
+                      <tr className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 font-semibold text-slate-500">
+                          Consignment
+                        </td>
+                        {(
+                          ["consignment_before", "consignment_after"] as const
+                        ).map((k) => (
+                          <td key={k} className="px-3 py-1.5">
+                            <select
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                              value={form[k as keyof typeof form] as string}
+                              onChange={(e) => set(k, e.target.value)}
+                            >
+                              <option value="">—</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                      {(
+                        [
+                          [
+                            "current_price",
+                            "proposed_price",
+                            "Price (€/unit)",
+                            "0.4000",
+                            "0.1300",
+                          ],
+                          [
+                            "current_price_n1",
+                            "proposed_price_n1",
+                            "Price N+1",
+                            "0.3880",
+                            "0.1261",
+                          ],
+                          [
+                            "current_price_n2",
+                            "proposed_price_n2",
+                            "Price N+2",
+                            "0.3762",
+                            "0.1223",
+                          ],
+                          [
+                            "current_price_n3",
+                            "proposed_price_n3",
+                            "Price N+3",
+                            "0.3650",
+                            "0.1186",
+                          ],
+                        ] as [string, string, string, string, string][]
+                      ).map(([kb, ka, lbl, ph1, ph2]) => (
+                        <tr key={ka} className="border-t border-slate-100">
+                          <td className="px-3 py-1.5 font-semibold text-slate-500">
+                            {lbl}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            {kb ? (
+                              <input
+                                type="number"
+                                step="0.000001"
+                                disabled={locked}
+                                className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
+                                placeholder={ph1}
+                                value={form[kb as keyof typeof form] as string}
+                                onChange={(e) => set(kb, e.target.value)}
+                              />
                             ) : (
                               <span className="text-slate-300 text-[10px]">
-                                Select supplier above
+                                —
                               </span>
                             )}
                           </td>
                           <td className="px-3 py-1.5">
                             <input
-                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                              placeholder="China"
-                              value={form.country_after}
-                              onChange={(e) =>
-                                set("country_after", e.target.value)
-                              }
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })()}
-                    {(
-                      [
-                        [
-                          "incoterms_before",
-                          "incoterms_after",
-                          "Incoterms",
-                          "DDP",
-                          "EXW",
-                        ],
-                        [
-                          "top_days_before",
-                          "top_days_after",
-                          "TOP (days)",
-                          "45",
-                          "105",
-                        ],
-                        [
-                          "transit_days_before",
-                          "transit_days_after",
-                          "Transit time (days)",
-                          "3",
-                          "6",
-                        ],
-                        [
-                          "bonus_before",
-                          "bonus_after",
-                          "Bonus / business link",
-                          "0",
-                          "0",
-                        ],
-                      ] as [string, string, string, string, string][]
-                    ).map(([kb, ka, lbl, ph1, ph2]) => (
-                      <tr key={kb} className="border-t border-slate-100">
-                        <td className="px-3 py-1.5 font-semibold text-slate-500">
-                          {lbl}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <input
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                            placeholder={ph1}
-                            value={form[kb as keyof typeof form] as string}
-                            onChange={(e) => set(kb, e.target.value)}
-                          />
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <input
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                            placeholder={ph2}
-                            value={form[ka as keyof typeof form] as string}
-                            onChange={(e) => set(ka, e.target.value)}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                    {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
-                    <tr className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-semibold text-slate-500">
-                        Consignment
-                      </td>
-                      {(
-                        ["consignment_before", "consignment_after"] as const
-                      ).map((k) => (
-                        <td key={k} className="px-3 py-1.5">
-                          <select
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                            value={form[k as keyof typeof form] as string}
-                            onChange={(e) => set(k, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                      ))}
-                    </tr>
-                    {(
-                      [
-                        [
-                          "current_price",
-                          "proposed_price",
-                          "Price (€/unit)",
-                          "0.4000",
-                          "0.1300",
-                        ],
-                        [
-                          "current_price_n1",
-                          "proposed_price_n1",
-                          "Price N+1",
-                          "0.3880",
-                          "0.1261",
-                        ],
-                        [
-                          "current_price_n2",
-                          "proposed_price_n2",
-                          "Price N+2",
-                          "0.3762",
-                          "0.1223",
-                        ],
-                        [
-                          "current_price_n3",
-                          "proposed_price_n3",
-                          "Price N+3",
-                          "0.3650",
-                          "0.1186",
-                        ],
-                      ] as [string, string, string, string, string][]
-                    ).map(([kb, ka, lbl, ph1, ph2]) => (
-                      <tr key={ka} className="border-t border-slate-100">
-                        <td className="px-3 py-1.5 font-semibold text-slate-500">
-                          {lbl}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          {kb ? (
-                            <input
                               type="number"
                               step="0.000001"
                               disabled={locked}
                               className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
-                              placeholder={ph1}
+                              placeholder={ph2}
+                              value={form[ka as keyof typeof form] as string}
+                              onChange={(e) => set(ka, e.target.value)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!locked && fullYearSaving != null && (
+                    <p className="mt-1 text-[10px] text-emerald-600 font-semibold px-3">
+                      Auto-calculated saving: (€
+                      {parseFloat(form.current_price).toFixed(4)} − €
+                      {parseFloat(form.proposed_price).toFixed(4)}) ×{" "}
+                      {parseInt(form.annual_quantity_n1).toLocaleString(
+                        "en-GB",
+                      )}
+                      {bonusDelta !== 0 && (
+                        <>
+                          {" "}
+                          {bonusDelta > 0 ? "+" : "−"} €
+                          {Math.abs(bonusDelta).toLocaleString("en-GB")} bonus
+                        </>
+                      )}{" "}
+                      ={" "}
+                      <strong>
+                        €{autoSaving?.toLocaleString("en-GB")}/year
+                      </strong>
+                    </p>
+                  )}
+                </div>
+              </FormSection>
+
+              {/* Risks */}
+              <FormSection title="Risks" highlight={gateHighlight && !(opp.stp_risks?.material_indexation_before && opp.stp_risks?.material_indexation_after)}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[22%]">
+                          Risk
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
+                          Before
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
+                          After
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                          Description / Mitigation approach
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(
+                        [
+                          [
+                            "risk_material_indexation_before",
+                            "risk_material_indexation_after",
+                            "risk_material_indexation_desc",
+                            "Material indexation",
+                          ],
+                          [
+                            "risk_exchange_rate_before",
+                            "risk_exchange_rate_after",
+                            "risk_exchange_rate_desc",
+                            "Exchange rate",
+                          ],
+                          [
+                            "risk_local_content_before",
+                            "risk_local_content_after",
+                            "risk_local_content_desc",
+                            "Local content",
+                          ],
+                          [
+                            "risk_quality_before",
+                            "risk_quality_after",
+                            "risk_quality_desc",
+                            "Quality",
+                          ],
+                          [
+                            "risk_other_before",
+                            "risk_other_after",
+                            "risk_other_desc",
+                            "Other",
+                          ],
+                        ] as [string, string, string, string][]
+                      ).map(([kb, ka, kd, lbl]) => (
+                        <tr key={kb} className="border-t border-slate-100">
+                          <td className="px-3 py-1.5 font-semibold text-slate-500">
+                            {lbl}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <select
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
                               value={form[kb as keyof typeof form] as string}
                               onChange={(e) => set(kb, e.target.value)}
+                            >
+                              <option value="">—</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <select
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                              value={form[ka as keyof typeof form] as string}
+                              onChange={(e) => set(ka, e.target.value)}
+                            >
+                              <option value="">—</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input
+                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              placeholder="If needed — describe risk or mitigation..."
+                              value={form[kd as keyof typeof form] as string}
+                              onChange={(e) => set(kd, e.target.value)}
                             />
-                          ) : (
-                            <span className="text-slate-300 text-[10px]">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <input
-                            type="number"
-                            step="0.000001"
-                            disabled={locked}
-                            className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
-                            placeholder={ph2}
-                            value={form[ka as keyof typeof form] as string}
-                            onChange={(e) => set(ka, e.target.value)}
-                          />
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Divider before spec questions */}
+                      <tr>
+                        <td colSpan={4} className="px-3 pt-3 pb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            Specification Assumptions
+                          </span>
                         </td>
                       </tr>
+                      {(
+                        [
+                          [
+                            "material_same_spec",
+                            "Will material spec & appearance be the same?",
+                          ],
+                          ["same_tooling", "Same tooling?"],
+                          ["same_dimension", "Same dimensions & appearance?"],
+                          ["same_process", "Same process?"],
+                        ] as [string, string][]
+                      ).map(([k, lbl]) => (
+                        <tr key={k} className="border-t border-slate-100">
+                          <td
+                            className="px-3 py-1.5 font-semibold text-slate-500"
+                            colSpan={2}
+                          >
+                            {lbl}
+                          </td>
+                          <td className="px-3 py-1.5" colSpan={2}>
+                            <select
+                              className="w-36 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                              value={form[k as keyof typeof form] as string}
+                              onChange={(e) => set(k, e.target.value)}
+                            >
+                              <option value="">—</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                              <option value="N/A">N/A</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </FormSection>
+
+              {/* Benefits */}
+              <FormSection title="Benefits" highlight={gateHighlight && !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not)}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>If we do</label>
+                    <textarea
+                      rows={2}
+                      className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
+                      placeholder="Expected benefits if we proceed..."
+                      value={form.benefit_if_we_do}
+                      onChange={(e) => set("benefit_if_we_do", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>If we don't</label>
+                    <textarea
+                      rows={2}
+                      className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
+                      placeholder="Risk of not proceeding..."
+                      value={form.benefit_if_not}
+                      onChange={(e) => set("benefit_if_not", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </FormSection>
+
+              {/* Investment costs */}
+              <FormSection title="Investment Costs">
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <label className={label}>Tooling (€)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inp}
+                      value={fmtDecInput(form.tooling_cost)}
+                      onChange={(e) =>
+                        set("tooling_cost", stripDec(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Travel (€)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inp}
+                      value={fmtDecInput(form.travel_cost)}
+                      onChange={(e) =>
+                        set("travel_cost", stripDec(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Qualification (€)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inp}
+                      value={fmtDecInput(form.qualification_cost)}
+                      onChange={(e) =>
+                        set("qualification_cost", stripDec(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Other (€)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inp}
+                      value={fmtDecInput(form.other_cost)}
+                      onChange={(e) =>
+                        set("other_cost", stripDec(e.target.value))
+                      }
+                    />
+                  </div>
+                </div>
+                {_pldTotalInv > 0 && (
+                  <div className="mt-2 text-xs text-slate-500">
+                    Total investment:{" "}
+                    <strong>€{_pldTotalInv.toLocaleString("en-GB")}</strong>
+                  </div>
+                )}
+              </FormSection>
+
+              {/* EBITDA & Cash savings — live, Excel "format STP rev 1.2" formulas */}
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                  EBITDA &amp; Cash Savings — auto-calculated (STP rev 1.2
+                  formulas)
+                </p>
+                <p className="text-[10px] text-emerald-500">
+                  Computed live from prices, quantities, bonus, costs and
+                  logistics — same formulas as the STP workbook.
+                </p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                  {(
+                    [
+                      ["EBITDA Full year (1st)", fullYearSaving, "€", ""],
+                      ["EBITDA Period (N1–N4)", periodSaving, "€", ""],
+                      ["ROI Full year", roiFullYear, "", "%"],
+                      ["ROI Period", roiPeriod, "", "%"],
+                      ["Est. Inventory gap", inventoryGap, "€", ""],
+                      ["Est. AP gap", apGap, "€", ""],
+                    ] as [string, number | null, string, string][]
+                  ).map(([lbl, val, pre, suf]) => {
+                    // Snap negative-zero / sub-cent values to 0 so they don't render as "-0"
+                    const shown =
+                      val != null && Math.abs(val) < 0.005 ? 0 : val;
+                    return (
+                      <div
+                        key={lbl}
+                        className="flex items-center justify-between gap-2 border-b border-emerald-100/60 pb-1"
+                      >
+                        <span className="text-slate-500">{lbl}</span>
+                        <span
+                          className={`font-bold ${shown != null && shown < 0 ? "text-red-600" : "text-slate-700"}`}
+                        >
+                          {shown != null
+                            ? `${pre}${shown.toLocaleString("en-GB", { maximumFractionDigits: 2 })}${suf}`
+                            : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {savingPerYear != null && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
+                      Est. Saving per year
+                    </p>
+                    <div className="grid grid-cols-4 gap-2 text-xs">
+                      {(["N", "N+1", "N+2", "N+3"] as const).map((yr, i) => (
+                        <div
+                          key={yr}
+                          className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
+                        >
+                          <div className="text-[10px] text-slate-400">
+                            Year {yr}
+                          </div>
+                          <div
+                            className={`font-bold ${savingPerYear[i] < 0 ? "text-red-600" : "text-slate-700"}`}
+                          >
+                            €
+                            {savingPerYear[i].toLocaleString("en-GB", {
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {savingByYear != null && savingByYear.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
+                      Est. Saving by calendar year (from savings start)
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {savingByYear.map(({ year, amount }) => (
+                        <div
+                          key={year}
+                          className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
+                        >
+                          <div className="text-[10px] text-slate-400">
+                            {year}
+                          </div>
+                          <div
+                            className={`font-bold ${amount < 0 ? "text-red-600" : "text-slate-700"}`}
+                          >
+                            €
+                            {amount.toLocaleString("en-GB", {
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Planning */}
+              <FormSection title="Estimated Planning (weeks)" highlight={gateHighlight && !(opp.phase1_weeks && opp.phase1_weeks > 0)}>
+                <div>
+                  <label className={label}>Phase 1 Starting Date</label>
+                  <input
+                    type="date"
+                    className={inp}
+                    value={form.execution_start_date}
+                    onChange={(e) =>
+                      set("execution_start_date", e.target.value)
+                    }
+                  />
+                  <p className="text-[9.5px] text-slate-400 mt-0.5">
+                    All phase dates chain from this. Defaults to study start if
+                    not set.
+                  </p>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    ["phase1_weeks", "Phase 1 (weeks)"],
+                    ["phase2_weeks", "Phase 2 (weeks)"],
+                    ["phase3_weeks", "Phase 3 (weeks)"],
+                    ["phase4_weeks", "Phase 4 (weeks)"],
+                  ].map(([k, lbl]) => (
+                    <div key={k}>
+                      <label className={label}>{lbl}</label>
+                      <input
+                        type="number"
+                        min="1"
+                        className={inp}
+                        value={form[k as keyof typeof form] as string}
+                        onChange={(e) => set(k, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {phaseDates && (
+                  <div className="grid grid-cols-4 gap-2 text-[10px] text-slate-500">
+                    {phaseDates.map((p, i) => (
+                      <div key={i}>
+                        {p ? (
+                          <>
+                            {p.start} →{" "}
+                            <span className="font-semibold">{p.end}</span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-                {!locked && fullYearSaving != null && (
-                  <p className="mt-1 text-[10px] text-emerald-600 font-semibold px-3">
-                    Auto-calculated saving: (€
-                    {parseFloat(form.current_price).toFixed(4)} − €
-                    {parseFloat(form.proposed_price).toFixed(4)}) ×{" "}
-                    {parseInt(form.annual_quantity_n1).toLocaleString("en-GB")}
-                    {bonusDelta !== 0 && (
-                      <>
-                        {" "}
-                        {bonusDelta > 0 ? "+" : "−"} €
-                        {Math.abs(bonusDelta).toLocaleString("en-GB")} bonus
-                      </>
-                    )}{" "}
-                    ={" "}
-                    <strong>€{autoSaving?.toLocaleString("en-GB")}/year</strong>
+                    <p className="col-span-4 text-emerald-600 font-semibold">
+                      Tentative date for start of savings (start of Phase 3):{" "}
+                      {phaseDates[2]?.start ?? "—"}
+                    </p>
+                  </div>
+                )}
+              </FormSection>
+            </fieldset>
+          </div>
+        )}
+
+        {/* STP completeness bar — shown near Save so user sees it before submitting */}
+        {showStpSection &&
+          (() => {
+            const stpSections = [
+              { label: "Scope", ok: !!(form.scope_in && form.customers) },
+              {
+                label: "Quantities",
+                ok: !!(
+                  form.annual_quantity_n1 &&
+                  parseInt(form.annual_quantity_n1) > 0
+                ),
+              },
+              {
+                label: "Prices",
+                ok: !!(
+                  form.current_price &&
+                  parseFloat(form.current_price) > 0 &&
+                  form.proposed_price &&
+                  parseFloat(form.proposed_price) > 0
+                ),
+              },
+              {
+                label: "Logistics",
+                ok: !!(
+                  form.incoterms_before &&
+                  form.incoterms_after &&
+                  form.country_after
+                ),
+              },
+              {
+                label: "Risks",
+                ok: !!(
+                  form.risk_material_indexation_before &&
+                  form.risk_material_indexation_after
+                ),
+              },
+              {
+                label: "Benefits",
+                ok: !!(form.benefit_if_we_do || form.benefit_if_not),
+              },
+              {
+                label: "Planning",
+                ok: !!(form.phase1_weeks && parseInt(form.phase1_weeks) > 0),
+              },
+            ];
+            const done = stpSections.filter((s) => s.ok).length;
+            const total = stpSections.length;
+            const pct = Math.round((done / total) * 100);
+            const incomplete = stpSections.filter((s) => !s.ok);
+            const allDone = done === total;
+            const barColor = allDone
+              ? "bg-emerald-500"
+              : done >= 5
+                ? "bg-blue-400"
+                : done >= 3
+                  ? "bg-amber-400"
+                  : "bg-slate-300";
+            return (
+              <div
+                className={`order-4 rounded-xl border px-4 py-3 space-y-2 ${allDone ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    STP Completeness
+                  </span>
+                  <span
+                    className={`text-[11px] font-semibold tabular-nums ${allDone ? "text-emerald-600" : "text-amber-700"}`}
+                  >
+                    {done}/{total} sections filled
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-300 ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {stpSections.map((s) => (
+                    <span
+                      key={s.label}
+                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${s.ok ? "bg-emerald-100 text-emerald-700" : "bg-white border border-amber-200 text-amber-600"}`}
+                    >
+                      {s.ok ? "✓" : "○"} {s.label}
+                    </span>
+                  ))}
+                </div>
+                {!allDone && (
+                  <p className="text-[10.5px] text-amber-600">
+                    {incomplete.map((s) => s.label).join(", ")} — save first,
+                    then complete before Gate review.
                   </p>
                 )}
               </div>
-            </FormSection>
+            );
+          })()}
 
-            {/* Risks */}
-            <FormSection title="Risks">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[22%]">
-                        Risk
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
-                        Before
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500 w-[14%]">
-                        After
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-500">
-                        Description / Mitigation approach
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        [
-                          "risk_material_indexation_before",
-                          "risk_material_indexation_after",
-                          "risk_material_indexation_desc",
-                          "Material indexation",
-                        ],
-                        [
-                          "risk_exchange_rate_before",
-                          "risk_exchange_rate_after",
-                          "risk_exchange_rate_desc",
-                          "Exchange rate",
-                        ],
-                        [
-                          "risk_local_content_before",
-                          "risk_local_content_after",
-                          "risk_local_content_desc",
-                          "Local content",
-                        ],
-                        [
-                          "risk_quality_before",
-                          "risk_quality_after",
-                          "risk_quality_desc",
-                          "Quality",
-                        ],
-                        [
-                          "risk_other_before",
-                          "risk_other_after",
-                          "risk_other_desc",
-                          "Other",
-                        ],
-                      ] as [string, string, string, string][]
-                    ).map(([kb, ka, kd, lbl]) => (
-                      <tr key={kb} className="border-t border-slate-100">
-                        <td className="px-3 py-1.5 font-semibold text-slate-500">
-                          {lbl}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <select
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                            value={form[kb as keyof typeof form] as string}
-                            onChange={(e) => set(kb, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <select
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                            value={form[ka as keyof typeof form] as string}
-                            onChange={(e) => set(ka, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <input
-                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
-                            placeholder="If needed — describe risk or mitigation..."
-                            value={form[kd as keyof typeof form] as string}
-                            onChange={(e) => set(kd, e.target.value)}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                    {/* Divider before spec questions */}
-                    <tr>
-                      <td colSpan={4} className="px-3 pt-3 pb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                          Specification Assumptions
-                        </span>
-                      </td>
-                    </tr>
-                    {(
-                      [
-                        [
-                          "material_same_spec",
-                          "Will material spec & appearance be the same?",
-                        ],
-                        ["same_tooling", "Same tooling?"],
-                        ["same_dimension", "Same dimensions & appearance?"],
-                      ] as [string, string][]
-                    ).map(([k, lbl]) => (
-                      <tr key={k} className="border-t border-slate-100">
-                        <td
-                          className="px-3 py-1.5 font-semibold text-slate-500"
-                          colSpan={2}
-                        >
-                          {lbl}
-                        </td>
-                        <td className="px-3 py-1.5" colSpan={2}>
-                          <select
-                            className="w-36 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                            value={form[k as keyof typeof form] as string}
-                            onChange={(e) => set(k, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </FormSection>
-
-            {/* Benefits */}
-            <FormSection title="Benefits">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={label}>If we do</label>
-                  <textarea
-                    rows={2}
-                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
-                    placeholder="Expected benefits if we proceed..."
-                    value={form.benefit_if_we_do}
-                    onChange={(e) => set("benefit_if_we_do", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={label}>If we don't</label>
-                  <textarea
-                    rows={2}
-                    className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none"
-                    placeholder="Risk of not proceeding..."
-                    value={form.benefit_if_not}
-                    onChange={(e) => set("benefit_if_not", e.target.value)}
-                  />
-                </div>
-              </div>
-            </FormSection>
-
-            {/* Investment costs */}
-            <FormSection title="Investment Costs">
-              <div className="grid grid-cols-4 gap-2">
-                <div>
-                  <label className={label}>Tooling (€)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={inp}
-                    value={fmtDecInput(form.tooling_cost)}
-                    onChange={(e) =>
-                      set("tooling_cost", stripDec(e.target.value))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className={label}>Travel (€)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={inp}
-                    value={fmtDecInput(form.travel_cost)}
-                    onChange={(e) =>
-                      set("travel_cost", stripDec(e.target.value))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className={label}>Qualification (€)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={inp}
-                    value={fmtDecInput(form.qualification_cost)}
-                    onChange={(e) =>
-                      set("qualification_cost", stripDec(e.target.value))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className={label}>Other (€)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={inp}
-                    value={fmtDecInput(form.other_cost)}
-                    onChange={(e) =>
-                      set("other_cost", stripDec(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-              {_pldTotalInv > 0 && (
-                <div className="mt-2 text-xs text-slate-500">
-                  Total investment:{" "}
-                  <strong>€{_pldTotalInv.toLocaleString("en-GB")}</strong>
-                </div>
-              )}
-            </FormSection>
-
-            {/* EBITDA & Cash savings — live, Excel "format STP rev 1.2" formulas */}
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
-                EBITDA &amp; Cash Savings — auto-calculated (STP rev 1.2
-                formulas)
+        <div className="order-5 pt-2">
+          {error && (
+            <div className="mb-3 flex justify-end">
+              <p className="max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 shadow-sm">
+                {error}
               </p>
-              <p className="text-[10px] text-emerald-500">
-                Computed live from prices, quantities, bonus, costs and
-                logistics — same formulas as the STP workbook.
-              </p>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-                {(
-                  [
-                    ["EBITDA Full year (1st)", fullYearSaving, "€", ""],
-                    ["EBITDA Period (N1–N4)", periodSaving, "€", ""],
-                    ["ROI Full year", roiFullYear, "", "%"],
-                    ["ROI Period", roiPeriod, "", "%"],
-                    ["Est. Inventory gap", inventoryGap, "€", ""],
-                    ["Est. AP gap", apGap, "€", ""],
-                  ] as [string, number | null, string, string][]
-                ).map(([lbl, val, pre, suf]) => {
-                  // Snap negative-zero / sub-cent values to 0 so they don't render as "-0"
-                  const shown = val != null && Math.abs(val) < 0.005 ? 0 : val;
-                  return (
-                    <div
-                      key={lbl}
-                      className="flex items-center justify-between gap-2 border-b border-emerald-100/60 pb-1"
-                    >
-                      <span className="text-slate-500">{lbl}</span>
-                      <span
-                        className={`font-bold ${shown != null && shown < 0 ? "text-red-600" : "text-slate-700"}`}
-                      >
-                        {shown != null
-                          ? `${pre}${shown.toLocaleString("en-GB", { maximumFractionDigits: 2 })}${suf}`
-                          : "—"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              {savingPerYear != null && (
-                <div className="pt-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
-                    Est. Saving per year
-                  </p>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    {(["N", "N+1", "N+2", "N+3"] as const).map((yr, i) => (
-                      <div
-                        key={yr}
-                        className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
-                      >
-                        <div className="text-[10px] text-slate-400">
-                          Year {yr}
-                        </div>
-                        <div
-                          className={`font-bold ${savingPerYear[i] < 0 ? "text-red-600" : "text-slate-700"}`}
-                        >
-                          €
-                          {savingPerYear[i].toLocaleString("en-GB", {
-                            maximumFractionDigits: 2,
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {savingByYear != null && savingByYear.length > 0 && (
-                <div className="pt-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">
-                    Est. Saving by calendar year (from savings start)
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    {savingByYear.map(({ year, amount }) => (
-                      <div
-                        key={year}
-                        className="rounded-lg bg-white/70 border border-emerald-100 px-2 py-1"
-                      >
-                        <div className="text-[10px] text-slate-400">{year}</div>
-                        <div
-                          className={`font-bold ${amount < 0 ? "text-red-600" : "text-slate-700"}`}
-                        >
-                          €
-                          {amount.toLocaleString("en-GB", {
-                            maximumFractionDigits: 2,
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
-
-            {/* Planning */}
-            <FormSection title="Estimated Planning (weeks)">
-              <div>
-                <label className={label}>Phase 1 Starting Date</label>
-                <input
-                  type="date"
-                  className={inp}
-                  value={form.execution_start_date}
-                  onChange={(e) => set("execution_start_date", e.target.value)}
-                />
-                <p className="text-[9.5px] text-slate-400 mt-0.5">
-                  All phase dates chain from this. Defaults to study start if
-                  not set.
-                </p>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  ["phase1_weeks", "Phase 1 (weeks)"],
-                  ["phase2_weeks", "Phase 2 (weeks)"],
-                  ["phase3_weeks", "Phase 3 (weeks)"],
-                  ["phase4_weeks", "Phase 4 (weeks)"],
-                ].map(([k, lbl]) => (
-                  <div key={k}>
-                    <label className={label}>{lbl}</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className={inp}
-                      value={form[k as keyof typeof form] as string}
-                      onChange={(e) => set(k, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
-              {phaseDates && (
-                <div className="grid grid-cols-4 gap-2 text-[10px] text-slate-500">
-                  {phaseDates.map((p, i) => (
-                    <div key={i}>
-                      {p ? (
-                        <>
-                          {p.start} →{" "}
-                          <span className="font-semibold">{p.end}</span>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </div>
-                  ))}
-                  <p className="col-span-4 text-emerald-600 font-semibold">
-                    Tentative date for start of savings (start of Phase 3):{" "}
-                    {phaseDates[2]?.start ?? "—"}
-                  </p>
-                </div>
-              )}
-            </FormSection>
-          </fieldset>
-        </div>
-      )}
-
-      {/* STP completeness bar — shown near Save so user sees it before submitting */}
-      {showStpSection &&
-        (() => {
-          const stpSections = [
-            { label: "Scope", ok: !!(form.scope_in && form.customers) },
-            {
-              label: "Quantities",
-              ok: !!(
-                form.annual_quantity_n1 && parseInt(form.annual_quantity_n1) > 0
-              ),
-            },
-            {
-              label: "Prices",
-              ok: !!(
-                form.current_price &&
-                parseFloat(form.current_price) > 0 &&
-                form.proposed_price &&
-                parseFloat(form.proposed_price) > 0
-              ),
-            },
-            {
-              label: "Logistics",
-              ok: !!(
-                form.incoterms_before &&
-                form.incoterms_after &&
-                form.country_after
-              ),
-            },
-            {
-              label: "Risks",
-              ok: !!(
-                form.risk_material_indexation_before &&
-                form.risk_material_indexation_after
-              ),
-            },
-            {
-              label: "Benefits",
-              ok: !!(form.benefit_if_we_do || form.benefit_if_not),
-            },
-            {
-              label: "Planning",
-              ok: !!(form.phase1_weeks && parseInt(form.phase1_weeks) > 0),
-            },
-          ];
-          const done = stpSections.filter((s) => s.ok).length;
-          const total = stpSections.length;
-          const pct = Math.round((done / total) * 100);
-          const incomplete = stpSections.filter((s) => !s.ok);
-          const allDone = done === total;
-          const barColor = allDone
-            ? "bg-emerald-500"
-            : done >= 5
-              ? "bg-blue-400"
-              : done >= 3
-                ? "bg-amber-400"
-                : "bg-slate-300";
-          return (
-            <div
-              className={`order-4 rounded-xl border px-4 py-3 space-y-2 ${allDone ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  STP Completeness
-                </span>
-                <span
-                  className={`text-[11px] font-semibold tabular-nums ${allDone ? "text-emerald-600" : "text-amber-700"}`}
-                >
-                  {done}/{total} sections filled
-                </span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                <div
-                  className={`h-1.5 rounded-full transition-all duration-300 ${barColor}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {stpSections.map((s) => (
-                  <span
-                    key={s.label}
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${s.ok ? "bg-emerald-100 text-emerald-700" : "bg-white border border-amber-200 text-amber-600"}`}
-                  >
-                    {s.ok ? "✓" : "○"} {s.label}
-                  </span>
-                ))}
-              </div>
-              {!allDone && (
-                <p className="text-[10.5px] text-amber-600">
-                  {incomplete.map((s) => s.label).join(", ")} — save first, then
-                  complete before Gate review.
-                </p>
-              )}
-            </div>
-          );
-        })()}
-
-      <div className="order-5 pt-2">
-        {error && (
-          <div className="mb-3 flex justify-end">
-            <p className="max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 shadow-sm">
-              {error}
-            </p>
+              {loading && <RefreshCw size={13} className="animate-spin" />} Save
+              Changes
+            </button>
           </div>
-        )}
-        <div className="flex justify-end gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            {loading && <RefreshCw size={13} className="animate-spin" />} Save
-            Changes
-          </button>
         </div>
-      </div>
+      </form>
 
-      {/* STP Revision Request modal */}
-      {stpRevModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="text-base font-bold text-slate-800">
-                Request STP Baseline Revision
-              </h2>
-              <button
-                type="button"
-                onClick={() => { setStpRevModal(false); setStpRevError(null); }}
-                className="rounded-lg p-1 hover:bg-slate-100"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={submitSTPRevisionRequest} className="px-6 py-5 space-y-4">
-              <p className="text-xs text-slate-500">
-                The proposed values from the form will be sent to the Purchasing
-                Director for approval. Current figures remain active until the
-                Director approves.
-              </p>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Purchasing Director email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  placeholder="director@avocarbon.com"
-                  value={stpRevForm.director_email}
-                  onChange={(e) => setStpRevForm((f) => ({ ...f, director_email: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Justification <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  placeholder="Explain why the baseline needs to change (supplier renegotiation, volume update, etc.)"
-                  value={stpRevForm.note}
-                  onChange={(e) => setStpRevForm((f) => ({ ...f, note: e.target.value }))}
-                />
-              </div>
-              {stpRevError && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
-                  {stpRevError}
-                </p>
-              )}
-              <div className="flex justify-end gap-3 pt-1">
+      {/* STP Revision Request modal — portal to escape drawer stacking context & outer form */}
+      {stpRevModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                <h2 className="text-base font-bold text-slate-800">
+                  Request STP Baseline Revision
+                </h2>
                 <button
                   type="button"
-                  onClick={() => { setStpRevModal(false); setStpRevError(null); }}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  onClick={() => {
+                    setStpRevModal(false);
+                    setStpRevError(null);
+                  }}
+                  className="rounded-lg p-1 hover:bg-slate-100"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={stpRevLoading || !stpRevForm.director_email.trim() || !stpRevForm.note.trim()}
-                  className="flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
-                >
-                  {stpRevLoading && <RefreshCw size={13} className="animate-spin" />}
-                  Send for Approval
+                  <X size={16} />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* STP Revision Decision modal (Director) */}
-      {stpDecModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="text-base font-bold text-slate-800">
-                STP Revision Decision
-              </h2>
-              <button
-                type="button"
-                onClick={() => { setStpDecModal(false); setStpDecError(null); }}
-                className="rounded-lg p-1 hover:bg-slate-100"
+              <form
+                onSubmit={submitSTPRevisionRequest}
+                className="px-6 py-5 space-y-4"
               >
-                <X size={16} />
-              </button>
+                <p className="text-xs text-slate-500">
+                  The proposed values from the form will be sent to the
+                  Purchasing Director for approval. Current figures remain
+                  active until the Director approves.
+                </p>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Purchasing Director email{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="director@avocarbon.com"
+                    value={stpRevForm.director_email}
+                    onChange={(e) =>
+                      setStpRevForm((f) => ({
+                        ...f,
+                        director_email: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Justification <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Explain why the baseline needs to change (supplier renegotiation, volume update, etc.)"
+                    value={stpRevForm.note}
+                    onChange={(e) =>
+                      setStpRevForm((f) => ({ ...f, note: e.target.value }))
+                    }
+                  />
+                </div>
+                {stpRevError && (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                    {stpRevError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStpRevModal(false);
+                      setStpRevError(null);
+                    }}
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      stpRevLoading ||
+                      !stpRevForm.director_email.trim() ||
+                      !stpRevForm.note.trim()
+                    }
+                    className="flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    {stpRevLoading && (
+                      <RefreshCw size={13} className="animate-spin" />
+                    )}
+                    Send for Approval
+                  </button>
+                </div>
+              </form>
             </div>
-            <form onSubmit={submitSTPDecision} className="px-6 py-5 space-y-4">
-              <p className="text-xs text-slate-500">
-                Approving will immediately apply the proposed prices and quantities
-                and recompute the savings baseline. Rejecting keeps current values.
-              </p>
-              <div className="flex gap-3">
-                {(["Approved", "Rejected"] as const).map((d) => (
-                  <label
-                    key={d}
-                    className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      stpDecForm.decision === d
-                        ? d === "Approved"
-                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
-                          : "border-red-300 bg-red-50 text-red-700"
-                        : "border-slate-200 text-slate-500 hover:bg-slate-50"
+          </div>,
+          document.body,
+        )}
+
+      {/* STP Revision Decision modal — portal to escape drawer stacking context & outer form */}
+      {stpDecModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                <h2 className="text-base font-bold text-slate-800">
+                  STP Revision Decision
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStpDecModal(false);
+                    setStpDecError(null);
+                  }}
+                  className="rounded-lg p-1 hover:bg-slate-100"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <form
+                onSubmit={submitSTPDecision}
+                className="px-6 py-5 space-y-4"
+              >
+                <p className="text-xs text-slate-500">
+                  Approving will immediately apply the proposed prices and
+                  quantities and recompute the savings baseline. Rejecting keeps
+                  current values.
+                </p>
+                <div className="flex gap-3">
+                  {(["Approved", "Rejected"] as const).map((d) => (
+                    <label
+                      key={d}
+                      className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                        stpDecForm.decision === d
+                          ? d === "Approved"
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                            : "border-red-300 bg-red-50 text-red-700"
+                          : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="sr-only"
+                        name="decision"
+                        value={d}
+                        checked={stpDecForm.decision === d}
+                        onChange={() =>
+                          setStpDecForm((f) => ({ ...f, decision: d }))
+                        }
+                      />
+                      {d === "Approved" ? (
+                        <CheckCircle2 size={14} />
+                      ) : (
+                        <XCircle size={14} />
+                      )}
+                      {d}
+                    </label>
+                  ))}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Note (optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Reason or conditions..."
+                    value={stpDecForm.note}
+                    onChange={(e) =>
+                      setStpDecForm((f) => ({ ...f, note: e.target.value }))
+                    }
+                  />
+                </div>
+                {stpDecError && (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                    {stpDecError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStpDecModal(false);
+                      setStpDecError(null);
+                    }}
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={stpDecLoading}
+                    className={`flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                      stpDecForm.decision === "Approved"
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-red-600 hover:bg-red-700"
                     }`}
                   >
-                    <input
-                      type="radio"
-                      className="sr-only"
-                      name="decision"
-                      value={d}
-                      checked={stpDecForm.decision === d}
-                      onChange={() => setStpDecForm((f) => ({ ...f, decision: d }))}
-                    />
-                    {d === "Approved" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                    {d}
-                  </label>
-                ))}
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Note (optional)
-                </label>
-                <textarea
-                  rows={2}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  placeholder="Reason or conditions..."
-                  value={stpDecForm.note}
-                  onChange={(e) => setStpDecForm((f) => ({ ...f, note: e.target.value }))}
-                />
-              </div>
-              {stpDecError && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
-                  {stpDecError}
-                </p>
-              )}
-              <div className="flex justify-end gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setStpDecModal(false); setStpDecError(null); }}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={stpDecLoading}
-                  className={`flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
-                    stpDecForm.decision === "Approved"
-                      ? "bg-emerald-600 hover:bg-emerald-700"
-                      : "bg-red-600 hover:bg-red-700"
-                  }`}
-                >
-                  {stpDecLoading && <RefreshCw size={13} className="animate-spin" />}
-                  {stpDecForm.decision === "Approved" ? "Approve" : "Reject"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </form>
+                    {stpDecLoading && (
+                      <RefreshCw size={13} className="animate-spin" />
+                    )}
+                    {stpDecForm.decision === "Approved" ? "Approve" : "Reject"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -3717,7 +4020,11 @@ function GateTab({
   // Submit to committee (Phase 1)
   const [showSubmitP1, setShowSubmitP1] = useState(false);
   const [submitP1Form, setSubmitP1Form] = useState({
-    to_emails: "",
+    email_ceo: "",
+    email_coo: "",
+    email_plant_manager: "",
+    email_cdp: "",
+    email_purchasing: "",
     message: "",
   });
   // Gate decision
@@ -3732,26 +4039,49 @@ function GateTab({
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-  const [approvalRequests, setApprovalRequests] = useState<{
-    request_id: number;
-    phase_from: string | null;
-    requested_by: string | null;
-    requested_at: string | null;
-    status: string | null;
-    consensus_result: string | null;
-    votes: { vote_id: number; approver_email: string | null; access_token: string | null; is_plant_manager: boolean | null; decision: string | null; decided_at: string | null; comment: string | null; project_manager_email: string | null }[];
-  }[]>([]);
+  const [approvalRequests, setApprovalRequests] = useState<
+    {
+      request_id: number;
+      phase_from: string | null;
+      requested_by: string | null;
+      requested_at: string | null;
+      status: string | null;
+      consensus_result: string | null;
+      votes: {
+        vote_id: number;
+        approver_email: string | null;
+        access_token: string | null;
+        is_plant_manager: boolean | null;
+        decision: string | null;
+        decided_at: string | null;
+        comment: string | null;
+        project_manager_email: string | null;
+      }[];
+    }[]
+  >([]);
 
   useEffect(() => {
-    supplierAPI.getGateApprovalStatus(opp.opportunity_id)
+    supplierAPI
+      .getGateApprovalStatus(opp.opportunity_id)
       .then((res) => {
         const requests = res.data ?? [];
         setApprovalRequests(requests);
         // Pre-fill PM email from the most recent approved vote that carries a PM designation
         const pmFromVotes = requests
-          .flatMap((r: { votes: { decision: string | null; project_manager_email: string | null }[] }) => r.votes)
-          .find((v: { decision: string | null; project_manager_email: string | null }) => v.decision === "Approved" && v.project_manager_email)
-          ?.project_manager_email;
+          .flatMap(
+            (r: {
+              votes: {
+                decision: string | null;
+                project_manager_email: string | null;
+              }[];
+            }) => r.votes,
+          )
+          .find(
+            (v: {
+              decision: string | null;
+              project_manager_email: string | null;
+            }) => v.decision === "Approved" && v.project_manager_email,
+          )?.project_manager_email;
         if (pmFromVotes) setPm(pmFromVotes);
       })
       .catch(() => {});
@@ -3759,9 +4089,21 @@ function GateTab({
 
   async function submitApprovalRequest() {
     const pm = plantManagerEmail.trim();
-    if (!pm) { setApprovalError("Plant Manager email is required."); return; }
+    if (!pm) {
+      setApprovalError("Plant Manager email is required.");
+      return;
+    }
+    // Block submission if STP format is incomplete for Sourcing/Technical types
+    if (opp.phase_status === "Phase 0" && phase0Missing.length > 0) {
+      setApprovalError(
+        `Complete all required fields before sending: ${phase0Missing.map((c) => c.label).join(", ")}`,
+      );
+      return;
+    }
     const purchasing = purchasingManagerEmails
-      .split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
+      .split(/[,;\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
     setApprovalSubmitting(true);
     setApprovalError(null);
     try {
@@ -3774,9 +4116,20 @@ function GateTab({
       const requests = res.data ?? [];
       setApprovalRequests(requests);
       const pmFromVotes = requests
-        .flatMap((r: { votes: { decision: string | null; project_manager_email: string | null }[] }) => r.votes)
-        .find((v: { decision: string | null; project_manager_email: string | null }) => v.decision === "Approved" && v.project_manager_email)
-        ?.project_manager_email;
+        .flatMap(
+          (r: {
+            votes: {
+              decision: string | null;
+              project_manager_email: string | null;
+            }[];
+          }) => r.votes,
+        )
+        .find(
+          (v: {
+            decision: string | null;
+            project_manager_email: string | null;
+          }) => v.decision === "Approved" && v.project_manager_email,
+        )?.project_manager_email;
       if (pmFromVotes) setPm(pmFromVotes);
       setShowApproval(false);
       setPlantManagerEmail("");
@@ -3804,7 +4157,10 @@ function GateTab({
     ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "");
   const isClosed = opp.phase_status === "Closed";
   const activePhase0Requests = approvalRequests.filter(
-    (r) => r.phase_from === "Phase 0" && r.status !== "Superseded"
+    (r) => r.phase_from === "Phase 0" && r.status !== "Superseded",
+  );
+  const allPhase0Approved = activePhase0Requests.some(
+    (r) => r.status === "Completed" && r.consensus_result === "Go",
   );
   const needsPm =
     decision === "Go" &&
@@ -3871,6 +4227,12 @@ function GateTab({
       label: "Duration (months) is required",
     },
     { ok: !!opp.planned_start_date, label: "Planned Start Date is required" },
+    {
+      ok:
+        (opp.currency ?? "EUR") === "EUR" ||
+        (!!opp.fx_rate_to_eur && opp.fx_rate_to_eur > 0),
+      label: `FX rate to EUR required — opportunity uses ${opp.currency ?? "EUR"} with no conversion rate set`,
+    },
     ...(!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")
       ? [
           {
@@ -4023,7 +4385,6 @@ function GateTab({
       {/* STEP 2 — Phase 0: Submit & Request Gate Approval (merged) */}
       {isWorkingOn && opp.phase_status === "Phase 0" && (
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-3">
-
           {/* Context badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
@@ -4082,6 +4443,21 @@ function GateTab({
 
             {showApproval && (
               <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-3">
+                {opp.phase_status === "Phase 0" && phase0Missing.length > 0 && (
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                    <p className="text-[10.5px] font-bold text-orange-700 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle size={12} /> Complete before sending
+                    </p>
+                    <ul className="space-y-1">
+                      {phase0Missing.map((c, idx) => (
+                        <li key={idx} className="flex items-center gap-1.5 text-[10px] text-orange-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
+                          {c.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {approvalError && (
                   <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
                     {approvalError}
@@ -4130,9 +4506,18 @@ function GateTab({
                   />
                 </div>
                 <button
-                  disabled={approvalSubmitting}
+                  disabled={
+                    approvalSubmitting ||
+                    (opp.phase_status === "Phase 0" &&
+                      phase0Missing.length > 0)
+                  }
                   onClick={submitApprovalRequest}
                   className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                  title={
+                    phase0Missing.length > 0
+                      ? `Complete required fields first: ${phase0Missing.map((c) => c.label).join(", ")}`
+                      : undefined
+                  }
                 >
                   {approvalSubmitting ? "Sending…" : "Send Approval Links"}
                 </button>
@@ -4141,110 +4526,127 @@ function GateTab({
 
             {/* Existing approval requests for Phase 0 (exclude superseded) */}
             {activePhase0Requests.map((req) => (
-                <div
-                  key={req.request_id}
-                  className="rounded-xl border border-amber-200 bg-white p-3 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold text-slate-700">
-                      by {req.requested_by ?? "—"}
-                      {req.requested_at
-                        ? ` · ${fmtDate(req.requested_at)}`
-                        : ""}
-                    </p>
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                        req.status === "Completed" &&
-                        req.consensus_result === "Go"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : req.status === "Completed" &&
-                              req.consensus_result === "No Go"
-                            ? "bg-red-100 text-red-700"
-                            : req.status === "Completed"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {req.status === "Completed"
-                        ? req.consensus_result
-                        : "Pending"}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {req.votes.map((v) => (
-                      <div key={v.vote_id} className="space-y-0.5">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-600">{v.approver_email}</span>
-                            {v.is_plant_manager && (
-                              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
-                                Plant Mgr
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {v.decision ? (
-                              <>
-                                <span className={`font-semibold ${
-                                  v.decision === "Approved" ? "text-emerald-600"
-                                  : v.decision === "Rejected" ? "text-red-600"
-                                  : "text-amber-600"
-                                }`}>
-                                  {v.decision === "Approved" ? "✅" : v.decision === "Rejected" ? "❌" : "🔄"}{" "}
-                                  {v.decision}
-                                </span>
-                                {v.decided_at && (
-                                  <span className="text-slate-400">{fmtDate(v.decided_at)}</span>
-                                )}
-                              </>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-slate-400 italic">Pending…</span>
-                                {v.access_token && (
-                                  <button
-                                    onClick={() => navigator.clipboard.writeText(
-                                      `${window.location.origin}/approve/${v.access_token}`,
-                                    )}
-                                    className="text-[10px] text-blue-500 hover:text-blue-700 underline"
-                                    title="Copy approval link to clipboard"
-                                  >
-                                    Copy link
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {/* Show designated PM below the vote row */}
-                        {v.is_plant_manager && v.project_manager_email && (
-                          <p className="text-[10px] text-green-700 pl-1">
-                            PM assigned: <span className="font-semibold">{v.project_manager_email}</span>
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {req.votes.some((v) => v.comment) && (
-                    <div className="border-t border-slate-200 pt-2 space-y-1">
-                      {req.votes
-                        .filter((v) => v.comment)
-                        .map((v) => (
-                          <p
-                            key={v.vote_id}
-                            className="text-[10.5px] text-slate-500 italic"
-                          >
-                            {v.approver_email}: &ldquo;{v.comment}&rdquo;
-                          </p>
-                        ))}
-                    </div>
-                  )}
+              <div
+                key={req.request_id}
+                className="rounded-xl border border-amber-200 bg-white p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-700">
+                    by {req.requested_by ?? "—"}
+                    {req.requested_at ? ` · ${fmtDate(req.requested_at)}` : ""}
+                  </p>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                      req.status === "Completed" &&
+                      req.consensus_result === "Go"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : req.status === "Completed" &&
+                            req.consensus_result === "No Go"
+                          ? "bg-red-100 text-red-700"
+                          : req.status === "Completed"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {req.status === "Completed"
+                      ? req.consensus_result
+                      : "Pending"}
+                  </span>
                 </div>
-              ))}
+                <div className="space-y-2">
+                  {req.votes.map((v) => (
+                    <div key={v.vote_id} className="space-y-0.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-600">
+                            {v.approver_email}
+                          </span>
+                          {v.is_plant_manager && (
+                            <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                              Plant Mgr
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {v.decision ? (
+                            <>
+                              <span
+                                className={`font-semibold ${
+                                  v.decision === "Approved"
+                                    ? "text-emerald-600"
+                                    : v.decision === "Rejected"
+                                      ? "text-red-600"
+                                      : "text-amber-600"
+                                }`}
+                              >
+                                {v.decision === "Approved"
+                                  ? "✅"
+                                  : v.decision === "Rejected"
+                                    ? "❌"
+                                    : "🔄"}{" "}
+                                {v.decision}
+                              </span>
+                              {v.decided_at && (
+                                <span className="text-slate-400">
+                                  {fmtDate(v.decided_at)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 italic">
+                                Pending…
+                              </span>
+                              {v.access_token && (
+                                <button
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(
+                                      `${window.location.origin}/approve/${v.access_token}`,
+                                    )
+                                  }
+                                  className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                                  title="Copy approval link to clipboard"
+                                >
+                                  Copy link
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Show designated PM below the vote row */}
+                      {v.is_plant_manager && v.project_manager_email && (
+                        <p className="text-[10px] text-green-700 pl-1">
+                          PM assigned:{" "}
+                          <span className="font-semibold">
+                            {v.project_manager_email}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {req.votes.some((v) => v.comment) && (
+                  <div className="border-t border-slate-200 pt-2 space-y-1">
+                    {req.votes
+                      .filter((v) => v.comment)
+                      .map((v) => (
+                        <p
+                          key={v.vote_id}
+                          className="text-[10.5px] text-slate-500 italic"
+                        >
+                          {v.approver_email}: &ldquo;{v.comment}&rdquo;
+                        </p>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ))}
             {activePhase0Requests.length === 0 && !showApproval && (
-                <p className="text-[11px] text-amber-500/70">
-                  No formal approval requests yet for this gate.
-                </p>
-              )}
+              <p className="text-[11px] text-amber-500/70">
+                No formal approval requests yet for this gate.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -4295,11 +4697,15 @@ function GateTab({
               onSubmit={(e) => {
                 e.preventDefault();
                 act(async () => {
-                  const emails = submitP1Form.to_emails
-                    .split(",")
+                  const emails = [
+                    submitP1Form.email_ceo,
+                    submitP1Form.email_coo,
+                    submitP1Form.email_plant_manager,
+                    submitP1Form.email_cdp,
+                    submitP1Form.email_purchasing,
+                  ]
                     .map((s) => s.trim())
                     .filter(Boolean);
-                  // Email optional — Olivier: PM organises meeting manually
                   const res = await supplierAPI.submitToCommittee(
                     opp.opportunity_id,
                     {
@@ -4314,24 +4720,40 @@ function GateTab({
               }}
               className="space-y-3"
             >
-              <div>
-                <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Committee emails{" "}
-                  <span className="font-normal text-slate-400">
-                    (optional — PM organises meeting)
-                  </span>
-                </label>
-                <input
-                  className={inp}
-                  placeholder="ceo@..., coo@..., pm@..."
-                  value={submitP1Form.to_emails}
-                  onChange={(e) =>
-                    setSubmitP1Form((f) => ({
-                      ...f,
-                      to_emails: e.target.value,
-                    }))
-                  }
-                />
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                Committee emails{" "}
+                <span className="normal-case font-normal text-slate-400">
+                  (optional — PM organises meeting)
+                </span>
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {(
+                  [
+                    ["email_ceo", "CEO"],
+                    ["email_coo", "COO"],
+                    ["email_plant_manager", "Plant Manager"],
+                    ["email_cdp", "CDP"],
+                    ["email_purchasing", "Purchasing"],
+                  ] as [keyof typeof submitP1Form, string][]
+                ).map(([field, role]) => (
+                  <div key={field} className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-[10.5px] font-semibold text-slate-500">
+                      {role}
+                    </span>
+                    <input
+                      type="email"
+                      className={inp}
+                      placeholder={`${role.toLowerCase().replace(" ", ".")}@avocarbon.com`}
+                      value={submitP1Form[field] as string}
+                      onChange={(e) =>
+                        setSubmitP1Form((f) => ({
+                          ...f,
+                          [field]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
               <div>
                 <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
@@ -4364,17 +4786,29 @@ function GateTab({
       )}
 
       {/* Awaiting review banners */}
-      {isAwaitingP0 && (
+      {isAwaitingP0 && !allPhase0Approved && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <p className="font-bold flex items-center gap-1.5">
-            <Clock size={12} /> Awaiting PM Validation
+            <Clock size={12} /> Awaiting Validation
           </p>
           <p className="mt-0.5">
-            Submitted{" "}
+            Approval request sent
             {opp.validation_request_sent_at
-              ? fmtDate(opp.validation_request_sent_at)
+              ? ` on ${fmtDate(opp.validation_request_sent_at)}`
               : ""}
-            . The Purchasing Manager must apply their gate decision below.
+            . Waiting for all approvers to vote.
+          </p>
+        </div>
+      )}
+      {isAwaitingP0 && allPhase0Approved && (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs">
+          <p className="font-bold flex items-center gap-1.5 text-emerald-700">
+            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply Gate
+          </p>
+          <p className="mt-0.5 text-emerald-600">
+            All reviewers have given their Go. Click{" "}
+            <strong>"Apply decision"</strong> below, select <strong>Go</strong>,
+            and confirm to advance to Phase 1.
           </p>
         </div>
       )}
@@ -4816,10 +5250,15 @@ function FinancialTab({
   const phaseCtx =
     FINANCIAL_PHASE_CONTEXT[opp.phase_status ?? ""] ??
     FINANCIAL_PHASE_CONTEXT["Phase 3"];
+  const isOwner =
+    (opp.conversion_owner ?? "").trim().toLowerCase() ===
+    userEmail.trim().toLowerCase();
   // Mirror the backend rule: actuals are editable while the financial line is Active
   // and the opportunity has reached execution (Phase 3+), including Phase 4 (LLC) and
   // closure-period realization — not only during Phase 3.
+  // Also requires the logged-in user to be the conversion owner for this opportunity.
   const canEditFinancialRows =
+    isOwner &&
     opp.financial_lines[0]?.status === "Active" &&
     !["Assigned", "Phase 0", "Phase 1", "Phase 2"].includes(
       opp.phase_status ?? "",
@@ -5066,7 +5505,12 @@ function FinancialTab({
           {phaseCtx.title}
         </p>
         <p className={`mt-1 text-${phaseCtx.color}-600`}>{phaseCtx.guidance}</p>
-        {!canEditFinancialRows && (
+        {!isOwner && (
+          <p className={`mt-2 font-semibold text-${phaseCtx.color}-700`}>
+            Read-only — you are not the conversion owner for this opportunity.
+          </p>
+        )}
+        {isOwner && !canEditFinancialRows && (
           <p className={`mt-2 font-semibold text-${phaseCtx.color}-700`}>
             Monthly actuals are editable once the line is active and the
             opportunity reaches deployment (Phase 3+).
@@ -5077,7 +5521,8 @@ function FinancialTab({
       {/* Revise baseline saving — only in Phase 3 once the real start is set and the
           monthly grid exists (rebuild preserves entered actuals). Not available before
           rows exist; adjust the estimate on the opportunity form in earlier phases. */}
-      {REVISE_BASELINE_ENABLED &&
+      {isOwner &&
+        REVISE_BASELINE_ENABLED &&
         opp.phase_status === "Phase 3" &&
         opp.real_start_date &&
         rows.length > 0 &&
@@ -6388,6 +6833,717 @@ const PHASE_GUIDE: Record<
   },
 };
 
+// ---------------------------------------------------------------------------
+// Action Plan Tab
+// ---------------------------------------------------------------------------
+
+interface ActionNode {
+  titre: string;
+  description?: string;
+  responsable?: string;
+  email_responsable?: string;
+  status?: string;
+  due_date?: string | null;
+  closed_date?: string | null;
+  attachments: { name: string; url: string }[];
+  sous_actions: ActionNode[];
+}
+
+interface SujetNode {
+  titre: string;
+  code?: string;
+  description?: string;
+  responsable?: string;
+  email_responsable?: string;
+  actions: ActionNode[];
+  sous_sujets: SujetNode[];
+}
+
+interface ActionPlanRecord {
+  action_plan_id: number;
+  opportunity_id: number;
+  phase_status?: string;
+  plan_title?: string;
+  plan_code?: string;
+  plan_data?: {
+    responsable?: string;
+    email_responsable?: string;
+    demandeur?: string;
+    email_demandeur?: string;
+    sujets?: SujetNode[];
+  };
+  external_push_status?: string;
+  external_push_error?: string;
+  created_at?: string;
+  created_by?: string;
+  updated_at?: string;
+}
+
+const AP_PHASE_OPTIONS = [
+  "Assigned",
+  "Phase 0",
+  "Phase 1",
+  "Phase 2",
+  "Phase 3",
+  "Phase 4",
+];
+const AP_ACTION_STATUSES = ["open", "closed", "blocked"];
+
+function emptyAction(): ActionNode {
+  return {
+    titre: "",
+    status: "open",
+    due_date: null,
+    closed_date: null,
+    attachments: [],
+    sous_actions: [],
+  };
+}
+function emptySujet(): SujetNode {
+  return { titre: "", actions: [emptyAction()], sous_sujets: [] };
+}
+function emptyPlanForm() {
+  return {
+    plan_title: "",
+    phase_status: "" as string,
+    actions: [emptyAction()] as ActionNode[],
+  };
+}
+function autoTitle(oppName: string | undefined, phase: string, date: string) {
+  const base = oppName ? oppName : "Action Plan";
+  const p = phase ? ` — ${phase}` : "";
+  return `${base}${p} — ${date}`;
+}
+
+function ActionPlanTab({
+  opp,
+  userEmail,
+  onRefresh,
+}: {
+  opp: Opp;
+  userEmail: string;
+  onRefresh: (o: Opp) => void;
+}) {
+  const [plans, setPlans] = useState<ActionPlanRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyPlanForm());
+
+  async function loadPlans() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await supplierAPI.listActionPlans(opp.opportunity_id);
+      setPlans(res?.data ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load action plans.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPlans();
+  }, [opp.opportunity_id]);
+
+  function openCreate() {
+    setEditingId(null);
+    const phase = opp.phase_status ?? "";
+    const today = new Date().toISOString().slice(0, 10);
+    setForm({
+      ...emptyPlanForm(),
+      phase_status: phase,
+      plan_title: autoTitle(opp.opportunity_name, phase, today),
+    });
+    setShowForm(true);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function openEdit(plan: ActionPlanRecord) {
+    setEditingId(plan.action_plan_id);
+    const firstSujet = plan.plan_data?.sujets?.[0];
+    const savedActions = (firstSujet?.actions ?? [
+      emptyAction(),
+    ]) as ActionNode[];
+    setForm({
+      plan_title: plan.plan_title ?? "",
+      phase_status: plan.phase_status ?? "",
+      actions: savedActions.map((a) => ({ ...emptyAction(), ...a })),
+    });
+    setShowForm(true);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function cancelForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setError(null);
+  }
+
+  async function handleSave() {
+    if (!form.plan_title.trim()) {
+      setError("Plan title is required.");
+      return;
+    }
+    if (form.actions.some((a) => !a.titre.trim())) {
+      setError("All action titles are required.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        plan_title: form.plan_title,
+        phase_status: form.phase_status || null,
+        // Wrap actions in a single sujet — the subject layer is hidden from the user
+        sujets: [
+          {
+            titre: form.plan_title,
+            actions: form.actions,
+          },
+        ],
+      };
+      if (editingId !== null) {
+        await supplierAPI.updateActionPlan(
+          opp.opportunity_id,
+          editingId,
+          payload,
+        );
+        setSuccess("Action plan updated and pushed to enterprise system.");
+      } else {
+        await supplierAPI.createActionPlan(opp.opportunity_id, payload);
+        setSuccess("Action plan created and pushed to enterprise system.");
+      }
+      await loadPlans();
+      setShowForm(false);
+      setEditingId(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to save action plan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(planId: number) {
+    if (!confirm("Delete this action plan?")) return;
+    setDeleting(planId);
+    try {
+      await supplierAPI.deleteActionPlan(opp.opportunity_id, planId);
+      setPlans((prev) => prev.filter((p) => p.action_plan_id !== planId));
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to delete action plan.");
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  // ── action helpers ─────────────────────────────────────────────────────
+  function setAction(ai: number, patch: Partial<ActionNode>) {
+    setForm((f) => ({
+      ...f,
+      actions: f.actions.map((a, j) => (j === ai ? { ...a, ...patch } : a)),
+    }));
+  }
+  function addAction() {
+    setForm((f) => ({ ...f, actions: [...f.actions, emptyAction()] }));
+  }
+  function removeAction(ai: number) {
+    setForm((f) => ({ ...f, actions: f.actions.filter((_, j) => j !== ai) }));
+  }
+
+  const inp =
+    "w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-blue-400 focus:outline-none dark:border-white/10 dark:bg-[#1a2d42] dark:text-slate-100";
+  const lbl =
+    "block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5";
+  const pushColor = (s?: string) =>
+    s === "ok"
+      ? "text-emerald-600"
+      : s === "failed"
+        ? "text-red-500"
+        : "text-amber-500";
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+            Action Plans
+          </h3>
+          <p className="text-[11px] text-slate-400">
+            Phase-level actions pushed to the enterprise action plan system.
+          </p>
+        </div>
+        {!showForm && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700"
+          >
+            <PlusCircle size={12} /> New Action Plan
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+          {error}
+        </div>
+      )}
+      {success && !showForm && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">
+          {success}
+        </div>
+      )}
+
+      {/* Form */}
+      {showForm && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 dark:border-white/10 dark:bg-[#0d1c2e] space-y-4">
+          {/* Context banner */}
+          <div className="rounded-lg bg-slate-100 dark:bg-white/5 px-3 py-2 flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Opportunity
+            </span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+              {opp.opportunity_name ?? `#${opp.opportunity_id}`}
+            </span>
+            {opp.phase_status && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Phase
+                </span>
+                <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-bold">
+                  {opp.phase_status}
+                </span>
+              </>
+            )}
+          </div>
+
+          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">
+            {editingId ? "Edit Action Plan" : "New Action Plan"}
+          </h4>
+
+          {/* Plan-level fields */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={lbl}>Plan Title</label>
+              <input
+                className={inp}
+                value={form.plan_title}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, plan_title: e.target.value }))
+                }
+                placeholder="Auto-generated from opportunity and phase"
+              />
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                Auto-filled — edit if needed.
+              </p>
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>Project Phase</label>
+              <select
+                className={inp}
+                value={form.phase_status}
+                onChange={(e) => {
+                  const phase = e.target.value;
+                  const today = new Date().toISOString().slice(0, 10);
+                  setForm((f) => ({
+                    ...f,
+                    phase_status: phase,
+                    plan_title: autoTitle(opp.opportunity_name, phase, today),
+                  }));
+                }}
+              >
+                <option value="">— Select phase —</option>
+                {AP_PHASE_OPTIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                Actions
+              </span>
+              <button
+                onClick={addAction}
+                className="flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"
+              >
+                <PlusCircle size={10} /> Add Action
+              </button>
+            </div>
+
+            {form.actions.map((action, ai) => (
+              <div
+                key={ai}
+                className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1a2d42] space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-blue-600">
+                    Action {ai + 1}
+                  </span>
+                  {form.actions.length > 1 && (
+                    <button
+                      onClick={() => removeAction(ai)}
+                      className="text-red-400 hover:text-red-600"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2">
+                    <label className={lbl}>Title *</label>
+                    <input
+                      className={inp}
+                      value={action.titre}
+                      onChange={(e) => setAction(ai, { titre: e.target.value })}
+                      placeholder="e.g. Conduct first article inspection"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lbl}>Description</label>
+                    <textarea
+                      className={inp + " resize-none"}
+                      rows={2}
+                      value={action.description ?? ""}
+                      onChange={(e) =>
+                        setAction(ai, { description: e.target.value })
+                      }
+                      placeholder="What needs to be done…"
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Responsible</label>
+                    <input
+                      className={inp}
+                      value={action.responsable ?? ""}
+                      onChange={(e) =>
+                        setAction(ai, { responsable: e.target.value })
+                      }
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Responsible Email</label>
+                    <input
+                      className={inp}
+                      type="email"
+                      value={action.email_responsable ?? ""}
+                      onChange={(e) =>
+                        setAction(ai, {
+                          email_responsable: e.target.value || undefined,
+                        })
+                      }
+                      placeholder="email@company.com"
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Due Date</label>
+                    <input
+                      className={inp}
+                      type="date"
+                      value={action.due_date ?? ""}
+                      onChange={(e) =>
+                        setAction(ai, { due_date: e.target.value || null })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Status</label>
+                    <select
+                      className={inp}
+                      value={action.status ?? "open"}
+                      onChange={(e) => {
+                        const s = e.target.value;
+                        setAction(ai, {
+                          status: s,
+                          closed_date:
+                            s === "closed"
+                              ? action.closed_date ||
+                                new Date().toISOString().slice(0, 10)
+                              : null,
+                        });
+                      }}
+                    >
+                      {AP_ACTION_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {action.status === "closed" && (
+                    <>
+                      <div>
+                        <label className={lbl}>Closed Date</label>
+                        <input
+                          className={inp}
+                          type="date"
+                          value={action.closed_date ?? ""}
+                          onChange={(e) =>
+                            setAction(ai, {
+                              closed_date: e.target.value || null,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lbl}>
+                          Evidence (URL or reference)
+                        </label>
+                        <div className="space-y-1">
+                          {action.attachments.map((att, ei) => (
+                            <div key={ei} className="flex gap-1.5 items-center">
+                              <input
+                                className={inp + " flex-1"}
+                                value={att.name}
+                                onChange={(e) => {
+                                  const next = action.attachments.map((a, i) =>
+                                    i === ei
+                                      ? { ...a, name: e.target.value }
+                                      : a,
+                                  );
+                                  setAction(ai, { attachments: next });
+                                }}
+                                placeholder="Document name"
+                              />
+                              <input
+                                className={inp + " flex-1"}
+                                value={att.url}
+                                onChange={(e) => {
+                                  const next = action.attachments.map((a, i) =>
+                                    i === ei
+                                      ? { ...a, url: e.target.value }
+                                      : a,
+                                  );
+                                  setAction(ai, { attachments: next });
+                                }}
+                                placeholder="URL or file path"
+                              />
+                              <button
+                                onClick={() =>
+                                  setAction(ai, {
+                                    attachments: action.attachments.filter(
+                                      (_, i) => i !== ei,
+                                    ),
+                                  })
+                                }
+                                className="text-red-400 hover:text-red-600 shrink-0"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() =>
+                              setAction(ai, {
+                                attachments: [
+                                  ...action.attachments,
+                                  { name: "", url: "" },
+                                ],
+                              })
+                            }
+                            className="text-[10px] text-blue-600 hover:underline"
+                          >
+                            + Add evidence
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <div className="rounded bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? <RefreshCw size={11} className="animate-spin" /> : null}
+              {saving ? "Saving…" : editingId ? "Update Plan" : "Create Plan"}
+            </button>
+            <button
+              onClick={cancelForm}
+              className="rounded-lg border border-slate-200 px-4 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Plan list */}
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <RefreshCw size={18} className="animate-spin text-slate-300" />
+        </div>
+      ) : plans.length === 0 && !showForm ? (
+        <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
+          No action plans yet. Click <strong>New Action Plan</strong> to get
+          started.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {plans.map((plan) => {
+            const sujets = plan.plan_data?.sujets ?? [];
+            const actions = sujets.flatMap((s) => s.actions ?? []);
+            const actionCount = actions.length;
+            return (
+              <div
+                key={plan.action_plan_id}
+                className="rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#0d1c2e]"
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between gap-2 p-4">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                        {plan.plan_title}
+                      </span>
+                      {plan.phase_status && (
+                        <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+                          {plan.phase_status}
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-semibold ${pushColor(plan.external_push_status)}`}
+                      >
+                        ●{" "}
+                        {plan.external_push_status === "ok"
+                          ? "Synced"
+                          : plan.external_push_status === "failed"
+                            ? "Sync failed"
+                            : "Pending sync"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {plan.plan_code && (
+                        <span className="font-mono mr-2 text-slate-300">
+                          {plan.plan_code}
+                        </span>
+                      )}
+                      {actionCount} action{actionCount !== 1 ? "s" : ""}
+                    </p>
+                    {plan.plan_data?.responsable && (
+                      <p className="text-[11px] text-slate-500">
+                        <span className="font-semibold">Responsible:</span>{" "}
+                        {plan.plan_data.responsable}
+                        {plan.plan_data.email_responsable && (
+                          <span className="text-slate-400">
+                            {" "}
+                            · {plan.plan_data.email_responsable}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {plan.external_push_error &&
+                      plan.external_push_status === "failed" && (
+                        <p className="text-[10px] text-red-500 truncate max-w-sm">
+                          {plan.external_push_error}
+                        </p>
+                      )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => openEdit(plan)}
+                      className="rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(plan.action_plan_id)}
+                      disabled={deleting === plan.action_plan_id}
+                      className="rounded border border-red-100 px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-50 disabled:opacity-40"
+                    >
+                      {deleting === plan.action_plan_id ? (
+                        <RefreshCw size={10} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={10} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Actions preview */}
+                {actions.length > 0 && (
+                  <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 py-2.5 space-y-1.5">
+                    {actions.map((a, j) => {
+                      const statusColor: Record<string, string> = {
+                        open: "bg-slate-100 text-slate-500",
+                        closed: "bg-emerald-100 text-emerald-700",
+                        blocked: "bg-red-100 text-red-500",
+                      };
+                      return (
+                        <div
+                          key={j}
+                          className="flex items-start gap-2 flex-wrap"
+                        >
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0 ${statusColor[a.status ?? "open"] ?? statusColor.open}`}
+                          >
+                            {a.status ?? "open"}
+                          </span>
+                          <span className="text-[11px] text-slate-700 dark:text-slate-300 flex-1">
+                            {a.titre}
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
+                            {a.responsable && (
+                              <span>
+                                {a.responsable}
+                                {a.email_responsable
+                                  ? ` · ${a.email_responsable}`
+                                  : ""}
+                              </span>
+                            )}
+                            {a.due_date && <span>Due {a.due_date}</span>}
+                            {a.closed_date && (
+                              <span className="text-emerald-600">
+                                Closed {a.closed_date}
+                              </span>
+                            )}
+                            {(a.attachments?.length ?? 0) > 0 && (
+                              <span className="text-blue-500">
+                                {a.attachments.length} evidence
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectTab({
   opp,
   userEmail,
@@ -6749,13 +7905,22 @@ function DetailDrawer({
   const missingFinancialMonths = (() => {
     const line = opp.financial_lines?.[0];
     if (!line?.monthly_financials?.length) return 0;
-    const todayFirst = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const todayFirst = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1,
+    );
     return line.monthly_financials.filter((r) => {
       if (!r.period_month) return false;
       return new Date(r.period_month) < todayFirst && r.actual_saving == null;
     }).length;
   })();
-  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+  const TABS: {
+    id: Tab;
+    label: string;
+    icon: React.ReactNode;
+    badge?: number;
+  }[] = [
     { id: "overview", label: "Overview", icon: <Layers size={11} /> },
     // One editing tab — labelled "STP Study" for Sourcing/Tech-Productivity
     // (general + STP in one form), "Edit" for Negotiation/Cash (general only).
@@ -6766,12 +7931,18 @@ function DetailDrawer({
     },
     { id: "gate", label: "Gate", icon: <CheckCircle2 size={11} /> },
     { id: "project", label: "Project", icon: <FolderOpen size={11} /> },
-    { id: "financial", label: "Financial", icon: <BarChart2 size={11} />, badge: missingFinancialMonths || undefined },
+    {
+      id: "financial",
+      label: "Financial",
+      icon: <BarChart2 size={11} />,
+      badge: missingFinancialMonths || undefined,
+    },
     {
       id: "files",
       label: `Files${docCount ? ` (${docCount})` : ""}`,
       icon: <Paperclip size={11} />,
     },
+    { id: "action-plan", label: "Action Plan", icon: <CircleDot size={11} /> },
   ];
 
   const editDisabled = false; // always editable — phase note shown inside the form
@@ -6924,6 +8095,13 @@ function DetailDrawer({
           )}
           {tab === "files" && (
             <FilesTab opp={opp} userEmail={userEmail} onRefresh={onRefresh} />
+          )}
+          {tab === "action-plan" && (
+            <ActionPlanTab
+              opp={opp}
+              userEmail={userEmail}
+              onRefresh={onRefresh}
+            />
           )}
         </div>
       </div>
@@ -7231,7 +8409,8 @@ export default function PurchasingValuePage() {
   const [searchParams] = useSearchParams();
   const deepLinkDone = useRef(false);
   useEffect(() => {
-    const stateId = (location.state as { openOpportunityId?: number } | null)?.openOpportunityId;
+    const stateId = (location.state as { openOpportunityId?: number } | null)
+      ?.openOpportunityId;
     const paramRaw = searchParams.get("opp");
     const paramId = paramRaw ? parseInt(paramRaw, 10) : undefined;
     const id = stateId ?? paramId;
@@ -7365,7 +8544,8 @@ export default function PurchasingValuePage() {
   // KPIs — budget source of truth is OpportunityBudgetYear (director commitment),
   // not opp.validation_status (execution-maturity flag).
   const now = new Date();
-  const currentYear = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  const currentYear =
+    now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
   const committedOppIds = new Set(
     opportunities
       .filter((o) =>

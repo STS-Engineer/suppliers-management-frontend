@@ -77,6 +77,7 @@ const formatDate = (value?: string | null) => {
 const PANEL_DECISION_LABELS: Record<string, string> = {
   panel_add: "Can be added to panel",
   panel_add_exec_committee: "Needs exec committee agreement",
+  panel_add_committee_validated: "Added to panel — Committee validated",
   panel_reject: "Cannot be added to panel",
 };
 
@@ -89,6 +90,7 @@ const getPanelDecisionTone = (
   value?: string | null,
 ): "slate" | "green" | "amber" | "red" => {
   if (value === "panel_add") return "green";
+  if (value === "panel_add_committee_validated") return "green";
   if (value === "panel_add_exec_committee") return "amber";
   if (value === "panel_reject") return "red";
   return "slate";
@@ -669,7 +671,7 @@ const getSiteOverview = (bundle: SitePanelBundle) => {
   const panelReady = relationRecords.filter(
     (r) =>
       r.panelDecision === "panel_add" ||
-      r.panelDecision === "panel_add_exec_committee",
+      r.panelDecision === "panel_add_committee_validated",
   ).length;
 
   const archivedCount = relationRecords.filter((r) => r.isArchived).length;
@@ -967,6 +969,7 @@ export default function SuppliersPage() {
 
   const panelDecisionOptions = [
     "panel_add",
+    "panel_add_committee_validated",
     "panel_add_exec_committee",
     "panel_reject",
   ];

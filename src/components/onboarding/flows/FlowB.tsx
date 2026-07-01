@@ -65,7 +65,7 @@ const toContactOption = (
 // Constants
 // ---------------------------------------------------------------------------
 
-const STEPS = ["Group", "Unit", "Plant", "Contact", "Owner", "Review"];
+const STEPS = ["Group", "Unit", "Plant", "Contact", "Owner & Spend", "Review"];
 
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none shadow-sm transition focus:border-[#0f2744]/40 focus:ring-4 focus:ring-[#0f2744]/8";
@@ -100,6 +100,11 @@ export const FlowB: React.FC<FlowBProps> = ({
   );
   const [supplierScope] = useState(groupScope ?? "local");
 
+  // Annual spend
+  const [spendValue, setSpendValue] = useState("");
+  const [spendCurrency, setSpendCurrency] = useState("EUR");
+  const [fiscalYear, setFiscalYear] = useState(String(new Date().getFullYear()));
+
 
   // Contact step
   const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
@@ -114,6 +119,7 @@ export const FlowB: React.FC<FlowBProps> = ({
   });
 
   // Load contacts when reaching step 3
+  // Load group contacts + selected unit contacts when reaching the contact step
   useEffect(() => {
     if (step !== 3) return;
     let active = true;
@@ -121,40 +127,27 @@ export const FlowB: React.FC<FlowBProps> = ({
 
     const load = async () => {
       try {
-        const [gRes, uRes] = await Promise.all([
-          supplierAPI.listContactsForGroup(groupId),
-          supplierAPI.listUnitsForGroup(groupId),
-        ]);
+        const fetches: Promise<any>[] = [supplierAPI.listContactsForGroup(groupId)];
+        if (unitId !== null) fetches.push(supplierAPI.listContactsForUnit(unitId));
+
+        const [gRes, uRes] = await Promise.all(fetches);
         if (!active) return;
 
         const gc: ContactOption[] = (gRes.data?.items ?? []).map(
           (c: ContactResponse) => toContactOption(c, "group"),
         );
 
-        const ul: Array<{ id_supplier_unit: number; supplier_code: string }> =
-          uRes.data?.units ?? [];
-
-        const chunks = await Promise.all(
-          ul.map(async (u) => {
-            try {
-              const r = await supplierAPI.listContactsForUnit(u.id_supplier_unit);
-              return (r.data?.items ?? []).map((c: ContactResponse) =>
-                toContactOption(
-                  c,
-                  "unit",
-                  u.supplier_code || `Unit ${u.id_supplier_unit}`,
-                ),
-              );
-            } catch {
-              return [];
-            }
-          }),
-        );
+        const unitLabel = resolvedUnit?.supplier_code ?? (unitId ? `Unit ${unitId}` : undefined);
+        const uc: ContactOption[] = unitId !== null
+          ? (uRes?.data?.items ?? []).map((c: ContactResponse) =>
+              toContactOption(c, "unit", unitLabel),
+            )
+          : [];
 
         if (!active) return;
         const seen = new Set<number>();
         const merged: ContactOption[] = [];
-        for (const c of [...gc, ...chunks.flat()]) {
+        for (const c of [...gc, ...uc]) {
           if (!seen.has(c.id_contact)) {
             seen.add(c.id_contact);
             merged.push(c);
@@ -172,7 +165,7 @@ export const FlowB: React.FC<FlowBProps> = ({
     return () => {
       active = false;
     };
-  }, [step, groupId]);
+  }, [step, groupId, unitId]);
 
   useEffect(() => {
     if (supplierScope === "global" && groupOwner) setSupplierOwner(groupOwner);
@@ -237,6 +230,20 @@ export const FlowB: React.FC<FlowBProps> = ({
             role_label: newContact.role_label || undefined,
             id_supplier_unit: unitId,
           });
+        }
+
+        // Save annual spend entry if both value and year are provided
+        const parsedSpend = parseFloat(spendValue);
+        const parsedYear = parseInt(fiscalYear, 10);
+        if (!isNaN(parsedSpend) && parsedSpend > 0 && !isNaN(parsedYear)) {
+          try {
+            await supplierAPI.upsertRelationSpend(relationId, parsedYear, {
+              spend_value: parsedSpend,
+              spend_currency: spendCurrency,
+            });
+          } catch {
+            // spend failure must not roll back the relation creation
+          }
         }
       }
 

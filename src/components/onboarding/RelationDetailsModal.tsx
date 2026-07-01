@@ -1,11 +1,22 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AvocarbonSite,
   RelationEvaluationWorkspace,
   SupplierUnitResponse,
 } from "../../types/onboarding";
+import { supplierAPI } from "../../services/supplierOnboardingAPI";
 
-type TabKey = "overview" | "criteria" | "history" | "plans";
+type TabKey = "overview" | "criteria" | "history" | "plans" | "spend";
+
+interface SpendEntry {
+  id_spend: number;
+  id_relation: number;
+  fiscal_year: number;
+  spend_value: number;
+  spend_currency: string;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
 
 interface RelationDetailsModalProps {
   workspace: RelationEvaluationWorkspace | null;
@@ -21,6 +32,7 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "criteria", label: "Criteria" },
   { key: "history", label: "History" },
   { key: "plans", label: "Development Plans" },
+  { key: "spend", label: "Annual Spend" },
 ];
 
 const formatDate = (value?: string | null) => {
@@ -105,6 +117,8 @@ const EmptyState = ({ label }: { label: string }) => (
   </div>
 );
 
+const CURRENCIES = ["EUR", "USD", "GBP", "JPY", "CNY", "MAD"];
+
 export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   workspace,
   site,
@@ -114,6 +128,64 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+
+  // Spend-by-year state
+  const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
+  const [spendLoading, setSpendLoading] = useState(false);
+  const [spendError, setSpendError] = useState<string | null>(null);
+  const [spendForm, setSpendForm] = useState({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
+  const [spendSaving, setSpendSaving] = useState(false);
+  const [deletingYear, setDeletingYear] = useState<number | null>(null);
+
+  const relationId = workspace?.relation?.id_relation ?? null;
+
+  const loadSpend = useCallback(async () => {
+    if (!relationId) return;
+    setSpendLoading(true);
+    setSpendError(null);
+    try {
+      const result = await supplierAPI.listRelationSpend(relationId);
+      setSpendEntries(result.data ?? result ?? []);
+    } catch {
+      setSpendError("Failed to load spend history.");
+    } finally {
+      setSpendLoading(false);
+    }
+  }, [relationId]);
+
+  useEffect(() => {
+    if (activeTab === "spend") loadSpend();
+  }, [activeTab, loadSpend]);
+
+  const handleSpendUpsert = async () => {
+    if (!relationId || !spendForm.fiscal_year || !spendForm.spend_value) return;
+    setSpendSaving(true);
+    try {
+      await supplierAPI.upsertRelationSpend(relationId, Number(spendForm.fiscal_year), {
+        spend_value: Number(spendForm.spend_value),
+        spend_currency: spendForm.spend_currency,
+      });
+      setSpendForm({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
+      await loadSpend();
+    } catch {
+      setSpendError("Failed to save spend entry.");
+    } finally {
+      setSpendSaving(false);
+    }
+  };
+
+  const handleSpendDelete = async (fiscalYear: number) => {
+    if (!relationId) return;
+    setDeletingYear(fiscalYear);
+    try {
+      await supplierAPI.deleteRelationSpend(relationId, fiscalYear);
+      await loadSpend();
+    } catch {
+      setSpendError("Failed to delete spend entry.");
+    } finally {
+      setDeletingYear(null);
+    }
+  };
 
   React.useEffect(() => {
     const { body } = document;
@@ -659,7 +731,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 )}
               </div>
             </section>
-          ) : (
+          ) : activeTab === "plans" ? (
             <section className={panelCls}>
               <div className="border-b border-slate-100 px-5 py-4">
                 <h3 className="text-sm font-bold text-slate-900">
@@ -714,6 +786,140 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 )}
               </div>
             </section>
+          ) : (
+            /* ── Spend by Year tab ── */
+            <div className="space-y-6">
+              {spendError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {spendError}
+                </div>
+              )}
+
+              {/* Add / edit form */}
+              <section className={panelCls}>
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h3 className="text-sm font-bold text-slate-900">Add / Update Entry</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Saving an existing year overwrites it (upsert).
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-end gap-3 px-5 py-5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      Fiscal Year
+                    </label>
+                    <input
+                      type="number"
+                      min={2000}
+                      max={2100}
+                      placeholder={String(new Date().getFullYear())}
+                      value={spendForm.fiscal_year}
+                      onChange={(e) =>
+                        setSpendForm((f) => ({ ...f, fiscal_year: e.target.value }))
+                      }
+                      className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      Amount
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="0.00"
+                      value={spendForm.spend_value}
+                      onChange={(e) =>
+                        setSpendForm((f) => ({ ...f, spend_value: e.target.value }))
+                      }
+                      className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      Currency
+                    </label>
+                    <select
+                      value={spendForm.spend_currency}
+                      onChange={(e) =>
+                        setSpendForm((f) => ({ ...f, spend_currency: e.target.value }))
+                      }
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                    >
+                      {CURRENCIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={spendSaving || !spendForm.fiscal_year || !spendForm.spend_value}
+                    onClick={handleSpendUpsert}
+                    className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {spendSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </section>
+
+              {/* History table */}
+              <section className={panelCls}>
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h3 className="text-sm font-bold text-slate-900">Spend History</h3>
+                </div>
+                {spendLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                    Loading…
+                  </div>
+                ) : spendEntries.length === 0 ? (
+                  <div className="px-5 py-5">
+                    <EmptyState label="No annual spend entries recorded for this relation yet." />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-100">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className={tableHeaderCls}>Fiscal Year</th>
+                          <th className={tableHeaderCls}>Amount</th>
+                          <th className={tableHeaderCls}>Currency</th>
+                          <th className={tableHeaderCls}>Last Updated</th>
+                          <th className={tableHeaderCls}>Updated By</th>
+                          <th className={tableHeaderCls}></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {spendEntries.map((entry) => (
+                          <tr key={entry.fiscal_year}>
+                            <td className={`${tableCellCls} font-semibold`}>{entry.fiscal_year}</td>
+                            <td className={tableCellCls}>
+                              {Number(entry.spend_value).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className={tableCellCls}>{entry.spend_currency}</td>
+                            <td className={tableCellCls}>{formatDate(entry.updated_at)}</td>
+                            <td className={tableCellCls}>{entry.updated_by || "—"}</td>
+                            <td className={tableCellCls}>
+                              <button
+                                type="button"
+                                disabled={deletingYear === entry.fiscal_year}
+                                onClick={() => handleSpendDelete(entry.fiscal_year)}
+                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingYear === entry.fiscal_year ? "Deleting…" : "Delete"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
           )}
         </div>
       </div>

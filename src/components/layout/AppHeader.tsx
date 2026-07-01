@@ -2,6 +2,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { useSidebar } from "../../context/SidebarContext";
 import { ThemeToggleButton } from "../common/ThemeToggleButton";
+import NotificationDropdown from "../header/NotificationDropdown";
 import UserDropdown from "../header/UserDropdown";
 
 const AppHeader: React.FC = () => {
@@ -48,6 +49,7 @@ const AppHeader: React.FC = () => {
         } items-center gap-2 lg:flex`}
       >
         <ThemeToggleButton />
+        <NotificationDropdown />
         <UserDropdown />
       </div>
 

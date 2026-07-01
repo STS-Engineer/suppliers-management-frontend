@@ -21,7 +21,15 @@ import type { CarbonFootprintRecord } from "../types/onboarding";
 const PAGE_SIZE = 50;
 
 // ── Formula engine ──────────────────────────────────────────────────────────
-const PROD_SCORE: Record<string, number> = { A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7 };
+const PROD_SCORE: Record<string, number> = {
+  A: 1,
+  B: 2,
+  C: 3,
+  D: 4,
+  E: 5,
+  F: 6,
+  G: 7,
+};
 
 function norm(s?: string | null) {
   return (s ?? "").trim().toLowerCase();
@@ -52,8 +60,17 @@ function calcGlobalFpImpact(
 }
 
 function applyFormulas(d: DraftRow): DraftRow {
-  const transport = calcTransportImpact(d.supplier_origin, d.site_location, d.supplier_continent, d.site_continent);
-  const global_fp = calcGlobalFpImpact(d.production_fp_grade, transport, d.weighted_footprint);
+  const transport = calcTransportImpact(
+    d.supplier_origin,
+    d.site_location,
+    d.supplier_continent,
+    d.site_continent,
+  );
+  const global_fp = calcGlobalFpImpact(
+    d.production_fp_grade,
+    transport,
+    d.weighted_footprint,
+  );
   return { ...d, transport_impact: transport, global_fp_impact: global_fp };
 }
 
@@ -90,7 +107,8 @@ function recordToDraft(r: CarbonFootprintRecord): DraftRow {
   return applyFormulas({
     year: r.year != null ? String(r.year) : "",
     purchase_amount: r.purchase_amount != null ? String(r.purchase_amount) : "",
-    weighted_footprint: r.weighted_footprint != null ? String(r.weighted_footprint) : "",
+    weighted_footprint:
+      r.weighted_footprint != null ? String(r.weighted_footprint) : "",
     production_fp_grade: r.production_fp_grade ?? "",
     carbon_fp_grade: r.carbon_fp_grade ?? "",
     supplier_origin: r.supplier_origin ?? "",
@@ -106,7 +124,9 @@ function draftToPayload(d: DraftRow) {
   return {
     year: d.year ? parseInt(d.year) : null,
     purchase_amount: d.purchase_amount ? parseFloat(d.purchase_amount) : null,
-    weighted_footprint: d.weighted_footprint ? parseFloat(d.weighted_footprint) : null,
+    weighted_footprint: d.weighted_footprint
+      ? parseFloat(d.weighted_footprint)
+      : null,
     production_fp_grade: d.production_fp_grade || null,
     carbon_fp_grade: d.carbon_fp_grade || null,
     supplier_origin: d.supplier_origin || null,
@@ -130,10 +150,15 @@ const GRADE_COLOR: Record<string, string> = {
 };
 
 function GradeBadge({ grade }: { grade?: string | null }) {
-  if (!grade) return <span className="text-slate-300 dark:text-slate-600">—</span>;
-  const cls = GRADE_COLOR[grade.toUpperCase()] ?? "bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400";
+  if (!grade)
+    return <span className="text-slate-300 dark:text-slate-600">—</span>;
+  const cls =
+    GRADE_COLOR[grade.toUpperCase()] ??
+    "bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400";
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide ${cls}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide ${cls}`}
+    >
       {grade.toUpperCase()}
     </span>
   );
@@ -141,7 +166,10 @@ function GradeBadge({ grade }: { grade?: string | null }) {
 
 function fmt(v?: number | null, decimals = 2): string {
   if (v == null) return "—";
-  return Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+  return Number(v).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
 }
 
 const inputCls =
@@ -152,12 +180,24 @@ const filterInputCls =
 
 const GRADE_OPTIONS = ["", "A", "B", "C", "D", "E", "F", "G"];
 
-function GradeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function GradeSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputCls}
+    >
       <option value="">—</option>
       {GRADE_OPTIONS.filter(Boolean).map((g) => (
-        <option key={g} value={g}>{g}</option>
+        <option key={g} value={g}>
+          {g}
+        </option>
       ))}
     </select>
   );
@@ -165,10 +205,15 @@ function GradeSelect({ value, onChange }: { value: string; onChange: (v: string)
 
 // Calculated field chip
 function CalcChip({ value, label }: { value: number | null; label: string }) {
-  if (value == null) return <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>;
+  if (value == null)
+    return (
+      <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
+    );
   return (
     <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:ring-violet-700">
-      <span className="text-[9px] uppercase tracking-widest text-violet-400">{label}</span>
+      <span className="text-[9px] uppercase tracking-widest text-violet-400">
+        {label}
+      </span>
       {value}
     </span>
   );
@@ -192,8 +237,12 @@ export default function CarbonFootprintPage() {
   const [siteInput, setSiteInput] = useState("");
   const [unitInput, setUnitInput] = useState("");
   const [appliedFilters, setAppliedFilters] = useState<{
-    year?: number; continent?: string; grade?: string;
-    origin?: string; site?: string; unit?: string;
+    year?: number;
+    continent?: string;
+    grade?: string;
+    origin?: string;
+    site?: string;
+    unit?: string;
   }>({});
 
   // Edit state
@@ -210,9 +259,19 @@ export default function CarbonFootprintPage() {
   const [groupSearch, setGroupSearch] = useState("");
   const [groups, setGroups] = useState<{ id_group: number; nom: string }[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<{ id_group: number; nom: string } | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<{
+    id_group: number;
+    nom: string;
+  } | null>(null);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
-  const [units, setUnits] = useState<{ id_supplier_unit: number; supplier_code: string; country?: string | null; continent?: string | null }[]>([]);
+  const [units, setUnits] = useState<
+    {
+      id_supplier_unit: number;
+      supplier_code: string;
+      country?: string | null;
+      continent?: string | null;
+    }[]
+  >([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
   const groupSearchRef = useRef<HTMLDivElement>(null);
@@ -235,7 +294,11 @@ export default function CarbonFootprintPage() {
       const res = await supplierAPI.listSupplierGroups(0, 200);
       const all = res?.data?.items ?? [];
       const q = query.trim().toLowerCase();
-      setGroups(q ? all.filter((g: { nom: string }) => g.nom.toLowerCase().includes(q)) : all);
+      setGroups(
+        q
+          ? all.filter((g: { nom: string }) => g.nom.toLowerCase().includes(q))
+          : all,
+      );
     } catch {
       setGroups([]);
     } finally {
@@ -248,7 +311,7 @@ export default function CarbonFootprintPage() {
     setUnits([]);
     setSelectedUnitId(null);
     try {
-      const res = await supplierAPI.listUnitsForGroup(groupId) as any;
+      const res = (await supplierAPI.listUnitsForGroup(groupId)) as any;
       const items = res?.data?.items ?? res?.data ?? res?.items ?? [];
       setUnits(items);
     } catch {
@@ -295,23 +358,33 @@ export default function CarbonFootprintPage() {
       });
       let items = result.items;
       if (filters.grade) {
-        items = items.filter((r) => r.carbon_fp_grade?.toUpperCase() === filters.grade?.toUpperCase());
+        items = items.filter(
+          (r) =>
+            r.carbon_fp_grade?.toUpperCase() === filters.grade?.toUpperCase(),
+        );
       }
       setRecords(items);
       setTotal(result.total);
       setTotalAll(result.total_all ?? result.total);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load carbon footprint data");
+      setError(
+        e instanceof Error ? e.message : "Failed to load carbon footprint data",
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { fetchData(page, appliedFilters); }, [page, appliedFilters]);
+  useEffect(() => {
+    fetchData(page, appliedFilters);
+  }, [page, appliedFilters]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (groupSearchRef.current && !groupSearchRef.current.contains(e.target as Node)) {
+      if (
+        groupSearchRef.current &&
+        !groupSearchRef.current.contains(e.target as Node)
+      ) {
         setShowGroupDropdown(false);
       }
     }
@@ -332,9 +405,14 @@ export default function CarbonFootprintPage() {
   }
 
   function clearFilters() {
-    setYearInput(""); setContinentInput(""); setGradeInput("");
-    setOriginInput(""); setSiteInput(""); setUnitInput("");
-    setPage(0); setAppliedFilters({});
+    setYearInput("");
+    setContinentInput("");
+    setGradeInput("");
+    setOriginInput("");
+    setSiteInput("");
+    setUnitInput("");
+    setPage(0);
+    setAppliedFilters({});
   }
 
   function startEdit(r: CarbonFootprintRecord) {
@@ -352,8 +430,17 @@ export default function CarbonFootprintPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await supplierAPI.updateCarbonFootprint(r.id_carbon_footprint, draftToPayload(draft));
-      setRecords((prev) => prev.map((rec) => rec.id_carbon_footprint === r.id_carbon_footprint ? { ...rec, ...updated } : rec));
+      const updated = await supplierAPI.updateCarbonFootprint(
+        r.id_carbon_footprint,
+        draftToPayload(draft),
+      );
+      setRecords((prev) =>
+        prev.map((rec) =>
+          rec.id_carbon_footprint === r.id_carbon_footprint
+            ? { ...rec, ...updated }
+            : rec,
+        ),
+      );
       setEditingId(null);
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
@@ -370,13 +457,21 @@ export default function CarbonFootprintPage() {
     setAddSaving(true);
     setSaveError(null);
     try {
-      const payload = { ...draftToPayload(addDraft), id_supplier_unit: selectedUnitId };
+      const payload = {
+        ...draftToPayload(addDraft),
+        id_supplier_unit: selectedUnitId,
+      };
       const created = await supplierAPI.createCarbonFootprint(payload);
-      const selectedUnit = units.find((u) => u.id_supplier_unit === selectedUnitId);
-      setRecords((prev) => [{
-        ...created,
-        supplier_unit_code: selectedUnit?.supplier_code ?? null,
-      }, ...prev]);
+      const selectedUnit = units.find(
+        (u) => u.id_supplier_unit === selectedUnitId,
+      );
+      setRecords((prev) => [
+        {
+          ...created,
+          supplier_unit_code: selectedUnit?.supplier_code ?? null,
+        },
+        ...prev,
+      ]);
       setTotal((t) => t + 1);
       resetAddDrawer();
     } catch (e: unknown) {
@@ -394,7 +489,14 @@ export default function CarbonFootprintPage() {
         description="Supplier carbon footprint data per entity, plant and year — sourced from Monday.com SB8 board. Edit rows inline or add new records."
         actions={
           <button
-            onClick={() => { setShowAdd(true); setSaveError(null); setGroupSearch(""); setSelectedGroup(null); setUnits([]); setSelectedUnitId(null); }}
+            onClick={() => {
+              setShowAdd(true);
+              setSaveError(null);
+              setGroupSearch("");
+              setSelectedGroup(null);
+              setUnits([]);
+              setSelectedUnitId(null);
+            }}
             className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-400 active:scale-95"
           >
             <Plus size={14} />
@@ -407,66 +509,136 @@ export default function CarbonFootprintPage() {
       <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/[0.06] dark:bg-[#0a1628]">
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3 dark:border-white/[0.06]">
           <Filter size={13} className="text-slate-400" />
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Filters</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+            Filters
+          </span>
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-white/5">
+            <button
+              onClick={clearFilters}
+              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-white/5"
+            >
               <X size={11} /> Clear all
             </button>
           )}
         </div>
         <div className="flex flex-wrap items-end gap-3 px-5 py-4">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Supplier Unit</label>
-            <input value={unitInput} onChange={(e) => setUnitInput(e.target.value)} placeholder="SAP code…" className={`${filterInputCls} w-36`} />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Supplier Unit
+            </label>
+            <input
+              value={unitInput}
+              onChange={(e) => setUnitInput(e.target.value)}
+              placeholder="SAP code…"
+              className={`${filterInputCls} w-36`}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Year</label>
-            <input type="number" value={yearInput} onChange={(e) => setYearInput(e.target.value)} placeholder="2023" className={`${filterInputCls} w-24`} />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Year
+            </label>
+            <input
+              type="number"
+              value={yearInput}
+              onChange={(e) => setYearInput(e.target.value)}
+              placeholder="2023"
+              className={`${filterInputCls} w-24`}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Carbon Grade</label>
-            <select value={gradeInput} onChange={(e) => setGradeInput(e.target.value)} className={`${filterInputCls} w-28`}>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Carbon Grade
+            </label>
+            <select
+              value={gradeInput}
+              onChange={(e) => setGradeInput(e.target.value)}
+              className={`${filterInputCls} w-28`}
+            >
               <option value="">All grades</option>
-              {["A","B","C","D","E","F","G"].map((g) => <option key={g} value={g}>{g}</option>)}
+              {["A", "B", "C", "D", "E", "F", "G"].map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Origin</label>
-            <input value={originInput} onChange={(e) => setOriginInput(e.target.value)} placeholder="e.g. France" className={`${filterInputCls} w-32`} />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Origin
+            </label>
+            <input
+              value={originInput}
+              onChange={(e) => setOriginInput(e.target.value)}
+              placeholder="e.g. France"
+              className={`${filterInputCls} w-32`}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Continent</label>
-            <input value={continentInput} onChange={(e) => setContinentInput(e.target.value)} placeholder="e.g. Europe" className={`${filterInputCls} w-32`} />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Continent
+            </label>
+            <input
+              value={continentInput}
+              onChange={(e) => setContinentInput(e.target.value)}
+              placeholder="e.g. Europe"
+              className={`${filterInputCls} w-32`}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Site Location</label>
-            <input value={siteInput} onChange={(e) => setSiteInput(e.target.value)} placeholder="e.g. Paris" className={`${filterInputCls} w-32`} />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Site Location
+            </label>
+            <input
+              value={siteInput}
+              onChange={(e) => setSiteInput(e.target.value)}
+              placeholder="e.g. Paris"
+              className={`${filterInputCls} w-32`}
+            />
           </div>
-          <button onClick={applyFilters} className="ml-auto flex h-9 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-95">
+          <button
+            onClick={applyFilters}
+            className="ml-auto flex h-9 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-95"
+          >
             <Search size={13} /> Search
           </button>
         </div>
       </div>
 
-      {error && <InlineAlert title="Failed to load data" message={error} tone="danger" />}
-      {saveError && <InlineAlert title="Save failed" message={saveError} tone="danger" />}
+      {error && (
+        <InlineAlert
+          title="Failed to load data"
+          message={error}
+          tone="danger"
+        />
+      )}
+      {saveError && (
+        <InlineAlert title="Save failed" message={saveError} tone="danger" />
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/[0.06] dark:bg-[#0a1628]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3 dark:border-white/[0.06]">
           <div className="flex items-center gap-2">
             <Leaf size={14} className="text-emerald-500" />
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Carbon Records</span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Carbon Records
+            </span>
             {hasActiveFilters && (
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">Filtered</span>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                Filtered
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {loading && <RefreshCw size={13} className="animate-spin text-blue-500" />}
+            {loading && (
+              <RefreshCw size={13} className="animate-spin text-blue-500" />
+            )}
             <span className="text-xs font-medium text-slate-400">
               {(total ?? 0).toLocaleString()} record{total !== 1 ? "s" : ""}
               {totalAll > 0 && totalAll !== total && (
-                <span className="ml-1 text-slate-300 dark:text-slate-600">/ {totalAll.toLocaleString()} in DB</span>
+                <span className="ml-1 text-slate-300 dark:text-slate-600">
+                  / {totalAll.toLocaleString()} in DB
+                </span>
               )}
             </span>
           </div>
@@ -476,8 +648,27 @@ export default function CarbonFootprintPage() {
           <table className="w-full min-w-[1400px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 dark:border-white/[0.05] dark:bg-white/[0.02]">
-                {["Supplier Unit","Year","Carbon Grade","Prod. Grade","Pamount (€)","Pond. FP","Trans. Imp.","Global FP Imp.","Origin","Sup. Continent","Site Location","Site Continent",""].map((h) => (
-                  <th key={h} className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 whitespace-nowrap">{h}</th>
+                {[
+                  "Supplier Unit",
+                  "Year",
+                  "Carbon Grade",
+                  "Prod. Grade",
+                  "Pamount (€)",
+                  "Pond. FP",
+                  "Trans. Imp.",
+                  "Global FP Imp.",
+                  "Origin",
+                  "Sup. Continent",
+                  "Site Location",
+                  "Site Continent",
+                  "",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 whitespace-nowrap"
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -486,7 +677,12 @@ export default function CarbonFootprintPage() {
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     {Array.from({ length: 13 }).map((_, j) => (
-                      <td key={j} className="px-3 py-3"><div className="h-3 rounded-full bg-slate-100 dark:bg-white/[0.04]" style={{ width: `${50 + (j * 17) % 40}%` }} /></td>
+                      <td key={j} className="px-3 py-3">
+                        <div
+                          className="h-3 rounded-full bg-slate-100 dark:bg-white/[0.04]"
+                          style={{ width: `${50 + ((j * 17) % 40)}%` }}
+                        />
+                      </td>
                     ))}
                   </tr>
                 ))
@@ -495,10 +691,22 @@ export default function CarbonFootprintPage() {
                   <td colSpan={13} className="py-20 text-center">
                     <div className="mx-auto flex flex-col items-center gap-3">
                       <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 dark:bg-white/[0.05]">
-                        <Search size={22} className="text-slate-300 dark:text-slate-600" />
+                        <Search
+                          size={22}
+                          className="text-slate-300 dark:text-slate-600"
+                        />
                       </div>
-                      <p className="text-sm font-medium text-slate-500">No records found</p>
-                      {hasActiveFilters && <button onClick={clearFilters} className="text-xs font-semibold text-blue-600 hover:underline">Clear filters</button>}
+                      <p className="text-sm font-medium text-slate-500">
+                        No records found
+                      </p>
+                      {hasActiveFilters && (
+                        <button
+                          onClick={clearFilters}
+                          className="text-xs font-semibold text-blue-600 hover:underline"
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -507,59 +715,137 @@ export default function CarbonFootprintPage() {
                   const isEditing = editingId === r.id_carbon_footprint;
                   if (isEditing) {
                     return (
-                      <tr key={r.id_carbon_footprint} className="bg-blue-50/40 dark:bg-blue-900/10">
+                      <tr
+                        key={r.id_carbon_footprint}
+                        className="bg-blue-50/40 dark:bg-blue-900/10"
+                      >
                         {/* Unit — read only */}
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-blue-100 dark:bg-blue-900/30">
                               <Pencil size={10} className="text-blue-500" />
                             </div>
-                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{r.supplier_unit_code ?? `#${r.id_supplier_unit}`}</span>
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {r.supplier_unit_code ?? `#${r.id_supplier_unit}`}
+                            </span>
                           </div>
                         </td>
                         {/* Year */}
                         <td className="px-3 py-2 w-20">
-                          <input type="number" value={draft.year} onChange={(e) => updateDraft({ year: e.target.value })} className={inputCls} placeholder="2023" />
+                          <input
+                            type="number"
+                            value={draft.year}
+                            onChange={(e) =>
+                              updateDraft({ year: e.target.value })
+                            }
+                            className={inputCls}
+                            placeholder="2023"
+                          />
                         </td>
                         {/* Carbon grade */}
                         <td className="px-3 py-2 w-24">
-                          <GradeSelect value={draft.carbon_fp_grade} onChange={(v) => updateDraft({ carbon_fp_grade: v })} />
+                          <GradeSelect
+                            value={draft.carbon_fp_grade}
+                            onChange={(v) =>
+                              updateDraft({ carbon_fp_grade: v })
+                            }
+                          />
                         </td>
                         {/* Prod grade */}
                         <td className="px-3 py-2 w-24">
-                          <GradeSelect value={draft.production_fp_grade} onChange={(v) => updateDraft({ production_fp_grade: v })} />
+                          <GradeSelect
+                            value={draft.production_fp_grade}
+                            onChange={(v) =>
+                              updateDraft({ production_fp_grade: v })
+                            }
+                          />
                         </td>
                         {/* Purchase amount */}
                         <td className="px-3 py-2 w-28">
-                          <input type="number" value={draft.purchase_amount} onChange={(e) => updateDraft({ purchase_amount: e.target.value })} className={inputCls} placeholder="0" />
+                          <input
+                            type="number"
+                            value={draft.purchase_amount}
+                            onChange={(e) =>
+                              updateDraft({ purchase_amount: e.target.value })
+                            }
+                            className={inputCls}
+                            placeholder="0"
+                          />
                         </td>
                         {/* Weighted FP */}
                         <td className="px-3 py-2 w-28">
-                          <input type="number" step="0.0001" value={draft.weighted_footprint} onChange={(e) => updateDraft({ weighted_footprint: e.target.value })} className={inputCls} placeholder="0.0000" />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={draft.weighted_footprint}
+                            onChange={(e) =>
+                              updateDraft({
+                                weighted_footprint: e.target.value,
+                              })
+                            }
+                            className={inputCls}
+                            placeholder="0.0000"
+                          />
                         </td>
                         {/* Transport — calculated */}
                         <td className="px-3 py-2">
-                          <CalcChip value={draft.transport_impact} label="calc" />
+                          <CalcChip
+                            value={draft.transport_impact}
+                            label="calc"
+                          />
                         </td>
                         {/* Global FP — calculated */}
                         <td className="px-3 py-2">
-                          <CalcChip value={draft.global_fp_impact} label="calc" />
+                          <CalcChip
+                            value={draft.global_fp_impact}
+                            label="calc"
+                          />
                         </td>
                         {/* Origin */}
                         <td className="px-3 py-2 w-28">
-                          <input value={draft.supplier_origin} onChange={(e) => updateDraft({ supplier_origin: e.target.value })} className={inputCls} placeholder="Country" />
+                          <input
+                            value={draft.supplier_origin}
+                            onChange={(e) =>
+                              updateDraft({ supplier_origin: e.target.value })
+                            }
+                            className={inputCls}
+                            placeholder="Country"
+                          />
                         </td>
                         {/* Sup continent */}
                         <td className="px-3 py-2 w-28">
-                          <input value={draft.supplier_continent} onChange={(e) => updateDraft({ supplier_continent: e.target.value })} className={inputCls} placeholder="Continent" />
+                          <input
+                            value={draft.supplier_continent}
+                            onChange={(e) =>
+                              updateDraft({
+                                supplier_continent: e.target.value,
+                              })
+                            }
+                            className={inputCls}
+                            placeholder="Continent"
+                          />
                         </td>
                         {/* Site location */}
                         <td className="px-3 py-2 w-28">
-                          <input value={draft.site_location} onChange={(e) => updateDraft({ site_location: e.target.value })} className={inputCls} placeholder="Location" />
+                          <input
+                            value={draft.site_location}
+                            onChange={(e) =>
+                              updateDraft({ site_location: e.target.value })
+                            }
+                            className={inputCls}
+                            placeholder="Location"
+                          />
                         </td>
                         {/* Site continent */}
                         <td className="px-3 py-2 w-28">
-                          <input value={draft.site_continent} onChange={(e) => updateDraft({ site_continent: e.target.value })} className={inputCls} placeholder="Continent" />
+                          <input
+                            value={draft.site_continent}
+                            onChange={(e) =>
+                              updateDraft({ site_continent: e.target.value })
+                            }
+                            className={inputCls}
+                            placeholder="Continent"
+                          />
                         </td>
                         {/* Actions */}
                         <td className="px-3 py-2">
@@ -569,10 +855,17 @@ export default function CarbonFootprintPage() {
                               disabled={saving}
                               className="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                             >
-                              {saving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />}
+                              {saving ? (
+                                <RefreshCw size={10} className="animate-spin" />
+                              ) : (
+                                <Save size={10} />
+                              )}
                               Save
                             </button>
-                            <button onClick={cancelEdit} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-white/[0.04]">
+                            <button
+                              onClick={cancelEdit}
+                              className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-white/[0.04]"
+                            >
                               <X size={10} />
                             </button>
                           </div>
@@ -582,40 +875,86 @@ export default function CarbonFootprintPage() {
                   }
 
                   return (
-                    <tr key={r.id_carbon_footprint} className="group transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.025]">
+                    <tr
+                      key={r.id_carbon_footprint}
+                      className="group transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.025]"
+                    >
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 dark:bg-emerald-900/20">
-                            <Leaf size={11} className="text-emerald-600 dark:text-emerald-400" />
+                            <Leaf
+                              size={11}
+                              className="text-emerald-600 dark:text-emerald-400"
+                            />
                           </div>
                           <div>
-                            <p className="font-semibold text-slate-800 dark:text-slate-200 text-xs">{r.supplier_unit_code ?? `Unit #${r.id_supplier_unit ?? "—"}`}</p>
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                              {r.supplier_unit_code ??
+                                `Unit #${r.id_supplier_unit ?? "—"}`}
+                            </p>
                             {r.supplier_unit_code && r.id_supplier_unit && (
-                              <p className="text-[10px] text-slate-400">ID {r.id_supplier_unit}</p>
+                              <p className="text-[10px] text-slate-400">
+                                ID {r.id_supplier_unit}
+                              </p>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{r.year ?? "—"}</span>
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
+                          {r.year ?? "—"}
+                        </span>
                       </td>
-                      <td className="px-3 py-3"><GradeBadge grade={r.carbon_fp_grade} /></td>
-                      <td className="px-3 py-3"><GradeBadge grade={r.production_fp_grade} /></td>
-                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-700 dark:text-slate-300">{r.purchase_amount != null ? `€${fmt(r.purchase_amount, 0)}` : "—"}</td>
+                      <td className="px-3 py-3">
+                        <GradeBadge grade={r.carbon_fp_grade} />
+                      </td>
+                      <td className="px-3 py-3">
+                        <GradeBadge grade={r.production_fp_grade} />
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-700 dark:text-slate-300">
+                        {r.purchase_amount != null
+                          ? `€${fmt(r.purchase_amount, 0)}`
+                          : "—"}
+                      </td>
                       <td className="px-3 py-3 text-right tabular-nums text-xs">
                         {r.weighted_footprint != null ? (
                           <span className="flex items-center justify-end gap-1 font-medium text-slate-700 dark:text-slate-300">
-                            {Number(r.weighted_footprint) > 0 ? <TrendingUp size={10} className="text-red-400" /> : <TrendingDown size={10} className="text-emerald-500" />}
+                            {Number(r.weighted_footprint) > 0 ? (
+                              <TrendingUp size={10} className="text-red-400" />
+                            ) : (
+                              <TrendingDown
+                                size={10}
+                                className="text-emerald-500"
+                              />
+                            )}
                             {fmt(r.weighted_footprint, 4)}
                           </span>
-                        ) : "—"}
+                        ) : (
+                          "—"
+                        )}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-600 dark:text-slate-400">{r.transport_impact != null ? fmt(r.transport_impact, 4) : "—"}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-600 dark:text-slate-400">{r.global_fp_impact != null ? fmt(r.global_fp_impact, 4) : "—"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-400">{r.supplier_origin ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-500">{r.supplier_continent ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-400">{r.site_location ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-500">{r.site_continent ?? "—"}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-600 dark:text-slate-400">
+                        {r.transport_impact != null
+                          ? fmt(r.transport_impact, 4)
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-xs text-slate-600 dark:text-slate-400">
+                        {r.global_fp_impact != null
+                          ? fmt(r.global_fp_impact, 4)
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-400">
+                        {r.supplier_origin ?? "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-500">
+                        {r.supplier_continent ?? "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-400">
+                        {r.site_location ?? "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-500">
+                        {r.site_continent ?? "—"}
+                      </td>
                       <td className="px-3 py-3">
                         <button
                           onClick={() => startEdit(r)}
@@ -635,23 +974,56 @@ export default function CarbonFootprintPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 dark:border-white/[0.06]">
-            <span className="text-xs font-medium text-slate-400">Page {page + 1} of {totalPages} — {(total ?? 0).toLocaleString()} records</span>
+            <span className="text-xs font-medium text-slate-400">
+              Page {page + 1} of {totalPages} — {(total ?? 0).toLocaleString()}{" "}
+              records
+            </span>
             <div className="flex items-center gap-1">
-              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 dark:border-white/[0.08]"><ChevronLeft size={14} /></button>
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 dark:border-white/[0.08]"
+              >
+                <ChevronLeft size={14} />
+              </button>
               {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
-                const pg = totalPages <= 7 ? i : page < 4 ? i : page > totalPages - 5 ? totalPages - 7 + i : page - 3 + i;
+                const pg =
+                  totalPages <= 7
+                    ? i
+                    : page < 4
+                      ? i
+                      : page > totalPages - 5
+                        ? totalPages - 7 + i
+                        : page - 3 + i;
                 return (
-                  <button key={pg} onClick={() => setPage(pg)} className={["flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition", pg === page ? "bg-blue-600 text-white shadow-sm" : "border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-400"].join(" ")}>{pg + 1}</button>
+                  <button
+                    key={pg}
+                    onClick={() => setPage(pg)}
+                    className={[
+                      "flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition",
+                      pg === page
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-400",
+                    ].join(" ")}
+                  >
+                    {pg + 1}
+                  </button>
                 );
               })}
-              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 dark:border-white/[0.08]"><ChevronRight size={14} /></button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 dark:border-white/[0.08]"
+              >
+                <ChevronRight size={14} />
+              </button>
             </div>
           </div>
         )}
       </div>
 
       {/* Grade legend */}
-      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200/60 bg-white/60 px-5 py-3 text-xs dark:border-white/[0.04] dark:bg-white/[0.02]">
+      {/* <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200/60 bg-white/60 px-5 py-3 text-xs dark:border-white/[0.04] dark:bg-white/[0.02]">
         <span className="font-bold uppercase tracking-widest text-slate-400">Grade:</span>
         {(["A","B","C","D","E","F","G"] as const).map((g, i) => (
           <span key={g} className="flex items-center gap-1.5 text-slate-500"><GradeBadge grade={g} />{["Excellent","Good","Average","Poor","Very Poor","Critical","Unacceptable"][i]}</span>
@@ -660,12 +1032,15 @@ export default function CarbonFootprintPage() {
           <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600 ring-1 ring-violet-200">calc</span>
           Auto-calculated field
         </span>
-      </div>
+      </div> */}
 
       {/* Add record drawer */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-end">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={resetAddDrawer} />
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={resetAddDrawer}
+          />
           <div className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl dark:bg-[#0a1628] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-white/[0.06]">
               <div className="flex items-center gap-2">
@@ -673,25 +1048,41 @@ export default function CarbonFootprintPage() {
                   <Plus size={15} className="text-emerald-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Add Carbon Footprint Record</p>
-                  <p className="text-xs text-slate-400">Link to an existing supplier unit</p>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    Add Carbon Footprint Record
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Link to an existing supplier unit
+                  </p>
                 </div>
               </div>
-              <button onClick={resetAddDrawer} className="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/[0.06]"><X size={16} className="text-slate-400" /></button>
+              <button
+                onClick={resetAddDrawer}
+                className="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+              >
+                <X size={16} className="text-slate-400" />
+              </button>
             </div>
 
             <div className="flex-1 space-y-5 px-6 py-5">
-              {saveError && <InlineAlert title="Error" message={saveError} tone="danger" />}
+              {saveError && (
+                <InlineAlert title="Error" message={saveError} tone="danger" />
+              )}
 
               {/* Step 1 — Supplier group search */}
               <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
-                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white">1</span>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white">
+                    1
+                  </span>
                   Supplier Group
                 </label>
                 <div className="relative" ref={groupSearchRef as any}>
                   <div className="relative">
-                    <Building2 size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Building2
+                      size={13}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
                     <input
                       value={selectedGroup ? selectedGroup.nom : groupSearch}
                       onChange={(e) => {
@@ -704,13 +1095,23 @@ export default function CarbonFootprintPage() {
                         setShowGroupDropdown(true);
                         loadGroups(e.target.value);
                       }}
-                      onFocus={() => { if (!selectedGroup) { setShowGroupDropdown(true); loadGroups(groupSearch); } }}
+                      onFocus={() => {
+                        if (!selectedGroup) {
+                          setShowGroupDropdown(true);
+                          loadGroups(groupSearch);
+                        }
+                      }}
                       placeholder="Type supplier name to search…"
                       className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500"
                     />
                     {selectedGroup && (
                       <button
-                        onClick={() => { setSelectedGroup(null); setGroupSearch(""); setUnits([]); setSelectedUnitId(null); }}
+                        onClick={() => {
+                          setSelectedGroup(null);
+                          setGroupSearch("");
+                          setUnits([]);
+                          setSelectedUnitId(null);
+                        }}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 hover:bg-slate-200 dark:hover:bg-white/10"
                       >
                         <X size={11} className="text-slate-400" />
@@ -721,10 +1122,13 @@ export default function CarbonFootprintPage() {
                     <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-white/[0.08] dark:bg-[#0d1929]">
                       {groupsLoading ? (
                         <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-400">
-                          <RefreshCw size={11} className="animate-spin" /> Loading…
+                          <RefreshCw size={11} className="animate-spin" />{" "}
+                          Loading…
                         </div>
                       ) : groups.length === 0 ? (
-                        <p className="px-3 py-3 text-xs text-slate-400">No groups found</p>
+                        <p className="px-3 py-3 text-xs text-slate-400">
+                          No groups found
+                        </p>
                       ) : (
                         groups.map((g) => (
                           <button
@@ -737,8 +1141,13 @@ export default function CarbonFootprintPage() {
                               loadUnitsForGroup(g.id_group);
                             }}
                           >
-                            <Building2 size={12} className="shrink-0 text-slate-400" />
-                            <span className="text-slate-700 dark:text-slate-200">{g.nom}</span>
+                            <Building2
+                              size={12}
+                              className="shrink-0 text-slate-400"
+                            />
+                            <span className="text-slate-700 dark:text-slate-200">
+                              {g.nom}
+                            </span>
                           </button>
                         ))
                       )}
@@ -750,7 +1159,9 @@ export default function CarbonFootprintPage() {
               {/* Step 2 — Unit selector */}
               <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
-                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white">2</span>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-black text-white">
+                    2
+                  </span>
                   Supplier Unit
                 </label>
                 {!selectedGroup ? (
@@ -759,7 +1170,8 @@ export default function CarbonFootprintPage() {
                   </div>
                 ) : unitsLoading ? (
                   <div className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs text-slate-400 dark:border-white/[0.08]">
-                    <RefreshCw size={11} className="animate-spin" /> Loading units…
+                    <RefreshCw size={11} className="animate-spin" /> Loading
+                    units…
                   </div>
                 ) : units.length === 0 ? (
                   <div className="flex h-9 items-center rounded-xl border border-dashed border-slate-200 px-3 text-xs text-slate-400 dark:border-white/[0.08]">
@@ -773,88 +1185,195 @@ export default function CarbonFootprintPage() {
                   >
                     <option value="">Select a unit…</option>
                     {units.map((u) => (
-                      <option key={u.id_supplier_unit} value={u.id_supplier_unit}>
-                        {u.supplier_code}{u.country ? ` — ${u.country}` : ""}
+                      <option
+                        key={u.id_supplier_unit}
+                        value={u.id_supplier_unit}
+                      >
+                        {u.supplier_code}
+                        {u.country ? ` — ${u.country}` : ""}
                       </option>
                     ))}
                   </select>
                 )}
-                {selectedUnitId && (() => {
-                  const u = units.find((u) => u.id_supplier_unit === selectedUnitId);
-                  return u ? (
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      ID {u.id_supplier_unit} · {u.country ?? "—"} · {u.continent ?? "—"}
-                    </p>
-                  ) : null;
-                })()}
+                {selectedUnitId &&
+                  (() => {
+                    const u = units.find(
+                      (u) => u.id_supplier_unit === selectedUnitId,
+                    );
+                    return u ? (
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        ID {u.id_supplier_unit} · {u.country ?? "—"} ·{" "}
+                        {u.continent ?? "—"}
+                      </p>
+                    ) : null;
+                  })()}
               </div>
 
               {/* Year */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Year</label>
-                  <input type="number" value={addDraft.year} onChange={(e) => updateAddDraft({ year: e.target.value })} placeholder="2024" className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Year
+                  </label>
+                  <input
+                    type="number"
+                    value={addDraft.year}
+                    onChange={(e) => updateAddDraft({ year: e.target.value })}
+                    placeholder="2024"
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Carbon Grade</label>
-                  <select value={addDraft.carbon_fp_grade} onChange={(e) => updateAddDraft({ carbon_fp_grade: e.target.value })} className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Carbon Grade
+                  </label>
+                  <select
+                    value={addDraft.carbon_fp_grade}
+                    onChange={(e) =>
+                      updateAddDraft({ carbon_fp_grade: e.target.value })
+                    }
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                  >
                     <option value="">Select…</option>
-                    {["A","B","C","D","E","F","G"].map((g) => <option key={g} value={g}>{g}</option>)}
+                    {["A", "B", "C", "D", "E", "F", "G"].map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Prod. Grade</label>
-                  <select value={addDraft.production_fp_grade} onChange={(e) => updateAddDraft({ production_fp_grade: e.target.value })} className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Prod. Grade
+                  </label>
+                  <select
+                    value={addDraft.production_fp_grade}
+                    onChange={(e) =>
+                      updateAddDraft({ production_fp_grade: e.target.value })
+                    }
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                  >
                     <option value="">Select…</option>
-                    {["A","B","C","D","E","F","G"].map((g) => <option key={g} value={g}>{g}</option>)}
+                    {["A", "B", "C", "D", "E", "F", "G"].map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Purchase Amount (€)</label>
-                  <input type="number" value={addDraft.purchase_amount} onChange={(e) => updateAddDraft({ purchase_amount: e.target.value })} placeholder="0" className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Purchase Amount (€)
+                  </label>
+                  <input
+                    type="number"
+                    value={addDraft.purchase_amount}
+                    onChange={(e) =>
+                      updateAddDraft({ purchase_amount: e.target.value })
+                    }
+                    placeholder="0"
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                  />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Pond. FP (Weighted)</label>
-                  <input type="number" step="0.0001" value={addDraft.weighted_footprint} onChange={(e) => updateAddDraft({ weighted_footprint: e.target.value })} placeholder="0.0000" className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Pond. FP (Weighted)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={addDraft.weighted_footprint}
+                    onChange={(e) =>
+                      updateAddDraft({ weighted_footprint: e.target.value })
+                    }
+                    placeholder="0.0000"
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                  />
                 </div>
               </div>
 
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-white/[0.05] dark:bg-white/[0.02]">
-                <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Formula Inputs — Location</p>
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Formula Inputs — Location
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">Supplier Origin</label>
-                    <input value={addDraft.supplier_origin} onChange={(e) => updateAddDraft({ supplier_origin: e.target.value })} placeholder="Country" className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                    <label className="mb-1 block text-xs text-slate-500">
+                      Supplier Origin
+                    </label>
+                    <input
+                      value={addDraft.supplier_origin}
+                      onChange={(e) =>
+                        updateAddDraft({ supplier_origin: e.target.value })
+                      }
+                      placeholder="Country"
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                    />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">Supplier Continent</label>
-                    <input value={addDraft.supplier_continent} onChange={(e) => updateAddDraft({ supplier_continent: e.target.value })} placeholder="Continent" className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                    <label className="mb-1 block text-xs text-slate-500">
+                      Supplier Continent
+                    </label>
+                    <input
+                      value={addDraft.supplier_continent}
+                      onChange={(e) =>
+                        updateAddDraft({ supplier_continent: e.target.value })
+                      }
+                      placeholder="Continent"
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                    />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">Site Location</label>
-                    <input value={addDraft.site_location} onChange={(e) => updateAddDraft({ site_location: e.target.value })} placeholder="Location" className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                    <label className="mb-1 block text-xs text-slate-500">
+                      Site Location
+                    </label>
+                    <input
+                      value={addDraft.site_location}
+                      onChange={(e) =>
+                        updateAddDraft({ site_location: e.target.value })
+                      }
+                      placeholder="Location"
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                    />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">Site Continent</label>
-                    <input value={addDraft.site_continent} onChange={(e) => updateAddDraft({ site_continent: e.target.value })} placeholder="Continent" className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200" />
+                    <label className="mb-1 block text-xs text-slate-500">
+                      Site Continent
+                    </label>
+                    <input
+                      value={addDraft.site_continent}
+                      onChange={(e) =>
+                        updateAddDraft({ site_continent: e.target.value })
+                      }
+                      placeholder="Continent"
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
+                    />
                   </div>
                 </div>
               </div>
 
               {/* Live formula preview */}
               <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-4 dark:border-violet-800/30 dark:bg-violet-900/10">
-                <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-violet-400">Auto-Calculated Results</p>
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-violet-400">
+                  Auto-Calculated Results
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-[10px] text-slate-400 mb-1">Transport Impact</p>
+                    <p className="text-[10px] text-slate-400 mb-1">
+                      Transport Impact
+                    </p>
                     <p className="text-lg font-bold text-violet-700 dark:text-violet-300">
-                      {addDraft.transport_impact != null ? addDraft.transport_impact : <span className="text-sm text-slate-300">—</span>}
+                      {addDraft.transport_impact != null ? (
+                        addDraft.transport_impact
+                      ) : (
+                        <span className="text-sm text-slate-300">—</span>
+                      )}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
                       {addDraft.transport_impact === 0 && "Same country"}
@@ -863,12 +1382,19 @@ export default function CarbonFootprintPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400 mb-1">Global FP Impact</p>
+                    <p className="text-[10px] text-slate-400 mb-1">
+                      Global FP Impact
+                    </p>
                     <p className="text-lg font-bold text-violet-700 dark:text-violet-300">
-                      {addDraft.global_fp_impact != null ? addDraft.global_fp_impact : <span className="text-sm text-slate-300">—</span>}
+                      {addDraft.global_fp_impact != null ? (
+                        addDraft.global_fp_impact
+                      ) : (
+                        <span className="text-sm text-slate-300">—</span>
+                      )}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      {addDraft.production_fp_grade && addDraft.weighted_footprint
+                      {addDraft.production_fp_grade &&
+                      addDraft.weighted_footprint
                         ? `(${PROD_SCORE[addDraft.production_fp_grade.toUpperCase()] ?? "?"} + ${addDraft.transport_impact ?? "?"}) × ${addDraft.weighted_footprint}`
                         : "Fill Prod. Grade + Pond. FP"}
                     </p>
@@ -883,7 +1409,11 @@ export default function CarbonFootprintPage() {
                 disabled={addSaving}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
-                {addSaving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                {addSaving ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Plus size={14} />
+                )}
                 Create Record
               </button>
             </div>

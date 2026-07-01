@@ -8,6 +8,8 @@ import supplierAPI from "../../services/supplierOnboardingAPI";
 const ACCESS_PROFILE_LABELS: Record<string, string> = {
   purchasing_manager: "Purchasing Manager",
   supplier_owner: "Supplier Owner",
+  vp_conversion: "VP Conversion",
+  purchasing_director: "Purchasing Director",
 };
 
 export default function UserDropdown() {

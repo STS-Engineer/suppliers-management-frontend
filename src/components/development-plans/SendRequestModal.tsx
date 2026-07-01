@@ -354,14 +354,16 @@ function ContactCard({
         !hasEmail
           ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
           : selected
-          ? "border-sky-400 bg-sky-50 shadow-sm shadow-sky-100"
-          : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"
+            ? "border-sky-400 bg-sky-50 shadow-sm shadow-sky-100"
+            : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"
       }`}
     >
       {/* Avatar */}
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
-          selected ? "bg-sky-500 text-white shadow-md shadow-sky-200" : "bg-slate-100 text-slate-600"
+          selected
+            ? "bg-sky-500 text-white shadow-md shadow-sky-200"
+            : "bg-slate-100 text-slate-600"
         }`}
       >
         {initials || "?"}
@@ -380,9 +382,13 @@ function ContactCard({
           )}
         </div>
         {contact.role_label && (
-          <p className="text-[11px] font-medium text-slate-500">{contact.role_label}</p>
+          <p className="text-[11px] font-medium text-slate-500">
+            {contact.role_label}
+          </p>
         )}
-        <p className={`mt-0.5 truncate text-[11px] ${hasEmail ? "text-slate-600" : "italic text-slate-400"}`}>
+        <p
+          className={`mt-0.5 truncate text-[11px] ${hasEmail ? "text-slate-600" : "italic text-slate-400"}`}
+        >
           {contact.email ?? "No email address"}
         </p>
       </div>
@@ -395,7 +401,13 @@ function ContactCard({
       >
         {selected && (
           <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M2 6l3 3 5-5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
       </div>
@@ -447,13 +459,19 @@ export function SharedSendRequestModal({
         if (cancelled) return;
         const loaded = (res.data?.items ?? []) as ContactResponse[];
         setContacts(loaded);
-        const primaries = loaded.filter((c) => c.is_primary_contact && c.email).map((c) => c.email!);
+        const primaries = loaded
+          .filter((c) => c.is_primary_contact && c.email)
+          .map((c) => c.email!);
         const all = loaded.filter((c) => c.email).map((c) => c.email!);
         setSelectedEmails(new Set(primaries.length ? primaries : all));
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setContactsLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setContactsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [item.relation.id_supplier_unit]);
 
   const toggleContact = (email: string) =>
@@ -580,14 +598,20 @@ export function SharedSendRequestModal({
         <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-800">Supplier Contacts</p>
-              <p className="text-xs text-slate-500">Select who will receive the request email</p>
+              <p className="text-sm font-semibold text-slate-800">
+                Supplier Contacts
+              </p>
+              <p className="text-xs text-slate-500">
+                Select who will receive the request email
+              </p>
             </div>
             {contacts.length > 1 && (
               <button
                 type="button"
                 onClick={() => {
-                  const emailsWithAddr = contacts.filter((c) => c.email).map((c) => c.email!);
+                  const emailsWithAddr = contacts
+                    .filter((c) => c.email)
+                    .map((c) => c.email!);
                   setSelectedEmails(
                     selectedEmails.size === emailsWithAddr.length
                       ? new Set()
@@ -611,7 +635,8 @@ export function SharedSendRequestModal({
           ) : contacts.length === 0 ? (
             <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              No contacts found for this supplier unit. Enter email addresses below.
+              No contacts found for this supplier unit. Enter email addresses
+              below.
             </div>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
@@ -630,13 +655,15 @@ export function SharedSendRequestModal({
           <div className="pt-1">
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               Add extra recipients{" "}
-              <span className="font-normal text-slate-400">(not listed above)</span>
+              <span className="font-normal text-slate-400">
+                (not listed above)
+              </span>
             </label>
             <input
               value={extraEmailsRaw}
               onChange={(e) => setExtraEmailsRaw(e.target.value)}
               className={inputCls}
-              placeholder="extra@company.com, another@company.com"
+              placeholder="extra@avocarbon.com, another@avocarbon.com"
             />
           </div>
 
@@ -645,7 +672,8 @@ export function SharedSendRequestModal({
             <div className="flex items-center gap-1.5">
               <Send className="h-3.5 w-3.5 text-sky-500" />
               <span className="text-xs font-semibold text-sky-700">
-                {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""} selected
+                {totalRecipients} recipient{totalRecipients !== 1 ? "s" : ""}{" "}
+                selected
               </span>
             </div>
           )}
@@ -661,12 +689,14 @@ export function SharedSendRequestModal({
               value={ccRaw}
               onChange={(event) => setCcRaw(event.target.value)}
               className={inputCls}
-              placeholder="owner@company.com"
+              placeholder="owner@avocarbon.com"
             />
             {supplierOwner && (
               <p className="mt-1 text-xs text-slate-400">
                 Pre-filled with supplier owner:{" "}
-                <span className="font-medium text-slate-600">{supplierOwner}</span>
+                <span className="font-medium text-slate-600">
+                  {supplierOwner}
+                </span>
               </p>
             )}
           </div>
@@ -705,8 +735,8 @@ export function SharedSendRequestModal({
             {isSaving
               ? "Sending..."
               : totalRecipients > 0
-              ? `Send to ${totalRecipients} Recipient${totalRecipients !== 1 ? "s" : ""}`
-              : "Send Request Email"}
+                ? `Send to ${totalRecipients} Recipient${totalRecipients !== 1 ? "s" : ""}`
+                : "Send Request Email"}
           </button>
         </div>
       </div>
@@ -1012,7 +1042,7 @@ export function SharedMarkReceivedModal({
                   value={emailTo}
                   onChange={(event) => setEmailTo(event.target.value)}
                   className={inputCls}
-                  placeholder="manager@company.com, quality@company.com"
+                  placeholder="manager@avocarbon.com, quality@avocarbon.com"
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   The uploaded files will be attached to this email.
@@ -1026,7 +1056,7 @@ export function SharedMarkReceivedModal({
                   value={emailCc}
                   onChange={(event) => setEmailCc(event.target.value)}
                   className={inputCls}
-                  placeholder="owner@company.com"
+                  placeholder="owner@avocarbon.com"
                 />
               </div>
               <div>
@@ -1320,7 +1350,7 @@ export function SharedSubmitForReviewModal({
               onChange={(e) => setReviewersRaw(e.target.value)}
               rows={2}
               className={`${inputCls} resize-none`}
-              placeholder="plantmanager@company.com, quality@company.com, logistics@company.com"
+              placeholder="plantmanager@avocarbon.com, quality@avocarbon.com, logistics@avocarbon.com"
             />
           </div>
           <div>
@@ -1331,7 +1361,7 @@ export function SharedSubmitForReviewModal({
               value={ccRaw}
               onChange={(e) => setCcRaw(e.target.value)}
               className={inputCls}
-              placeholder="owner@company.com"
+              placeholder="owner@avocarbon.com"
             />
           </div>
           <div>
@@ -1672,7 +1702,7 @@ export function SharedRequestRevisionModal({
             value={ccRaw}
             onChange={(e) => setCcRaw(e.target.value)}
             className={inputCls}
-            placeholder="owner@company.com"
+            placeholder="owner@avocarbon.com"
           />
         </div>
         <div>

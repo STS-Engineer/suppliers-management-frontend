@@ -36,6 +36,7 @@ interface ConfigurationFormProps {
   supplierOwner: string;
   annualSpendValue: string;
   annualSpendCurrency: string;
+  fiscalYear: number | "";
   templateId: number | "";
   errors: FormErrors;
   onChange: (field: string, value: any) => void;
@@ -55,6 +56,7 @@ export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
   supplierOwner,
   annualSpendValue,
   annualSpendCurrency,
+  fiscalYear,
   templateId,
   errors,
   onChange,
@@ -225,6 +227,24 @@ export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
           options={CURRENCIES.map((c) => ({ value: c, label: c }))}
           placeholder="Select currency"
         />
+
+        <div className="col-span-2">
+          <FormInput
+            label="Fiscal Year"
+            name="fiscal_year"
+            type="number"
+            value={fiscalYear === "" ? "" : String(fiscalYear)}
+            onChange={(e) =>
+              onChange(
+                "fiscal_year",
+                e.target.value ? Number(e.target.value) : "",
+              )
+            }
+            placeholder={String(new Date().getFullYear())}
+            error={errors.fiscal_year}
+            helperText="Year this spend estimate applies to (e.g. 2025). Leave blank if not yet known."
+          />
+        </div>
 
         {/* Unit contact reference */}
         {hasUnitContact && (

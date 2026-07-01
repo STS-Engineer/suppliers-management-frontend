@@ -4,13 +4,20 @@
  * Each relation is labelled "Unit Name → Plant Name".
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   AvocarbonSite,
   SupplierSiteRelation,
   SupplierUnitResponse,
   UnitEvaluationSummary,
 } from "../../types/onboarding";
+import { supplierAPI } from "../../services/supplierOnboardingAPI";
+
+interface SpendEntry {
+  fiscal_year: number;
+  spend_value: number;
+  spend_currency: string;
+}
 
 interface Props {
   selectedUnit: SupplierUnitResponse | null;
@@ -62,6 +69,30 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
   onAssignToPlant,
   assignActive,
 }) => {
+  // Most-recent spend per relation: relationId → latest SpendEntry
+  const [latestSpend, setLatestSpend] = useState<Record<number, SpendEntry | null>>({});
+
+  useEffect(() => {
+    if (!siteRelations.length) { setLatestSpend({}); return; }
+    let cancelled = false;
+    Promise.all(
+      siteRelations.map(async (rel) => {
+        try {
+          const result = await supplierAPI.listRelationSpend(rel.id_relation);
+          const entries: SpendEntry[] = result.data ?? result ?? [];
+          // API returns newest-first; take the first entry
+          return [rel.id_relation, entries[0] ?? null] as const;
+        } catch {
+          return [rel.id_relation, null] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setLatestSpend(Object.fromEntries(pairs));
+    });
+    return () => { cancelled = true; };
+  }, [siteRelations]);
+
   const getSite = (siteId: number) =>
     availableSites.find((s) => s.id_site === siteId);
 
@@ -179,6 +210,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
                   scope={scope}
                   grade={grade}
                   fmt={fmt}
+                  latestSpend={latestSpend[rel.id_relation] ?? null}
                   onEvaluate={() => onEvaluate(rel)}
                   onDevelopmentPlan={() => onManageDevelopmentPlan(rel)}
                   onViewDetails={() => onViewRelationDetails(rel)}
@@ -209,6 +241,7 @@ interface RelCardProps {
   scope: { bg: string; text: string; dot: string };
   grade: { ring: string; text: string; bg: string } | null;
   fmt: (v?: string | null) => string | null;
+  latestSpend: SpendEntry | null;
   onEvaluate: () => void;
   onDevelopmentPlan: () => void;
   onViewDetails: () => void;
@@ -218,7 +251,7 @@ interface RelCardProps {
 }
 
 const RelationCard: React.FC<RelCardProps> = ({
-  relation, unitName, siteName, siteLocation, scope, grade, fmt,
+  relation, unitName, siteName, siteLocation, scope, grade, fmt, latestSpend,
   onEvaluate, onDevelopmentPlan, onViewDetails, onOverride, isSendingDevelopmentPlan = false, isLoadingDetails = false,
 }) => (
   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
@@ -257,10 +290,14 @@ const RelationCard: React.FC<RelCardProps> = ({
     <div className="px-5 py-4">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
         {relation.supplier_owner && <Meta label="Owner" value={relation.supplier_owner} />}
-        {relation.annual_spend_value != null && (
-          <Meta label="Annual Spend"
-            value={`${Number(relation.annual_spend_value).toLocaleString()} ${relation.annual_spend_currency ?? ""}`} />
-        )}
+        {latestSpend ? (
+          <Meta
+            label={`Annual Spend (FY ${latestSpend.fiscal_year})`}
+            value={`${Number(latestSpend.spend_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${latestSpend.spend_currency}`}
+          />
+        ) : relation.annual_spend_value != null ? (
+          <Meta label="Annual Spend" value={`${Number(relation.annual_spend_value).toLocaleString()} ${relation.annual_spend_currency ?? ""}`} />
+        ) : null}
         {relation.evaluation_frequency && <Meta label="Frequency" value={relation.evaluation_frequency} />}
         {relation.strategic_mention && relation.strategic_mention !== "none" && (
           <Meta label="Strategic" value={relation.strategic_mention} />

@@ -8,6 +8,9 @@ import {
 import { AppLayout } from "./components/AppLayout";
 import { useAuth } from "./context/AuthContext";
 import SignInPage from "./pages/SignInPage";
+import SignUpPage from "./pages/SignUpPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ActivateAccountPage from "./pages/ActivateAccountPage";
 import SupplierManagementPage from "./pages/SupplierManagementPage";
 import RelationEvaluationPage from "./pages/RelationEvaluationPage";
 import { SupplierOnboardingPage } from "./pages/SupplierOnboardingPage";
@@ -21,13 +24,26 @@ import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
 import BudgetingPage from "./pages/BudgetingPage";
 import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
 import PurchasingKpiPage from "./pages/PurchasingKpiPage";
+import PurchasingActionPlansPage from "./pages/PurchasingActionPlansPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 import GateApprovalPage from "./pages/GateApprovalPage";
-// import PublicDirectoryPage from "./pages/PublicDirectoryPage";
+import CommitteeVotePage from "./pages/CommitteeVotePage";
+import PublicDirectoryPage from "./pages/PublicDirectoryPage";
 // import CarbonFootprintPage from "./pages/CarbonFootprintPage";
-// // import SupplierDirectoryAdminPage from "./pages/SupplierDirectoryAdminPage";
+
 import CertificationsTrackingPage from "./pages/CertificationsTrackingPage";
 import DocumentsValidityPage from "./pages/DocumentsValidityPage";
+import AccountRequestsPage from "./pages/AccountRequestsPage";
+import PendingValidationPage from "./pages/PendingValidationPage";
+import RelationReviewQueuePage from "./pages/RelationReviewQueuePage";
+
+function RoleGuard({ roles }: { roles: string[] }) {
+  const { user } = useAuth();
+  if (!user || !roles.includes(user.access_profile)) {
+    return <Navigate to="/" replace />;
+  }
+  return <Outlet />;
+}
 
 function ProtectedShell() {
   const location = useLocation();
@@ -61,10 +77,26 @@ const router = createBrowserRouter([
     path: "/approve/:token",
     element: <GateApprovalPage />,
   },
-  // {
-  //   path: "/directory",
-  //   element: <PublicDirectoryPage />,
-  // },
+  {
+    path: "/committee-vote/:token",
+    element: <CommitteeVotePage />,
+  },
+  {
+    path: "/signup",
+    element: <SignUpPage />,
+  },
+  {
+    path: "/forgot-password",
+    element: <ForgotPasswordPage />,
+  },
+  {
+    path: "/activate",
+    element: <ActivateAccountPage />,
+  },
+  {
+    path: "/directory",
+    element: <PublicDirectoryPage />,
+  },
   {
     element: <ProtectedShell />,
     children: [
@@ -96,12 +128,17 @@ const router = createBrowserRouter([
       { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
       { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
       { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
+      { path: "/purchasing-value/action-plans", element: <PurchasingActionPlansPage /> },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
+      {
+        element: <RoleGuard roles={["vp_conversion"]} />,
+        children: [
+          { path: "/account-requests", element: <AccountRequestsPage /> },
+          { path: "/pending-validation", element: <PendingValidationPage /> },
+        ],
+      },
+      { path: "/relation-review", element: <RelationReviewQueuePage /> },
       // { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },
-      // {
-      //   path: "/suppliers/directory-admin",
-      //   element: <SupplierDirectoryAdminPage />,
-      // },
       {
         path: "/suppliers/certifications",
         element: <CertificationsTrackingPage />,

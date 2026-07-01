@@ -417,6 +417,9 @@ export default function MonthlyFollowUpPage() {
                 {!loading &&
                   rows.map((r) => {
                     const e = edits[r.month.monthly_financial_id];
+                    const rowEditable =
+                      (r.conversionOwner ?? "").trim().toLowerCase() ===
+                      userEmail.trim().toLowerCase();
                     const actualNum = e?.actual_saving ? n(e.actual_saving) : null;
                     const delta = actualNum != null ? actualNum - n(r.month.expected_saving) : null;
                     return (
@@ -472,7 +475,8 @@ export default function MonthlyFollowUpPage() {
                             step="0.01"
                             value={e?.actual_saving ?? ""}
                             onChange={(ev) => setField(r.month.monthly_financial_id, "actual_saving", ev.target.value)}
-                            className={`w-24 text-right ${cellInputCls}`}
+                            disabled={!rowEditable}
+                            className={`w-24 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </td>
                         <td className={`px-3 py-2.5 text-right ${editColCls}`}>
@@ -486,14 +490,16 @@ export default function MonthlyFollowUpPage() {
                             onChange={(ev) =>
                               setField(r.month.monthly_financial_id, "forecast_eoy_saving", ev.target.value)
                             }
-                            className={`w-24 text-right ${cellInputCls}`}
+                            disabled={!rowEditable}
+                            className={`w-24 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </td>
                         <td className={`px-3 py-2.5 ${editColCls}`}>
                           <select
                             value={e?.monthly_outcome ?? ""}
                             onChange={(ev) => setField(r.month.monthly_financial_id, "monthly_outcome", ev.target.value)}
-                            className={cellInputCls}
+                            disabled={!rowEditable}
+                            className={`${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           >
                             {OUTCOMES.map((o) => (
                               <option key={o} value={o}>
@@ -506,8 +512,9 @@ export default function MonthlyFollowUpPage() {
                           <input
                             value={e?.comment ?? ""}
                             onChange={(ev) => setField(r.month.monthly_financial_id, "comment", ev.target.value)}
-                            placeholder="Note…"
-                            className={`w-40 ${cellInputCls}`}
+                            placeholder={rowEditable ? "Note…" : "—"}
+                            disabled={!rowEditable}
+                            className={`w-40 ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </td>
                         <td className="px-3 py-2.5">

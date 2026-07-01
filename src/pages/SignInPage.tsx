@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { getReadableAuthError, useAuth } from "../context/AuthContext";
 
@@ -142,6 +142,15 @@ export default function SignInPage() {
                 </div>
               ) : null}
 
+              <div className="flex justify-end">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-semibold text-[#1b5d92] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
               <button
                 type="submit"
                 disabled={isSubmitting || isLoading}
@@ -150,6 +159,16 @@ export default function SignInPage() {
                 {isSubmitting ? "Signing in..." : "Enter workspace"}
               </button>
             </form>
+
+            <p className="mt-6 text-center text-sm text-slate-500">
+              Don't have an account?{" "}
+              <Link
+                to="/signup"
+                className="font-semibold text-[#1b5d92] hover:underline"
+              >
+                Request access
+              </Link>
+            </p>
 
             {/* <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">

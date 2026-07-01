@@ -4,6 +4,7 @@ import { type Location, useLocation } from "react-router-dom";
 import { useSidebar } from "../context/SidebarContext";
 import AppSidebar from "./layout/AppSidebar";
 import { ThemeToggleButton } from "./common/ThemeToggleButton";
+import NotificationDropdown from "./header/NotificationDropdown";
 
 // ── Route breadcrumb registry ────────────────────────────────────────────────
 
@@ -23,6 +24,8 @@ const CRUMBS: Record<string, Crumb> = {
   },
   "/suppliers/manage": { section: "Lifecycle", page: "Group Management" },
   "/evaluations": { section: "Evaluations", page: "Evaluation Dashboard" },
+  "/account-requests": { section: "Administration", page: "Account Requests" },
+  "/pending-validation": { section: "Administration", page: "Supplier Validation" },
   "/purchasing-value": { section: "Value Management", page: "Opportunities" },
   "/purchasing-value/recovery": { section: "Value Management", page: "Recovery Plans" },
   // "/purchasing-value/kpis":         { section: "Value Management",   page: "KPI Dashboard" },
@@ -68,7 +71,7 @@ export function AppLayout({
         ].join(" ")}
       >
         {/* ── Header ───────────────────────────────────────────────────── */}
-        <header className="relative z-10 flex h-12 shrink-0 items-center gap-3 border-b border-white/[0.07] bg-[#0b1f38] px-3 sm:px-5">
+        <header className="relative z-10 flex h-16 shrink-0 items-center gap-4 border-b border-white/[0.07] bg-[#0b1f38] px-4 sm:px-6">
           {/* Subtle inner highlight on top edge */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/[0.08]" />
 
@@ -76,7 +79,7 @@ export function AppLayout({
           <button
             type="button"
             onClick={toggleMobileSidebar}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.06] text-white/60 transition hover:bg-white/[0.12] hover:text-white lg:hidden"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.06] text-white/60 transition hover:bg-white/[0.12] hover:text-white lg:hidden"
             aria-label="Open navigation"
           >
             <Menu className="h-4 w-4" />
@@ -84,20 +87,21 @@ export function AppLayout({
 
           {/* Breadcrumb */}
           <nav
-            className="flex min-w-0 flex-1 items-center gap-1.5"
+            className="flex min-w-0 flex-1 items-center gap-2"
             aria-label="Breadcrumb"
           >
-            <span className="hidden text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35 sm:block">
+            <span className="hidden text-xs font-semibold uppercase tracking-[0.18em] text-white/40 sm:block">
               {crumb.section}
             </span>
-            <ChevronRight className="hidden h-3 w-3 flex-shrink-0 text-white/20 sm:block" />
-            <span className="truncate text-[12.5px] font-semibold text-white/80">
+            <ChevronRight className="hidden h-3.5 w-3.5 flex-shrink-0 text-white/20 sm:block" />
+            <span className="truncate text-sm font-semibold text-white/85">
               {crumb.page}
             </span>
           </nav>
 
-          {/* Right — theme toggle (visible on all screen sizes) */}
-          <div className="flex flex-shrink-0 items-center">
+          {/* Right controls */}
+          <div className="flex flex-shrink-0 items-center gap-2.5">
+            <NotificationDropdown />
             <ThemeToggleButton compact />
           </div>
         </header>

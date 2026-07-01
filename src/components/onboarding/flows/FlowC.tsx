@@ -17,7 +17,9 @@ import { ContactResponse } from "../../../types/onboarding";
 import { CreatableMultiSelect } from "../FormElements";
 import {
   ALL_FAMILIES,
+  ALL_COMMODITIES,
   getSubFamiliesForFamilies,
+  getFamiliesForCommodities,
 } from "../../../data/familySubfamilyData";
 
 // ---------------------------------------------------------------------------
@@ -37,13 +39,6 @@ const DEFAULT_PRODUCT_LINES = [
   "Power Electronics", "Signal Processing", "Thermal Management",
   "EMC Solutions", "Energy Storage", "Drive Systems",
   "Automation & Control", "Lighting", "Wireless & RF",
-];
-
-const DEFAULT_CATEGORIES = [
-  "Ferrites", "Chokes", "Wire coils", "Inductors", "Transformers",
-  "Capacitors", "Resistors", "Diodes", "MOSFETs", "IGBTs", "Sensors",
-  "Filters", "Connectors", "Switches", "Relays", "Motors",
-  "PCB Assemblies", "Cables", "Coatings", "Laminates",
 ];
 
 // ---------------------------------------------------------------------------
@@ -131,15 +126,25 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
   const [continent,          setContinent]          = useState("");
   const [area,               setArea]               = useState("");
   const [website,            setWebsite]            = useState("");
-  const [supplierEmail,      setSupplierEmail]      = useState("");
-  const [commodityResponsible, setCommodityResponsible] = useState("");
-  const [mainPlants,         setMainPlants]         = useState("");
 
   // ── Product classification ────────────────────────────────────────────────
+  const [commodity,    setCommodity]   = useState<string[]>([]);
   const [family,       setFamily]      = useState<string[]>([]);
   const [subFamily,    setSubFamily]   = useState<string[]>([]);
 
+  const availableFamilies    = getFamiliesForCommodities(commodity);
   const availableSubFamilies = getSubFamiliesForFamilies(family);
+
+  const toggleCommodity = (value: string) => {
+    const next = commodity.includes(value)
+      ? commodity.filter((c) => c !== value)
+      : [...commodity, value];
+    setCommodity(next);
+    if (next.length > 0) {
+      const allowed = getFamiliesForCommodities(next);
+      setFamily((prev) => prev.filter((f) => allowed.includes(f)));
+    }
+  };
 
   const handleFamilyChange = useCallback((newFamilies: string[]) => {
     setFamily(newFamilies);
@@ -149,19 +154,10 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
     }
   }, []);
   const [productLine,  setProductLine] = useState<string[]>([]);
-  const [category,     setCategory]    = useState<string[]>([]);
 
   // ── Sustainability ────────────────────────────────────────────────────────
   const [carbonFootprint,     setCarbonFootprint]     = useState("");
   const [greenElectricityPct, setGreenElectricityPct] = useState("");
-  const [copperBrassPct,      setCopperBrassPct]      = useState("");
-
-  // ── GHG ──────────────────────────────────────────────────────────────────
-  const [scope1Ghg,         setScope1Ghg]         = useState("");
-  const [scope2Ghg,         setScope2Ghg]         = useState("");
-  const [ghgComments,       setGhgComments]       = useState("");
-  const [ghgRequestedDate,  setGhgRequestedDate]  = useState("");
-  const [ghgCompletionPct,  setGhgCompletionPct]  = useState("");
 
   // ── Contacts ──────────────────────────────────────────────────────────────
   const [allContacts,       setAllContacts]       = useState<ContactOption[]>([]);
@@ -176,15 +172,17 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
   const [submitting, setSubmitting] = useState(false);
   const [apiError,   setApiError]   = useState<string | null>(null);
 
-  // ── Load existing contacts ────────────────────────────────────────────────
+  // ── Load group data (contacts + commodities) ──────────────────────────────
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const [groupRes, unitsRes] = await Promise.all([
+        const [groupRes, unitsRes, groupData] = await Promise.all([
           supplierAPI.listContactsForGroup(groupId),
           supplierAPI.listUnitsForGroup(groupId),
+          supplierAPI.getSupplierGroup(groupId),
         ]);
+
         if (!active) return;
 
         const groupContacts: ContactOption[] = (groupRes.data?.items || []).map(
@@ -236,9 +234,6 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
     const e: Record<string, string> = {};
 
     if (!supplierCode.trim()) e.supplierCode = "Unit name is required";
-
-    if (supplierEmail.trim() && !looksLikeEmail(supplierEmail))
-      e.supplierEmail = "Enter a valid email address";
 
     newContacts.forEach((nc, i) => {
       const hasData = nc.full_name.trim() || nc.email.trim() || nc.phone.trim();
@@ -314,24 +309,14 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
           continent:             continent           || undefined,
           area:                  area                || undefined,
           website:               website             || undefined,
-          supplier_email:        supplierEmail       || undefined,
-          commodity_responsible: commodityResponsible || undefined,
-          main_plants:           mainPlants          || undefined,
           // Product classification
+          commodity:             serializeMultiSelect(commodity),
           family:                serializeMultiSelect(family),
           sub_family:            serializeMultiSelect(subFamily),
           product_line:          serializeMultiSelect(productLine),
-          category:              serializeMultiSelect(category),
           // Sustainability
           carbon_footprint:      carbonFootprint     || undefined,
           green_electricity_pct: greenElectricityPct || undefined,
-          copper_brass_pct:      copperBrassPct      || undefined,
-          // GHG
-          scope1_ghg:            scope1Ghg           ? scope1Ghg  : undefined,
-          scope2_ghg:            scope2Ghg           ? scope2Ghg  : undefined,
-          ghg_comments:          ghgComments         || undefined,
-          ghg_requested_date:    ghgRequestedDate    || undefined,
-          ghg_completion_pct:    ghgCompletionPct    || undefined,
         },
         contacts,
         certifications,
@@ -409,31 +394,33 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
                 value={website} onChange={(e) => setWebsite(e.target.value)} />
             </Field>
 
-            <Field label="Supplier Email" error={errors.supplierEmail}>
-              <input className={cx(errors.supplierEmail)} type="email" placeholder="contact@supplier.com"
-                value={supplierEmail}
-                onChange={(e) => setSupplierEmail(e.target.value)}
-                onBlur={() => {
-                  if (supplierEmail.trim() && !looksLikeEmail(supplierEmail))
-                    setErrors((p) => ({ ...p, supplierEmail: "Enter a valid email address" }));
-                  else
-                    setErrors((p) => { const n = { ...p }; delete n.supplierEmail; return n; });
-                }} />
-            </Field>
-
-            <Field label="Commodity Responsible">
-              <input className={cx()} placeholder="e.g. John Smith"
-                value={commodityResponsible} onChange={(e) => setCommodityResponsible(e.target.value)} />
-            </Field>
-
-            <Field label="Main Plants (Avocarbon)" span={2}>
-              <input className={cx()} placeholder="e.g. FR01, DE03 (comma-separated)"
-                value={mainPlants} onChange={(e) => setMainPlants(e.target.value)} />
-            </Field>
           </div>
         </Section>
 
-        {/* ── 2. Product Classification ────────────────────────────────── */}
+        {/* ── 2. Commodity ─────────────────────────────────────────────── */}
+        <Section label="Commodity" subtitle="Select the purchasing commodity for this unit. This also filters available families below.">
+          <div className="flex flex-wrap gap-2">
+            {ALL_COMMODITIES.map((option) => {
+              const selected = commodity.includes(option);
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => toggleCommodity(option)}
+                  className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
+                    selected
+                      ? "border-[#0f2744] bg-[#0f2744] text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+
+        {/* ── 3. Product Classification ────────────────────────────────── */}
         <Section label="Product Classification"
           subtitle="Classify the products or services provided by this unit. Select existing values or type to create new ones.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -445,8 +432,13 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
                 onChange={handleFamilyChange}
                 storageKey="unit_family"
                 defaultOptions={ALL_FAMILIES}
+                availableOptions={commodity.length > 0 ? availableFamilies : undefined}
                 placeholder="Select or type a family…"
-                helperText="Product family (multiple allowed)"
+                helperText={
+                  commodity.length > 0
+                    ? `${availableFamilies.length} families for selected commodities`
+                    : "Product family (multiple allowed)"
+                }
               />
             </div>
 
@@ -480,18 +472,6 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
               />
             </div>
 
-            <div>
-              <CreatableMultiSelect
-                label="Category"
-                name="category"
-                value={category}
-                onChange={setCategory}
-                storageKey="unit_category"
-                defaultOptions={DEFAULT_CATEGORIES}
-                placeholder="e.g., Ferrites, Chokes…"
-                helperText="Product categories supplied by this unit"
-              />
-            </div>
           </div>
         </Section>
 
@@ -519,47 +499,10 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
               </div>
             </Field>
 
-            <Field label="Copper / Brass content">
-              <div className="flex">
-                <input className={cx() + " rounded-r-none border-r-0"} type="number" min={0} max={100} placeholder="0"
-                  value={copperBrassPct} onChange={(e) => setCopperBrassPct(e.target.value)} />
-                <span className="inline-flex items-center rounded-r-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-500">
-                  %
-                </span>
-              </div>
-            </Field>
           </div>
         </Section>
 
-        {/* ── 4. GHG Emissions ────────────────────────────────────────── */}
-        <Section label="GHG Emissions Data"
-          subtitle="Greenhouse gas footprint reported by the supplier (optional).">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Scope 1 GHG (tCO₂e)">
-              <input className={cx()} type="number" placeholder="0.00"
-                value={scope1Ghg} onChange={(e) => setScope1Ghg(e.target.value)} />
-            </Field>
-            <Field label="Scope 2 GHG (tCO₂e)">
-              <input className={cx()} type="number" placeholder="0.00"
-                value={scope2Ghg} onChange={(e) => setScope2Ghg(e.target.value)} />
-            </Field>
-            <Field label="GHG Requested Date">
-              <input className={cx()} type="date"
-                value={ghgRequestedDate} onChange={(e) => setGhgRequestedDate(e.target.value)} />
-            </Field>
-            <Field label="GHG Completion %">
-              <input className={cx()} placeholder="e.g. 75%"
-                value={ghgCompletionPct} onChange={(e) => setGhgCompletionPct(e.target.value)} />
-            </Field>
-            <Field label="GHG Comments" span={2}>
-              <textarea className={cx() + " resize-none"} rows={2}
-                placeholder="Notes on GHG data collection…"
-                value={ghgComments} onChange={(e) => setGhgComments(e.target.value)} />
-            </Field>
-          </div>
-        </Section>
-
-        {/* ── 5. Supplier Contacts ─────────────────────────────────────── */}
+        {/* ── 4. Supplier Contacts ─────────────────────────────────────── */}
         <Section label="Supplier Contacts"
           subtitle="Supplier-side contacts for this unit (quality manager, sales contact, etc.).">
 

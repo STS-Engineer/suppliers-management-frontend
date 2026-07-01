@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight,
   BadgeCheck, Banknote, BarChart2, CheckCircle2,
-  ChevronDown, Clock, FolderOpen, RefreshCw, SlidersHorizontal,
+  ChevronDown, Clock, FolderOpen, Package, RefreshCw, SlidersHorizontal,
   Target, TrendingUp, Users, XCircle, Zap,
 } from "lucide-react";
 import supplierAPI from "../services/supplierOnboardingAPI";
@@ -28,6 +28,8 @@ interface Kpis {
   validated_opp_count: number;
   converted_opp_count: number;
   phase0_go_rate_pct: number | null;
+  phase0_go_count?: number;
+  phase0_decided_count?: number;
   project_on_time_rate_pct: number | null;
   monthly_update_pct: number | null;
   avg_priority_score: number | null;
@@ -39,6 +41,7 @@ interface Kpis {
   non_eur_missing_rate: number;
   opportunity_pipeline_amount: number;
   opportunity_pipeline_count: number;
+  total_saving_from_jan2026?: number;
 }
 interface MonthlyPoint { period: string; expected: number; actual: number; budget: number; eoy_forecast: number; }
 interface PlantRow {
@@ -51,6 +54,17 @@ interface PlantRow {
   eoy_vs_expected_pct: number | null;
   type_breakdown: Record<string, number>;
   eoy_by_status: { Budgeted: number; Opportunity: number; Empty: number };
+  eoy_by_type: Record<string, number>;
+  delta_eoy_budget_by_type: Record<string, number>;
+  // delta_eoy_budget_by_reason: Record<string, number>; // commented out — delta reason logic disabled
+}
+interface SupplierRow {
+  supplier_name: string;
+  opp_count: number;
+  eoy_forecast: number;
+  expected_annual: number;
+  actual_ytd: number;
+  eoy_by_type: Record<string, number>;
 }
 interface TypeRow {
   type: string; opp_count: number; validated_count: number;
@@ -59,6 +73,7 @@ interface TypeRow {
   ytd_rate_pct: number | null;
   eoy_vs_expected_pct: number | null;
 }
+interface GateRate { phase: string; decided: number; go: number; no_go: number; rate: number | null; }
 interface YearSplit { year: number; expected: number; actual: number; ytd_rate_pct: number | null; }
 interface MissingUpdate { financial_line_id: number; line_name: string; opportunity_name: string; follower: string; missing_months: string[]; missing_count: number; }
 interface EscalatedLine { financial_line_id: number; line_name: string; opportunity_name: string; escalation_reason: string; escalated_at: string; escalated_by: string; delta_ytd: number; }
@@ -80,8 +95,9 @@ interface KpiFilters { plantIds: number[]; categories: string[]; buyers: string[
 interface KpiData {
   year: number; computed_at: string; reporting_currency?: string;
   available_filters?: AvailableFilters;
+  gate_go_rates?: GateRate[];
   kpis: Kpis; monthly_actuals: MonthlyPoint[];
-  by_plant: PlantRow[]; by_type: TypeRow[]; by_buyer: BuyerRow[];
+  by_plant: PlantRow[]; by_supplier: SupplierRow[]; by_type: TypeRow[]; by_buyer: BuyerRow[];
   year_split: YearSplit[]; late_projects: LateProject[];
   missing_updates: MissingUpdate[]; escalated: EscalatedLine[];
 }
@@ -112,7 +128,7 @@ const _pct = (num: number, denom: number): number | null =>
 const pctToken = (val: number | null, target = 100) => {
   if (val == null) return C.indigo;
   if (val >= target) return C.emerald;
-  if (val >= target * 0.75) return C.amber;
+  if (val >= target * 0.80) return C.amber;
   return C.rose;
 };
 
@@ -127,7 +143,7 @@ function TrendChip({ val, target = 100 }: { val: number | null; target?: number 
         <ArrowUpRight size={8} />On track
       </span>
     );
-  if (val >= target * 0.75)
+  if (val >= target * 0.80)
     return (
       <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">
         Watch
@@ -525,6 +541,291 @@ function EoyByPlantChart({ plants }: { plants: PlantRow[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Delta-reason color map (matches Monday.com taxonomy) — DISABLED
+// ---------------------------------------------------------------------------
+// const REASON_HEX: Record<string, string> = {
+//   "As planned":                  "#22C55E",
+//   "NTS":                         "#9CA3AF",
+//   "Inventory issue":             "#A78BFA",
+//   "Higher productivity / Volume":"#16A34A",
+//   "Inventory reduction":         "#EC4899",
+//   "Check Data":                  "#38BDF8",
+//   "Lower volume / Late start":   "#D97706",
+//   "Cancel & Replace":            "#92400E",
+//   "Stuck":                       "#7C3AED",
+//   "Budget Mist":                 "#EA580C",
+//   "Price increase":              "#F472B6",
+//   "Strategy change":             "#C084FC",
+//   "Supplier Issue":              "#F97316",
+//   "Recovery":                    "#0369A1",
+//   "Late action":                 "#EF4444",
+//   "RM Not Available":            "#1E293B",
+// };
+// function getReasonHex(r: string) { return REASON_HEX[r] ?? "#94A3B8"; }
+
+// ---------------------------------------------------------------------------
+// EOY by plant — grouped by opportunity type (stacked horizontal bars)
+// ---------------------------------------------------------------------------
+const TYPE_HEX: Record<string, string> = {
+  Negotiation: "#8B5CF6", Sourcing: "#0EA5E9",
+  "Technical Productivity": "#10B981", Cash: "#F59E0B",
+};
+function getTypeHex(t: string) { return TYPE_HEX[t] ?? "#94A3B8"; }
+
+function EoyByPlantByTypeChart({ plants }: { plants: PlantRow[] }) {
+  const visible = plants.filter(p => p.eoy_forecast > 0);
+  if (!visible.length) return <p className="py-8 text-center text-sm text-slate-400">No EOY data.</p>;
+  const allTypes = [...new Set(visible.flatMap(p => Object.keys(p.eoy_by_type ?? {})))];
+  if (!allTypes.length) return <p className="py-8 text-center text-sm text-slate-400">No type breakdown available.</p>;
+  const maxVal = Math.max(...visible.map(p => p.eoy_forecast), 1);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
+        {allTypes.map(t => (
+          <span key={t} className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: getTypeHex(t) }} />
+            {t}
+          </span>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {visible.map(plant => {
+          const barPct = Math.round((plant.eoy_forecast / maxVal) * 100);
+          const segs = allTypes.map(t => ({ type: t, val: (plant.eoy_by_type ?? {})[t] ?? 0 })).filter(s => s.val > 0);
+          return (
+            <div key={plant.plant_id} className="flex items-center gap-3">
+              <div className="w-32 shrink-0 text-[11px] font-semibold text-slate-600 truncate text-right">{plant.plant_name}</div>
+              <div className="flex-1 flex items-center gap-2">
+                <div className="flex-1 bg-slate-100 rounded-md h-6 overflow-hidden">
+                  <div className="flex h-full" style={{ width: `${barPct}%` }}>
+                    {segs.map(s => (
+                      <div key={s.type} className="h-full transition-all"
+                        style={{ width: `${Math.round((s.val / plant.eoy_forecast) * 100)}%`, backgroundColor: getTypeHex(s.type) }}
+                        title={`${s.type}: ${fmt(s.val)}`} />
+                    ))}
+                  </div>
+                </div>
+                <span className="text-[12px] font-black text-slate-800 tabular-nums shrink-0 w-28 text-right">{fmt(plant.eoy_forecast)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delta EOY vs Budget by plant — diverging horizontal bars grouped by type
+// ---------------------------------------------------------------------------
+function DeltaEoyByPlantChart({ plants }: { plants: PlantRow[] }) {
+  const withDelta = plants
+    .map(p => ({
+      ...p,
+      total_delta: Object.values(p.delta_eoy_budget_by_type ?? {}).reduce((s, v) => s + v, 0),
+    }))
+    .filter(p => Object.keys(p.delta_eoy_budget_by_type ?? {}).length > 0)
+    .sort((a, b) => b.total_delta - a.total_delta);
+
+  if (!withDelta.length)
+    return <p className="py-8 text-center text-sm text-slate-400">No committed opportunities to compare.</p>;
+
+  const maxAbs = Math.max(...withDelta.map(p => Math.abs(p.total_delta)), 1);
+  const allTypes = [...new Set(withDelta.flatMap(p => Object.keys(p.delta_eoy_budget_by_type ?? {})))];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-6 text-[11px] text-slate-500">
+        {allTypes.map(t => (
+          <span key={t} className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: getTypeHex(t) }} />
+            {t}
+          </span>
+        ))}
+        <span className="ml-2 text-[10px] text-slate-400 italic">+ above baseline · − below baseline</span>
+      </div>
+      <div className="space-y-2">
+        {withDelta.map(plant => {
+          const isPos = plant.total_delta >= 0;
+          const barPct = Math.round((Math.abs(plant.total_delta) / maxAbs) * 100);
+          const segs = allTypes
+            .map(t => ({ type: t, val: (plant.delta_eoy_budget_by_type ?? {})[t] ?? 0 }))
+            .filter(s => (isPos ? s.val > 0 : s.val < 0));
+          const totalAbs = segs.reduce((s, v) => s + Math.abs(v.val), 0) || 1;
+
+          return (
+            <div key={plant.plant_id} className="flex items-center gap-3">
+              <div className="w-32 shrink-0 text-[11px] font-semibold text-slate-600 truncate text-right">{plant.plant_name}</div>
+              <div className="flex-1 flex items-center">
+                {/* left (negative) */}
+                <div className="w-1/2 flex justify-end pr-px">
+                  {!isPos && (
+                    <div className="flex h-5 rounded-l-sm overflow-hidden" style={{ width: `${barPct}%` }}>
+                      {segs.map(s => (
+                        <div key={s.type} className="h-full" style={{ width: `${Math.round((Math.abs(s.val) / totalAbs) * 100)}%`, backgroundColor: getTypeHex(s.type), opacity: 0.75 }}
+                          title={`${s.type}: ${fmt(s.val)}`} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* centre */}
+                <div className="w-px h-7 bg-slate-300 shrink-0" />
+                {/* right (positive) */}
+                <div className="w-1/2 pl-px">
+                  {isPos && plant.total_delta > 0 && (
+                    <div className="flex h-5 rounded-r-sm overflow-hidden" style={{ width: `${barPct}%` }}>
+                      {segs.map(s => (
+                        <div key={s.type} className="h-full" style={{ width: `${Math.round((Math.abs(s.val) / totalAbs) * 100)}%`, backgroundColor: getTypeHex(s.type) }}
+                          title={`${s.type}: ${fmt(s.val)}`} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <span className={`text-[11px] font-bold tabular-nums shrink-0 w-28 ${isPos ? "text-emerald-600" : "text-rose-500"}`}>
+                {isPos && plant.total_delta > 0 ? "+" : ""}{fmt(plant.total_delta)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delta EOY vs Budget by plant — stacked by delta_reason (chart 5) — DISABLED
+// ---------------------------------------------------------------------------
+// function DeltaEoyByReasonChart({ plants }: { plants: PlantRow[] }) {
+//   const withDelta = plants
+//     .map(p => ({
+//       ...p,
+//       total_delta: Object.values(p.delta_eoy_budget_by_reason ?? {}).reduce((s, v) => s + v, 0),
+//     }))
+//     .filter(p => Object.keys(p.delta_eoy_budget_by_reason ?? {}).length > 0)
+//     .sort((a, b) => b.total_delta - a.total_delta);
+//   if (!withDelta.length)
+//     return (
+//       <p className="py-8 text-center text-sm text-slate-400">
+//         No delta reason data yet. Set <em>delta_reason</em> on budget assignments to populate this chart.
+//       </p>
+//     );
+//   const allReasons = [...new Set(withDelta.flatMap(p => Object.keys(p.delta_eoy_budget_by_reason ?? {})))];
+//   const maxAbs = Math.max(...withDelta.map(p => Math.abs(p.total_delta)), 1);
+//   return (
+//     <div className="space-y-4">
+//       <div className="flex flex-wrap gap-3">
+//         {allReasons.map(r => (
+//           <span key={r} className="flex items-center gap-1.5 text-[10.5px] text-slate-600">
+//             <span className="h-2.5 w-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: getReasonHex(r) }} />
+//             {r}
+//           </span>
+//         ))}
+//         <span className="ml-2 text-[10px] text-slate-400 italic">+ above baseline · − below baseline</span>
+//       </div>
+//       <div className="space-y-2">
+//         {withDelta.map(plant => {
+//           const isPos = plant.total_delta >= 0;
+//           const barPct = Math.round((Math.abs(plant.total_delta) / maxAbs) * 100);
+//           const segs = allReasons
+//             .map(r => ({ reason: r, val: (plant.delta_eoy_budget_by_reason ?? {})[r] ?? 0 }))
+//             .filter(s => (isPos ? s.val > 0 : s.val < 0));
+//           const totalAbs = segs.reduce((s, v) => s + Math.abs(v.val), 0) || 1;
+//           return (
+//             <div key={plant.plant_id} className="flex items-center gap-3">
+//               <div className="w-32 shrink-0 text-[11px] font-semibold text-slate-600 truncate text-right">{plant.plant_name}</div>
+//               <div className="flex-1 flex items-center">
+//                 <div className="w-1/2 flex justify-end pr-px">
+//                   {!isPos && (
+//                     <div className="flex h-5 rounded-l-sm overflow-hidden" style={{ width: `${barPct}%` }}>
+//                       {segs.map(s => (
+//                         <div key={s.reason} className="h-full" title={`${s.reason}: ${fmt(s.val)}`}
+//                           style={{ width: `${Math.round((Math.abs(s.val) / totalAbs) * 100)}%`, backgroundColor: getReasonHex(s.reason), opacity: 0.8 }} />
+//                       ))}
+//                     </div>
+//                   )}
+//                 </div>
+//                 <div className="w-px h-7 bg-slate-300 shrink-0" />
+//                 <div className="w-1/2 pl-px">
+//                   {isPos && plant.total_delta > 0 && (
+//                     <div className="flex h-5 rounded-r-sm overflow-hidden" style={{ width: `${barPct}%` }}>
+//                       {segs.map(s => (
+//                         <div key={s.reason} className="h-full" title={`${s.reason}: ${fmt(s.val)}`}
+//                           style={{ width: `${Math.round((Math.abs(s.val) / totalAbs) * 100)}%`, backgroundColor: getReasonHex(s.reason) }} />
+//                       ))}
+//                     </div>
+//                   )}
+//                 </div>
+//               </div>
+//               <span className={`text-[11px] font-bold tabular-nums shrink-0 w-28 ${isPos ? "text-emerald-600" : "text-rose-500"}`}>
+//                 {isPos && plant.total_delta > 0 ? "+" : ""}{fmt(plant.total_delta)}
+//               </span>
+//             </div>
+//           );
+//         })}
+//       </div>
+//     </div>
+//   );
+// }
+
+// ---------------------------------------------------------------------------
+// Top 10 suppliers — horizontal stacked bars by type
+// ---------------------------------------------------------------------------
+function TopSuppliersChart({ suppliers }: { suppliers: SupplierRow[] }) {
+  const visible = suppliers.filter(s => s.eoy_forecast > 0);
+  if (!visible.length)
+    return <p className="py-8 text-center text-sm text-slate-400">No supplier data. Populate <em>proposed_supplier_name</em> on opportunities to see this chart.</p>;
+  const allTypes = [...new Set(visible.flatMap(s => Object.keys(s.eoy_by_type)))];
+  const maxVal = Math.max(...visible.map(s => s.eoy_forecast), 1);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
+        {allTypes.map(t => (
+          <span key={t} className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: getTypeHex(t) }} />
+            {t}
+          </span>
+        ))}
+      </div>
+      <div className="space-y-2.5">
+        {visible.map((sup, i) => {
+          const barPct = Math.round((sup.eoy_forecast / maxVal) * 100);
+          const segs = allTypes.map(t => ({ type: t, val: sup.eoy_by_type[t] ?? 0 })).filter(s => s.val > 0);
+          return (
+            <div key={sup.supplier_name} className="flex items-center gap-3">
+              <span className="w-5 text-[10px] font-black text-slate-300 text-right shrink-0">{i + 1}</span>
+              <div className="w-36 shrink-0">
+                <p className="text-[11px] font-semibold text-slate-700 leading-tight truncate" title={sup.supplier_name}>{sup.supplier_name}</p>
+                <p className="text-[10px] text-slate-400">{sup.opp_count} opp{sup.opp_count !== 1 ? "s" : ""}</p>
+              </div>
+              <div className="flex-1 flex items-center gap-2">
+                <div className="flex-1 bg-slate-100 rounded-md h-5 overflow-hidden">
+                  <div className="flex h-full" style={{ width: `${barPct}%` }}>
+                    {segs.map(s => (
+                      <div key={s.type} className="h-full"
+                        style={{ width: `${Math.round((s.val / sup.eoy_forecast) * 100)}%`, backgroundColor: getTypeHex(s.type) }}
+                        title={`${s.type}: ${fmt(s.val)}`} />
+                    ))}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right w-28">
+                  <p className="text-[12px] font-black text-slate-800 tabular-nums">{fmt(sup.eoy_forecast)}</p>
+                  {sup.actual_ytd > 0 && (
+                    <p className="text-[10px] text-slate-400 tabular-nums">YTD {fmt(sup.actual_ytd)}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Collapsible entity card
 // ---------------------------------------------------------------------------
 function CollapsibleCard({
@@ -578,7 +879,7 @@ export default function PurchasingKpiPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(activeBudgetYear);
   const [filters, setFilters] = useState<KpiFilters>({ plantIds: [], categories: [], buyers: [] });
-  const [tab, setTab] = useState<"monthly" | "plant" | "type" | "buyer" | "alerts">("monthly");
+  const [tab, setTab] = useState<"monthly" | "plant" | "supplier" | "type" | "buyer" | "alerts">("monthly");
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -614,7 +915,7 @@ export default function PurchasingKpiPage() {
   );
   if (!data) return null;
 
-  const { kpis, monthly_actuals, by_plant, by_type, by_buyer, late_projects, missing_updates, escalated } = data;
+  const { kpis, monthly_actuals, by_plant, by_supplier, by_type, by_buyer, late_projects, missing_updates, escalated } = data;
   const avail = data.available_filters;
   const hasFilters = filters.plantIds.length > 0 || filters.categories.length > 0 || filters.buyers.length > 0;
   const totalAlerts = kpis.escalated_count + kpis.late_projects_count + kpis.missing_update_lines;
@@ -624,11 +925,12 @@ export default function PurchasingKpiPage() {
   const toggleBuyer    = (b: string)  => setFilters(f => ({ ...f, buyers:     f.buyers.includes(b)     ? f.buyers.filter(x => x !== b)     : [...f.buyers, b] }));
 
   const tabs = [
-    { id: "monthly" as const, label: "Monthly Savings",  icon: <BarChart2 size={13} /> },
-    { id: "plant"   as const, label: "By Plant",          icon: <FolderOpen size={13} /> },
-    { id: "type"    as const, label: "By Type",           icon: <Zap size={13} /> },
-    { id: "buyer"   as const, label: `By Buyer${by_buyer?.length > 0 ? ` (${by_buyer.length})` : ""}`, icon: <Users size={13} /> },
-    { id: "alerts"  as const, label: `Alerts${totalAlerts > 0 ? ` · ${totalAlerts}` : ""}`, icon: <AlertTriangle size={13} /> },
+    { id: "monthly"  as const, label: "Monthly Savings",   icon: <BarChart2 size={13} /> },
+    { id: "plant"    as const, label: "By Plant",           icon: <FolderOpen size={13} /> },
+    { id: "supplier" as const, label: `Top 10 Suppliers${by_supplier?.length > 0 ? ` (${by_supplier.length})` : ""}`, icon: <Package size={13} /> },
+    { id: "type"     as const, label: "By Type",            icon: <Zap size={13} /> },
+    { id: "buyer"    as const, label: `By Buyer${by_buyer?.length > 0 ? ` (${by_buyer.length})` : ""}`, icon: <Users size={13} /> },
+    { id: "alerts"   as const, label: `Alerts${totalAlerts > 0 ? ` · ${totalAlerts}` : ""}`, icon: <AlertTriangle size={13} /> },
   ];
 
   return (
@@ -785,7 +1087,9 @@ export default function PurchasingKpiPage() {
               value={pctFmt(kpis.conversion_rate_pct)} pct={kpis.conversion_rate_pct}
               sub={`${kpis.converted_opp_count} / ${kpis.validated_opp_count} validated`} />
             <ScoreCard icon={<Zap size={15} />} label="Phase 0 Go Rate" token={C.amber} dim="Efficiency"
-              value={pctFmt(kpis.phase0_go_rate_pct)} pct={kpis.phase0_go_rate_pct} />
+              value={pctFmt(kpis.phase0_go_rate_pct)}
+              pct={kpis.phase0_go_rate_pct}
+              sub={`${kpis.phase0_go_count ?? 0} / ${kpis.phase0_decided_count ?? 0} decided`} />
             <ScoreCard icon={<CheckCircle2 size={15} />} label="Projects On Time" token={C.emerald} dim="Delivery"
               value={pctFmt(kpis.project_on_time_rate_pct)} pct={kpis.project_on_time_rate_pct}
               sub="Schedule adherence" />
@@ -813,18 +1117,6 @@ export default function PurchasingKpiPage() {
             </div>
           </div>
 
-          {/* Priority score */}
-          <div className="rounded-2xl border border-slate-200/60 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] px-4 py-3.5 border-l-4 border-l-violet-300">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400 mb-3">Avg. Priority Score</p>
-            <div className="flex items-center gap-3">
-              <Ring pct={kpis.avg_priority_score ? (kpis.avg_priority_score / 125) * 100 : 0} token={C.violet} />
-              <div className="min-w-0">
-                <p className="text-[22px] font-black leading-none text-violet-600">{kpis.avg_priority_score ?? "—"}</p>
-                <p className="text-[11px] text-slate-400 mt-1">/ 125 · {kpis.open_pipeline_count} open opps</p>
-              </div>
-            </div>
-          </div>
-
           {/* Forecast outperformance */}
           <div className="rounded-2xl border border-slate-200/60 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] px-4 py-3.5 border-l-4 border-l-emerald-300">
             <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400 mb-3">Forecast Outperformance</p>
@@ -836,6 +1128,18 @@ export default function PurchasingKpiPage() {
                 ? <><span className="font-semibold text-emerald-600 tabular-nums">+{fmt(kpis.over_budget_amount)}</span> above budget</>
                 : "All within commitment"}
             </p>
+          </div>
+
+          {/* Since Jan 2026 */}
+          <div className="rounded-2xl border border-slate-200/60 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] px-4 py-3.5 border-l-4 border-l-sky-300">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400 mb-3">Since Jan 2026</p>
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-sky-500 shrink-0" />
+              <p className="text-[22px] font-black leading-none text-slate-900 tabular-nums">
+                {fmt(kpis.total_saving_from_jan2026 ?? 0)}
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">Calendar-year actuals · all lines</p>
           </div>
 
           {/* Active alerts — status card */}
@@ -1053,11 +1357,42 @@ export default function PurchasingKpiPage() {
                   <p className="py-12 text-center text-sm text-slate-400">No plant data yet.</p>
                 ) : (
                   <>
+                    {/* Chart 2 — EOY by plant by type */}
                     <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
-                      <p className="text-xs font-bold text-slate-700 mb-0.5">EOY Forecast by Plant — Budget Status</p>
-                      <p className="text-[10.5px] text-slate-400 mb-4">Each bar = total EOY forecast, coloured by opportunity budget commitment.</p>
-                      <EoyByPlantChart plants={by_plant} />
+                      <p className="text-xs font-bold text-slate-700 mb-0.5">EOY Forecast by Plant — By Opportunity Type</p>
+                      <p className="text-[10.5px] text-slate-400 mb-4">Each bar shows projected EOY savings, segmented by saving type.</p>
+                      <EoyByPlantByTypeChart plants={by_plant} />
                     </div>
+
+                    {/* Chart 4 — Delta EOY vs Budget by plant, segmented by type */}
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                      <p className="text-xs font-bold text-slate-700 mb-0.5">Delta EOY vs Budget by Plant — By Type</p>
+                      <p className="text-[10.5px] text-slate-400 mb-4">
+                        Gap between projected EOY savings and annual baseline for committed opportunities.
+                        Positive = outperforming · Negative = below plan · Segments = saving type.
+                      </p>
+                      <DeltaEoyByPlantChart plants={by_plant} />
+                    </div>
+
+                    {/* Chart 5 — Delta EOY vs Budget by plant, stacked by main reason — DISABLED */}
+                    {/* <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                      <p className="text-xs font-bold text-slate-700 mb-0.5">Delta EOY vs Budget by Plant — By Main Reason</p>
+                      <p className="text-[10.5px] text-slate-400 mb-4">
+                        Same delta, explained by root cause. Set the <strong>delta reason</strong> on each budget assignment to populate.
+                        Each colour segment corresponds to a Monday.com reason category.
+                      </p>
+                      <DeltaEoyByReasonChart plants={by_plant} />
+                    </div> */}
+
+                    {/* Chart — EOY by plant by budget status (existing) */}
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-600 list-none flex items-center gap-1.5 select-none">
+                        <ChevronDown size={13} className="group-open:rotate-180 transition-transform" /> EOY by Budget Status (commitment view)
+                      </summary>
+                      <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                        <EoyByPlantChart plants={by_plant} />
+                      </div>
+                    </details>
 
                     <div className="space-y-2">
                       {by_plant.map((plant, idx) => {
@@ -1129,6 +1464,61 @@ export default function PurchasingKpiPage() {
                       </div>
                     </details>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* ── TOP 10 SUPPLIERS ── */}
+            {tab === "supplier" && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Top 10 Suppliers — Projected EOY Savings</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Ranked by EOY forecast · Segments by opportunity type · Source: <em>proposed_supplier_name</em>
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-[10.5px] font-bold text-indigo-600">
+                    {by_supplier?.length ?? 0} supplier{(by_supplier?.length ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                  <TopSuppliersChart suppliers={by_supplier ?? []} />
+                </div>
+
+                {(by_supplier?.length ?? 0) > 0 && (
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-600 list-none flex items-center gap-1.5 select-none">
+                      <ChevronDown size={13} className="group-open:rotate-180 transition-transform" /> Detail table
+                    </summary>
+                    <div className="mt-3 overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 text-left text-slate-500 border-b border-slate-100">
+                            <th className="px-4 py-2.5 font-semibold">#</th>
+                            <th className="px-4 py-2.5 font-semibold">Supplier</th>
+                            <th className="px-4 py-2.5 text-right font-semibold">Opps</th>
+                            <th className="px-4 py-2.5 text-right font-semibold">Exp. Annual</th>
+                            <th className="px-4 py-2.5 text-right font-semibold">Actual YTD</th>
+                            <th className="px-4 py-2.5 text-right font-semibold">EOY Forecast</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(by_supplier ?? []).map((s, i) => (
+                            <tr key={s.supplier_name} className="border-t border-slate-50 hover:bg-slate-50/60 transition-colors">
+                              <td className="px-4 py-2 text-slate-400 font-bold">{i + 1}</td>
+                              <td className="px-4 py-2 font-bold text-slate-800 max-w-[200px] truncate" title={s.supplier_name}>{s.supplier_name}</td>
+                              <td className="px-4 py-2 text-right text-slate-500">{s.opp_count}</td>
+                              <td className="px-4 py-2 text-right text-slate-500 tabular-nums">{fmt(s.expected_annual)}</td>
+                              <td className="px-4 py-2 text-right text-slate-700 tabular-nums">{s.actual_ytd > 0 ? fmt(s.actual_ytd) : "—"}</td>
+                              <td className="px-4 py-2 text-right font-bold text-indigo-600 tabular-nums">{fmt(s.eoy_forecast)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
                 )}
               </div>
             )}

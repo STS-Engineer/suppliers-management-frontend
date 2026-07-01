@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
+import { useAuth } from "../context/AuthContext";
+import CommitteeReviewPanel from "../components/committee/CommitteeReviewPanel";
 import {
   EvaluationDetailsFormData,
   SupplierSiteRelation,
@@ -450,6 +452,8 @@ const GRADE_CLR: Record<string, string> = {
 interface WorkspaceExtra {
   baseline_locked: boolean;
   reevaluation_type?: "initial" | "preliminary" | null;
+  relation_validation_status?: string;
+  review_comment?: string | null;
   baseline_data?: {
     management_system?: number;
     customer_communication?: number;
@@ -494,9 +498,120 @@ type Tab = (typeof TABS)[number]["id"];
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-[#062B49]/40 focus:ring-4 focus:ring-[#062B49]/8 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10";
 
+// ---------------------------------------------------------------------------
+// VP Conversion inline review bar
+// ---------------------------------------------------------------------------
+
+function VpReviewBar({ relationId, onDone }: { relationId: number; onDone: () => void }) {
+  const [action, setAction] = useState<"idle" | "approving" | "rejecting">("idle");
+  const [comment, setComment] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (type: "approve" | "reject") => {
+    if (type === "reject" && !comment.trim()) {
+      setErr("A rejection reason is required.");
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    try {
+      if (type === "approve") await supplierAPI.approveRelationReview(relationId, comment || undefined);
+      else await supplierAPI.rejectRelationReview(relationId, comment.trim());
+      onDone();
+    } catch (e: any) {
+      setErr(e.message ?? "Action failed.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-900/15">
+      <p className="mb-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+        This relation is awaiting your review. Modify the evaluation if needed, then approve or reject.
+      </p>
+      {action === "idle" ? (
+        <div className="flex gap-2">
+          <button onClick={() => setAction("approving")}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+            Approve
+          </button>
+          <button onClick={() => setAction("rejecting")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-transparent dark:text-red-400">
+            Reject
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={2}
+            placeholder={action === "approving" ? "Optional comment…" : "Rejection reason (required)…"}
+            className={`w-full rounded-lg border px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none dark:bg-slate-800 dark:text-slate-100 ${action === "rejecting" && !comment.trim() && err ? "border-red-400 bg-red-50" : "border-slate-300 bg-white dark:border-slate-600"}`}
+          />
+          {err && <p className="text-xs font-medium text-red-600">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => submit(action === "approving" ? "approve" : "reject")}
+              disabled={loading}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${action === "approving" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
+              {loading ? "Processing…" : action === "approving" ? "Confirm Approval" : "Confirm Rejection"}
+            </button>
+            <button onClick={() => { setAction("idle"); setComment(""); setErr(null); }}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RejectionBanner({
+  comment,
+  onRevise,
+  revising,
+}: {
+  comment?: string | null;
+  onRevise: () => void;
+  revising: boolean;
+}) {
+  return (
+    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4 dark:border-red-500/30 dark:bg-red-900/15">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-red-800 dark:text-red-300">
+            Relation rejected by VP Conversion
+          </p>
+          {comment && (
+            <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+              <span className="font-semibold">Reason: </span>{comment}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-red-600/80 dark:text-red-400/70">
+            Revise the evaluation and resubmit for review.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRevise}
+          disabled={revising}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+        >
+          {revising ? "Resetting…" : "Revise & Resubmit"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function RelationEvaluationPage() {
   const { relationId } = useParams<{ relationId: string }>();
   const relId = relationId ? Number(relationId) : NaN;
+  const { user } = useAuth();
+  const isVpConversion = user?.access_profile === "vp_conversion";
+  const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
 
   const [tab, setTab] = useState<Tab>("class");
   const [form, setForm] = useState<EvaluationDetailsFormData>({
@@ -523,6 +638,7 @@ export default function RelationEvaluationPage() {
   const [evalDocs, setEvalDocs] = useState<
     WorkspaceExtra["evaluation_documents"]
   >([]);
+  const [revising, setRevising] = useState(false);
 
   // Evaluation date (can differ from today)
   const [evaluationDate, setEvaluationDate] = useState(
@@ -530,6 +646,9 @@ export default function RelationEvaluationPage() {
   );
   // Derived: true when no baseline has been locked yet (no self_assessment record)
   const isInitialSelfAssessment = !extra.baseline_locked;
+  // Non-vp users are read-only once they've submitted (relation no longer draft)
+  const relationStatus = extra.relation_validation_status ?? "draft";
+  const nonVpLocked = !isPrivileged && relationStatus !== "draft";
   // Per-criterion detail data (validity dates, signature, files)
   const [criteriaDetails, setCriteriaDetails] = useState<
     Record<string, CriterionDetail>
@@ -580,6 +699,8 @@ export default function RelationEvaluationPage() {
       setExtra({
         baseline_locked: baselineLocked,
         reevaluation_type: ws.reevaluation_type ?? null,
+        relation_validation_status: ws.relation_validation_status ?? "draft",
+        review_comment: ws.review_comment ?? null,
         baseline_data: ws.baseline_data ?? null,
         unit_certifications: ws.unit_certifications ?? [],
         evaluation_documents: ws.evaluation_documents ?? [],
@@ -670,7 +791,7 @@ export default function RelationEvaluationPage() {
         sqma: normalizeUiCriteriaValue("sqma", src.sqma),
         quality_certification: normalizeUiCriteriaValue(
           "quality_certification",
-          src.quality_certification,
+          src.quality_certification || qualCert?.certification_type,
         ),
         family_coverage: normalizeUiCriteriaValue(
           "family_coverage",
@@ -877,6 +998,18 @@ export default function RelationEvaluationPage() {
     }
   };
 
+  const handleRevise = async () => {
+    setRevising(true);
+    try {
+      await supplierAPI.resetRelationToDraft(relId);
+      await load();
+    } catch (e: any) {
+      setError(e.message ?? "Failed to reset relation.");
+    } finally {
+      setRevising(false);
+    }
+  };
+
   // Validate completeness before locking the baseline
   const validateInitialSelfAssessment = (): string | null => {
     const cs2 = classScore(form);
@@ -973,12 +1106,16 @@ export default function RelationEvaluationPage() {
       await supplierAPI.clearEvaluationDraft(relId).catch(() => undefined);
       setHasDraft(false);
 
-      const successMsg =
-        extra.reevaluation_type === "initial"
-          ? "Initial re-evaluation submitted and baseline updated."
-          : extra.reevaluation_type === "preliminary"
-            ? "Preliminary re-evaluation submitted and baseline updated."
-            : "Initial self-assessment saved and operational baseline locked.";
+      // 4. For vp_conversion: approve the relation directly. Others: submit for review.
+      if (isVpConversion) {
+        await supplierAPI.approveRelationReview(relId).catch(() => undefined);
+      } else {
+        await supplierAPI.submitRelationForReview(relId).catch(() => undefined);
+      }
+
+      const successMsg = isVpConversion
+        ? "Baseline locked and relation approved for panel."
+        : "Evaluation submitted for VP Conversion review.";
       showMsg(successMsg);
       await load();
     } catch (err) {
@@ -1256,6 +1393,20 @@ export default function RelationEvaluationPage() {
           </div>
         )}
 
+        {/* ── VP Conversion review action bar (shown when relation is pending_review) ── */}
+        {isVpConversion && relationStatus === "pending_review" && (
+          <VpReviewBar relationId={relId} onDone={load} />
+        )}
+
+        {/* ── Rejection banner — shown to all roles when relation is rejected ── */}
+        {relationStatus === "rejected" && !isVpConversion && (
+          <RejectionBanner
+            comment={extra.review_comment}
+            onRevise={handleRevise}
+            revising={revising}
+          />
+        )}
+
         {/* ── Initial self-assessment mode: all sections on one page ── */}
         {isInitialSelfAssessment ? (
           <InitialSelfAssessmentView
@@ -1278,6 +1429,9 @@ export default function RelationEvaluationPage() {
             relationId={relId}
             reevaluationType={extra.reevaluation_type}
             onFileUploaded={load}
+            isVpConversion={isVpConversion}
+            readOnly={nonVpLocked}
+            evalDocs={evalDocs}
           />
         ) : (
           <>
@@ -1292,8 +1446,8 @@ export default function RelationEvaluationPage() {
                 criteriaDetails={criteriaDetails}
                 onDetailChange={setCriterionDetail}
                 relationId={relId}
-                readOnly={extra.baseline_locked && !classEditMode}
-                onRequestEdit={() => setClassEditMode(true)}
+                readOnly={(extra.baseline_locked && !classEditMode) || nonVpLocked}
+                onRequestEdit={() => !nonVpLocked && setClassEditMode(true)}
                 onCancelEdit={() => {
                   setClassEditMode(false);
                   load();
@@ -1316,6 +1470,8 @@ export default function RelationEvaluationPage() {
                 relationId={relId}
                 evalDocs={evalDocs}
                 onDocUploaded={load}
+                panelDecision={form.panel_decision}
+                isVpConversion={isVpConversion}
               />
             )}
             {tab === "decision" && (
@@ -1327,7 +1483,7 @@ export default function RelationEvaluationPage() {
                 onSave={saveDecision}
                 strategicMentions={strategicMentions}
                 onToggleStrategic={toggleStrategicMention}
-                readOnly={extra.baseline_locked}
+                readOnly={(!isPrivileged && extra.baseline_locked) || nonVpLocked}
               />
             )}
           </>
@@ -1340,6 +1496,183 @@ export default function RelationEvaluationPage() {
 // ---------------------------------------------------------------------------
 // Tab 1 — Class Evaluation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Evaluation file upload card (used inside InitialSelfAssessmentView)
+// ---------------------------------------------------------------------------
+
+function EvalFileUploadCard({
+  relationId,
+  evalDocs,
+  onUploaded,
+  readOnly,
+}: {
+  relationId: number;
+  evalDocs?: WorkspaceExtra["evaluation_documents"];
+  onUploaded?: () => void;
+  readOnly?: boolean;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const refDocs = (evalDocs ?? []).filter(
+    (d) => d.document_type === "evaluation_reference",
+  );
+
+  const handleFile = async (file: File) => {
+    setMsg(null);
+    setUploading(true);
+    try {
+      await supplierAPI.uploadEvaluationReference(relationId, file);
+      setMsg("File uploaded successfully.");
+      onUploaded?.();
+    } catch {
+      setMsg("Upload failed — please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const fmtDate = (d?: string | null) => {
+    if (!d) return "—";
+    try {
+      return new Date(d).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return d;
+    }
+  };
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/50 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-900/10">
+      <div className="flex items-center justify-between border-b border-emerald-200/60 bg-emerald-50 px-5 py-3.5 dark:border-emerald-500/20 dark:bg-emerald-900/20">
+        <div className="flex items-center gap-2.5">
+          <svg
+            className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <div>
+            <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+              Evaluation File
+              {!readOnly && <span className="ml-1 text-red-500">*</span>}
+            </p>
+            <p className="text-[10px] text-emerald-600 dark:text-emerald-500">
+              {readOnly
+                ? "Completed Excel scorecard attached to this evaluation"
+                : "Required — attach the completed Excel scorecard before submitting"}
+            </p>
+          </div>
+        </div>
+        {refDocs.length > 0 && (
+          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+            {refDocs.length} file{refDocs.length > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      <div className="p-5">
+        {!readOnly && (
+          <div
+            onClick={() => !uploading && fileRef.current?.click()}
+            className="mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border-2 border-dashed border-emerald-300 bg-white px-4 py-4 transition hover:border-emerald-400 hover:bg-emerald-50/60 dark:border-emerald-500/30 dark:bg-white/[0.02] dark:hover:border-emerald-400/40 dark:hover:bg-white/[0.04]"
+          >
+            <svg
+              className="h-5 w-5 text-emerald-500 dark:text-emerald-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                {uploading ? "Uploading…" : "Click to upload"}
+              </p>
+              <p className="text-[11px] text-emerald-500 dark:text-emerald-500">
+                .xlsx, .xls, .pdf accepted · max 10 MB
+              </p>
+            </div>
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+
+        {msg && (
+          <p
+            className={`mb-3 text-xs font-medium ${
+              msg.includes("failed")
+                ? "text-red-600 dark:text-red-400"
+                : "text-emerald-600 dark:text-emerald-400"
+            }`}
+          >
+            {msg}
+          </p>
+        )}
+
+        {refDocs.length === 0 ? (
+          <p className="text-center text-[11px] text-slate-400">
+            No evaluation file attached yet.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {refDocs.map((doc) => (
+              <div
+                key={doc.id_document}
+                className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200/60 bg-white px-3 py-2.5 dark:border-emerald-500/20 dark:bg-white/[0.03]"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    {doc.document_name}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {fmtDate(doc.uploaded_at)}
+                  </p>
+                </div>
+                {doc.file_url && (
+                  <a
+                    href={doc.file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  >
+                    Download
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Initial Self-Assessment — all 3 sections on one page
@@ -1365,6 +1698,10 @@ function InitialSelfAssessmentView({
   relationId,
   reevaluationType,
   onFileUploaded,
+  isVpConversion,
+  onSubmitForReview,
+  readOnly,
+  evalDocs,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -1389,6 +1726,10 @@ function InitialSelfAssessmentView({
   validateFn: () => string | null;
   reevaluationType?: "initial" | "preliminary" | null;
   onFileUploaded?: () => void;
+  isVpConversion?: boolean;
+  onSubmitForReview?: () => void;
+  readOnly?: boolean;
+  evalDocs?: WorkspaceExtra["evaluation_documents"];
 }) {
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({
     class: true,
@@ -1404,19 +1745,50 @@ function InitialSelfAssessmentView({
   ).filter((v) => v !== undefined && v !== null);
   const opOk = opVals.length === OPERATIONAL_CRITERIA.length;
   const decisionOk = !!form.panel_decision;
-  const allOk = classOk && opOk && decisionOk;
+  const fileOk = (evalDocs ?? []).some((d) => d.document_type === "evaluation_reference");
+  const allOk = classOk && opOk && decisionOk && fileOk;
 
   const validationMsg = validateFn();
 
-  const submitLabel =
-    reevaluationType === "initial"
+  const submitLabel = isVpConversion
+    ? reevaluationType === "initial"
       ? "Submit Initial Re-evaluation"
       : reevaluationType === "preliminary"
         ? "Submit Preliminary Re-evaluation"
-        : "Submit & Lock Baseline";
+        : "Submit & Lock Baseline"
+    : "Submit for Review";
+
+  const statusBannerConfig: Record<string, { bg: string; text: string; label: string }> = {
+    pending_review: {
+      bg: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300",
+      text: "Awaiting VP Conversion review. The evaluation has been submitted and is locked.",
+      label: "Pending Review",
+    },
+    approved: {
+      bg: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300",
+      text: "This relation has been approved and is visible in the supplier panel.",
+      label: "Approved",
+    },
+    rejected: {
+      bg: "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300",
+      text: "This relation was rejected by VP Conversion.",
+      label: "Rejected",
+    },
+  };
+  const statusBanner = readOnly && extra.relation_validation_status
+    ? statusBannerConfig[extra.relation_validation_status]
+    : null;
 
   return (
     <div className="space-y-4">
+      {/* Relation validation status banner */}
+      {statusBanner && (
+        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${statusBanner.bg}`}>
+          <span className="font-semibold">{statusBanner.label}:</span>
+          <span>{statusBanner.text}</span>
+        </div>
+      )}
+
       {/* Re-evaluation context notice */}
       {reevaluationType && (
         <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-500/30 dark:bg-orange-900/20 dark:text-orange-300">
@@ -1594,6 +1966,7 @@ function InitialSelfAssessmentView({
             onDetailChange={onDetailChange}
             relationId={relationId}
             onFileUploaded={onFileUploaded}
+            readOnly={readOnly}
           />
         </div>
       )}
@@ -1639,8 +2012,8 @@ function InitialSelfAssessmentView({
         </div>
       )}
 
-      {/* Submit panel — validation + API error + button all together */}
-      <div className="rounded-2xl border border-[#062B49]/20 bg-[#062B49]/5 px-5 py-4 space-y-3">
+      {/* Submit panel — hidden when read-only (already submitted) */}
+      {!readOnly && <div className="rounded-2xl border border-[#062B49]/20 bg-[#062B49]/5 px-5 py-4 space-y-3">
         {/* Validation warning (incomplete sections) */}
         {validationMsg && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300">
@@ -1680,17 +2053,60 @@ function InitialSelfAssessmentView({
           </div>
         )}
 
+        {/* ── Evaluation file upload ── */}
+        <EvalFileUploadCard
+          relationId={relationId}
+          evalDocs={evalDocs}
+          onUploaded={onFileUploaded}
+          readOnly={readOnly}
+        />
+
+        {/* ── Committee outcome explanation ── */}
+        {form.panel_decision === "panel_add_exec_committee" && (
+          <div className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 dark:border-indigo-500/20 dark:bg-indigo-900/10">
+            <div className="flex items-center gap-2.5 border-b border-indigo-200/60 bg-indigo-50 px-5 py-3 dark:border-indigo-500/20 dark:bg-indigo-900/20">
+              <svg className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <p className="text-xs font-bold text-indigo-800 dark:text-indigo-200">What happens after submission?</p>
+            </div>
+            <div className="space-y-3 p-5 text-xs text-slate-600 dark:text-slate-300">
+              <p>This supplier's panel decision requires <strong>executive committee validation</strong>. After the evaluation is submitted, the VP Conversion can send the evaluation file to all committee members for review.</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 dark:border-emerald-500/20 dark:bg-emerald-900/10">
+                  <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-500 text-white text-[9px] font-bold">✓</span>
+                  <div>
+                    <p className="font-semibold text-emerald-800 dark:text-emerald-300">If all members approve</p>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">The VP Conversion confirms the final decision and the supplier is added to the panel.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-900/10">
+                  <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-amber-500 text-white text-[9px] font-bold">!</span>
+                  <div>
+                    <p className="font-semibold text-amber-800 dark:text-amber-300">If one or more members reject</p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">The VP Conversion reviews all individual responses and makes the final decision — they can still approve the supplier or confirm the rejection, regardless of individual votes.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-[#062B49] dark:text-blue-300">
-              {allOk ? "Ready to Submit" : "Complete all 3 sections to submit"}
+              {allOk ? "Ready to Submit" : !fileOk && classOk && opOk && decisionOk ? "Evaluation file required" : "Complete all sections to submit"}
             </p>
             <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">
               {allOk
-                ? reevaluationType
-                  ? "This will update the operational baseline with the new re-evaluation results."
-                  : "This will lock the operational baseline permanently. Class evaluation and decisions can still be updated later."
-                : "Fill Class Evaluation, Operational, and Decision & Impact — or save a draft to resume later."}
+                ? isVpConversion
+                  ? reevaluationType
+                    ? "This will update the operational baseline with the new re-evaluation results."
+                    : "This will lock the operational baseline permanently. Class evaluation and decisions can still be updated later."
+                  : "This will send the evaluation to VP Conversion for review and approval."
+                : !fileOk && classOk && opOk && decisionOk
+                  ? "Upload the completed Excel scorecard above before submitting."
+                  : "Fill Class Evaluation, Operational, and Decision & Impact — then upload the evaluation file."}
             </p>
           </div>
 
@@ -1721,10 +2137,14 @@ function InitialSelfAssessmentView({
 
             {/* Submit button — disabled when sections are incomplete */}
             <button
-              onClick={onSubmit}
+              onClick={isVpConversion ? onSubmit : (onSubmitForReview ?? onSubmit)}
               disabled={saving || !allOk}
               title={
-                !allOk ? "Complete all 3 sections before submitting" : undefined
+                !allOk
+                  ? !fileOk && classOk && opOk && decisionOk
+                    ? "Upload the evaluation file before submitting"
+                    : "Complete all sections before submitting"
+                  : undefined
               }
               className="inline-flex items-center gap-2 rounded-xl bg-[#062B49] px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-[#062B49]/20"
             >
@@ -1745,7 +2165,7 @@ function InitialSelfAssessmentView({
             </button>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1998,12 +2418,11 @@ function OperationalBody({
                 min={0}
                 max={100}
                 value={score ?? ""}
-                onChange={(e) =>
-                  setField(
-                    key,
-                    e.target.value ? Number(e.target.value) : undefined,
-                  )
-                }
+                onChange={(e) => {
+                  if (!e.target.value) { setField(key, undefined); return; }
+                  const v = Math.min(100, Math.max(0, Number(e.target.value)));
+                  setField(key, v);
+                }}
                 className={`w-24 rounded-xl border px-3 py-2 text-sm font-semibold text-center shadow-sm outline-none transition ${
                   score === null
                     ? "border-slate-200"
@@ -3218,11 +3637,15 @@ function HistoryTab({
   relationId,
   evalDocs,
   onDocUploaded,
+  panelDecision,
+  isVpConversion,
 }: {
   history: SupplierStatusHistoryEntry[];
   relationId: number;
   evalDocs?: WorkspaceExtra["evaluation_documents"];
   onDocUploaded: () => void;
+  panelDecision?: string | null;
+  isVpConversion?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -3269,6 +3692,13 @@ function HistoryTab({
   };
 
   return (
+    <div className="space-y-5">
+      {panelDecision === "panel_add_exec_committee" && (
+        <CommitteeReviewPanel
+          relationId={relationId}
+          isVpConversion={!!isVpConversion}
+        />
+      )}
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">
       {/* Left — cycle timeline */}
       <div className="space-y-3">
@@ -3504,6 +3934,7 @@ function HistoryTab({
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }

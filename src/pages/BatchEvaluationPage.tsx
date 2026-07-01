@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { PageIntro } from "../components/UI";
+import { useAuth } from "../context/AuthContext";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,16 +106,18 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50];
 type Tab = "dashboard" | "upload";
 
 export default function BatchEvaluationPage() {
+  const { user } = useAuth();
+  const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
   const [tab, setTab] = useState<Tab>("dashboard");
+
+  const tabs = [
+    { id: "dashboard" as Tab, label: "Dashboard" },
+    ...(isPrivileged ? [{ id: "upload" as Tab, label: "Batch Upload" }] : []),
+  ];
 
   const tabSwitcher = (
     <div className="flex w-fit rounded-xl border border-white/20 bg-white/10 p-1 backdrop-blur-sm">
-      {(
-        [
-          { id: "dashboard", label: "Dashboard" },
-          { id: "upload",    label: "Batch Upload" },
-        ] as { id: Tab; label: string }[]
-      ).map((t) => (
+      {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => setTab(t.id)}
@@ -159,6 +162,8 @@ function EvaluationDashboard() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerMsg, setTriggerMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,6 +178,19 @@ function EvaluationDashboard() {
       setLoading(false);
     }
   }, []);
+
+  const handleTrigger = async () => {
+    setTriggering(true);
+    setTriggerMsg(null);
+    try {
+      const res = await supplierAPI.triggerEvaluationNotifications() as { notifications_sent?: number; message?: string };
+      setTriggerMsg({ ok: true, text: res?.message ?? `${res?.notifications_sent ?? 0} notification(s) sent.` });
+    } catch (err) {
+      setTriggerMsg({ ok: false, text: err instanceof Error ? err.message : "Failed to send notifications." });
+    } finally {
+      setTriggering(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -284,7 +302,36 @@ function EvaluationDashboard() {
           </svg>
           Refresh
         </button>
+
+        {/* Trigger notifications */}
+        {(() => {
+          const actionable = (summary?.OVERDUE ?? 0) + (summary?.DUE_SOON ?? 0) + (summary?.NEVER_EVALUATED ?? 0);
+          return (
+            <button
+              onClick={handleTrigger}
+              disabled={triggering || actionable === 0}
+              className="flex items-center gap-2 rounded-xl border border-[#062B49] bg-[#062B49] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V4a1 1 0 10-2 0v1.083A6 6 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {triggering ? "Sending…" : `Notify (${actionable})`}
+            </button>
+          );
+        })()}
       </div>
+
+      {/* Trigger feedback */}
+      {triggerMsg && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          triggerMsg.ok
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+            : "border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300"
+        }`}>
+          {triggerMsg.text}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -473,6 +520,7 @@ function BatchUploadPanel() {
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadingPrefilled, setDownloadingPrefilled] = useState(false);
+  const [downloadingDue, setDownloadingDue] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const xlsxTemplateBase = supplierAPI.getEvaluationTemplateXlsxUrl();
@@ -506,6 +554,13 @@ function BatchUploadPanel() {
     try { await supplierAPI.downloadPrefilledTemplate(); }
     catch (err) { setError(err instanceof Error ? err.message : "Download failed"); }
     finally { setDownloadingPrefilled(false); }
+  };
+
+  const handleDownloadDue = async () => {
+    setDownloadingDue(true);
+    try { await supplierAPI.downloadDueOnlyTemplate(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Download failed"); }
+    finally { setDownloadingDue(false); }
   };
 
   const reset = () => {
@@ -575,7 +630,15 @@ function BatchUploadPanel() {
               ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               : <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
             }
-            {downloadingPrefilled ? "Preparing…" : "Pre-filled template (all active relations)"}
+            {downloadingPrefilled ? "Preparing…" : "All active relations"}
+          </button>
+          <button onClick={handleDownloadDue} disabled={downloadingDue}
+            className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30">
+            {downloadingDue
+              ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-600" />
+              : <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            }
+            {downloadingDue ? "Preparing…" : "Due / overdue only"}
           </button>
           <span className="text-xs text-slate-400">or blank Excel template:</span>
           <a href={xlsxTemplateBase} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300 dark:hover:bg-[#0d1929]/80">.xlsx</a>

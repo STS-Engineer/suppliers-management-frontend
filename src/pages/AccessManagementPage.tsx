@@ -14,6 +14,8 @@ import {
 const PROFILE_OPTIONS = [
   { value: "purchasing_manager", label: "Purchasing Manager" },
   { value: "supplier_owner", label: "Supplier Owner" },
+  { value: "vp_conversion", label: "VP Conversion" },
+  { value: "purchasing_director", label: "Purchasing Director" },
 ];
 
 const emptyCreateForm = {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   AlertCircle,
   AlertTriangle,
@@ -1808,10 +1809,12 @@ function ViewDetailsModal({
   item,
   onClose,
   onSuccess,
+  isViewer = false,
 }: {
   item: DevelopmentPlanRegisterRow;
   onClose: () => void;
   onSuccess: () => void;
+  isViewer?: boolean;
 }) {
   const plan = item.development_plan;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1989,7 +1992,7 @@ function ViewDetailsModal({
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-700">Documents</p>
-                {!isClosed && (
+                {!isClosed && !isViewer && (
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -2028,7 +2031,7 @@ function ViewDetailsModal({
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      {!isClosed && (
+                      {!isClosed && !isViewer && (
                         <button
                           type="button"
                           disabled={deletingId === doc.id_document}
@@ -2078,7 +2081,7 @@ function ViewDetailsModal({
           <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             {isClosed ? "Close" : "Cancel"}
           </button>
-          {!isClosed && (
+          {!isClosed && !isViewer && (
             <button type="button" onClick={handleSubmit} disabled={isSaving} className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#0C5381] disabled:opacity-50">
               {isSaving ? (saveStep ?? "Saving…") : queue.length > 0 ? `Save & Upload ${queue.length} file${queue.length > 1 ? "s" : ""}` : "Save Changes"}
             </button>
@@ -2462,6 +2465,8 @@ function RemindModal({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function DevelopmentPlansPage() {
+  const { user } = useAuth();
+  const isViewer = user?.access_profile === "viewer";
   const [items, setItems] = useState<DevelopmentPlanRegisterRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("all");
@@ -3206,38 +3211,51 @@ export default function DevelopmentPlansPage() {
                         {/* Actions */}
                         <td className="px-5 py-4 align-middle">
                           <div className="flex flex-col items-end gap-1.5">
-                            {(() => {
-                              const { Icon } = action;
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => openModal(item, action.modal)}
-                                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[11px] font-bold tracking-wide shadow-sm transition active:scale-[0.97] ${action.bg} ${action.text}`}
-                                >
-                                  <Icon className="h-3 w-3" />
-                                  {action.label}
-                                </button>
-                              );
-                            })()}
-                            {(dp.plan_status ?? "").toLowerCase() === "request sent" && (
-                              <button
-                                type="button"
-                                onClick={() => setRemindModal(item)}
-                                className="inline-flex items-center gap-1 rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-semibold text-orange-700 transition hover:border-orange-300 hover:bg-orange-100"
-                              >
-                                <Send className="h-3 w-3" />
-                                Remind
-                              </button>
-                            )}
-                            {action.modal !== "details" && (
+                            {isViewer ? (
                               <button
                                 type="button"
                                 onClick={() => openModal(item, "details")}
                                 className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                               >
                                 <FileText className="h-3 w-3" />
-                                Details
+                                View
                               </button>
+                            ) : (
+                              <>
+                                {(() => {
+                                  const { Icon } = action;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => openModal(item, action.modal)}
+                                      className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[11px] font-bold tracking-wide shadow-sm transition active:scale-[0.97] ${action.bg} ${action.text}`}
+                                    >
+                                      <Icon className="h-3 w-3" />
+                                      {action.label}
+                                    </button>
+                                  );
+                                })()}
+                                {(dp.plan_status ?? "").toLowerCase() === "request sent" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRemindModal(item)}
+                                    className="inline-flex items-center gap-1 rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-semibold text-orange-700 transition hover:border-orange-300 hover:bg-orange-100"
+                                  >
+                                    <Send className="h-3 w-3" />
+                                    Remind
+                                  </button>
+                                )}
+                                {action.modal !== "details" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openModal(item, "details")}
+                                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                                  >
+                                    <FileText className="h-3 w-3" />
+                                    Details
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -3366,6 +3384,7 @@ export default function DevelopmentPlansPage() {
           item={detailsModal}
           onClose={closeAll}
           onSuccess={() => onSuccess("Plan updated.")}
+          isViewer={isViewer}
         />
       )}
       {remindModal && (
