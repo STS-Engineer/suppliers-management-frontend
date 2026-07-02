@@ -63,7 +63,7 @@ export const FlowA: React.FC<FlowAProps> = ({
   const filteredUnits = unitSearch
     ? units.filter(
         (unit) =>
-          unit.supplier_code?.toLowerCase().includes(unitSearch.toLowerCase()) ||
+          unit.supplier_name?.toLowerCase().includes(unitSearch.toLowerCase()) ||
           unit.city?.toLowerCase().includes(unitSearch.toLowerCase()),
       )
     : units;
@@ -181,7 +181,7 @@ export const FlowA: React.FC<FlowAProps> = ({
                           : "text-slate-900"
                       }`}
                     >
-                      {unit.supplier_code}
+                      {unit.supplier_name}
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
                       {[unit.city, unit.country].filter(Boolean).join(", ")}
@@ -196,7 +196,7 @@ export const FlowA: React.FC<FlowAProps> = ({
         {step === 1 && (
           <div>
             <p className="mb-3 text-sm text-slate-500">
-              Linking unit <span className="font-semibold text-slate-900">{resolvedUnit?.supplier_code}</span>.
+              Linking unit <span className="font-semibold text-slate-900">{resolvedUnit?.supplier_name}</span>.
               Select the Avocarbon site next.
             </p>
             <input
@@ -315,7 +315,7 @@ export const FlowA: React.FC<FlowAProps> = ({
 
         {step === 3 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50">
-            <ReviewRow label="Unit" value={resolvedUnit?.supplier_code || "-"} />
+            <ReviewRow label="Unit" value={resolvedUnit?.supplier_name || "-"} />
             <ReviewRow
               label="Location"
               value={

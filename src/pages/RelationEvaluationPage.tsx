@@ -688,9 +688,9 @@ export default function RelationEvaluationPage() {
       setRelation(rel);
       setSiteName(site?.site_name || `Site #${rel.id_site}`);
 
-      // unit_supplier_code is injected by the workspace endpoint
+      // unit_supplier_name is injected by the workspace endpoint
       setUnitName(
-        (ws as any).unit_supplier_code ||
+        (ws as any).unit_supplier_name ||
           rel.unit_code ||
           `Unit #${rel.id_supplier_unit}`,
       );
@@ -2227,15 +2227,6 @@ function ClassCriteriaBody({
         const isExpanded = expanded.has(pldKey);
         const detail = criteriaDetails[pldKey] ?? {};
         const isQualCert = pldKey === "quality_certification";
-        const qualCerts =
-          extra.unit_certifications?.filter((c) => c.certification_type) ?? [];
-        const appliedFromUnit =
-          isQualCert &&
-          qualCerts.some(
-            (c) =>
-              normalizeUiCriteriaValue("quality_certification", c.certification_type) === val ||
-              c.certification_type === val,
-          );
         return (
           <div key={key}>
             <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors dark:hover:bg-white/[0.03]">
@@ -2263,9 +2254,9 @@ function ClassCriteriaBody({
                     />
                   </svg>
                 </button>
-                {appliedFromUnit && (
+                {isQualCert && (
                   <p className="text-[10px] text-blue-500 mt-0.5">
-                    From unit certs
+                    From unit certs (locked)
                   </p>
                 )}
                 {detail.validity_end_date && !isExpanded && (
@@ -2275,73 +2266,64 @@ function ClassCriteriaBody({
                 )}
               </div>
               <div className="flex-1">
-                <select
-                  value={val}
-                  onChange={(e) => {
-                    const newVal = e.target.value;
-                    setField(key, newVal);
-                    if (newVal)
-                      setExpanded((p) => {
-                        const n = new Set(p);
-                        n.add(pldKey);
-                        return n;
-                      });
-                    // For quality_certification: auto-fill dates from the matching unit cert
-                    if (isQualCert && newVal) {
-                      const matchingCert = qualCerts.find(
-                        (c) =>
-                          normalizeUiCriteriaValue("quality_certification", c.certification_type) === newVal ||
-                          c.certification_type === newVal,
-                      );
-                      if (matchingCert) {
-                        if (matchingCert.start_date)
-                          onDetailChange(pldKey, "validity_start_date", matchingCert.start_date);
-                        if (matchingCert.end_date)
-                          onDetailChange(pldKey, "validity_end_date", matchingCert.end_date);
-                        return;
+                {isQualCert ? (
+                  <div
+                    title="Determined automatically from the unit's certifications — edit certifications in the Certification Tracker to change this."
+                    className={`${inputCls} flex items-center justify-between gap-2 text-xs cursor-not-allowed bg-slate-50 text-slate-600`}
+                  >
+                    <span className="truncate">{val || "— None —"}</span>
+                    <svg
+                      className="h-3.5 w-3.5 shrink-0 text-slate-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v2"
+                      />
+                    </svg>
+                  </div>
+                ) : (
+                  <select
+                    value={val}
+                    onChange={(e) => {
+                      const newVal = e.target.value;
+                      setField(key, newVal);
+                      if (newVal)
+                        setExpanded((p) => {
+                          const n = new Set(p);
+                          n.add(pldKey);
+                          return n;
+                        });
+                      const c2 = CRITERIA_DETAIL_CONFIG[pldKey];
+                      if (
+                        c2?.autoEndMonths &&
+                        detail.validity_start_date &&
+                        newVal
+                      ) {
+                        const months = c2.autoEndMonths(newVal);
+                        if (typeof months === "number" && months > 0)
+                          onDetailChange(
+                            pldKey,
+                            "validity_end_date",
+                            addMonthsToDate(detail.validity_start_date, months),
+                          );
                       }
-                    }
-                    const c2 = CRITERIA_DETAIL_CONFIG[pldKey];
-                    if (
-                      c2?.autoEndMonths &&
-                      detail.validity_start_date &&
-                      newVal
-                    ) {
-                      const months = c2.autoEndMonths(newVal);
-                      if (typeof months === "number" && months > 0)
-                        onDetailChange(
-                          pldKey,
-                          "validity_end_date",
-                          addMonthsToDate(detail.validity_start_date, months),
-                        );
-                    }
-                  }}
-                  disabled={readOnly}
-                  className={`${inputCls} text-xs ${readOnly ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
-                >
-                  <option value="">— Select —</option>
-                  {(PLD_OPTIONS[pldKey] || []).map((opt) => {
-                    if (isQualCert) {
-                      const matchCert = qualCerts.find(
-                        (c) =>
-                          normalizeUiCriteriaValue("quality_certification", c.certification_type) === opt ||
-                          c.certification_type === opt,
-                      );
-                      const today = new Date().toISOString().slice(0, 10);
-                      const expired = matchCert?.end_date && matchCert.end_date < today;
-                      return (
-                        <option key={opt} value={opt}>
-                          {opt}{expired ? " (expired)" : matchCert?.end_date ? ` — exp. ${matchCert.end_date}` : ""}
-                        </option>
-                      );
-                    }
-                    return (
+                    }}
+                    disabled={readOnly}
+                    className={`${inputCls} text-xs ${readOnly ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
+                  >
+                    <option value="">— Select —</option>
+                    {(PLD_OPTIONS[pldKey] || []).map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
                       </option>
-                    );
-                  })}
-                </select>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="w-14 shrink-0 text-center">
                 {score !== null ? (
@@ -2381,6 +2363,7 @@ function ClassCriteriaBody({
                   relationId={relationId}
                   onChange={(field, v) => onDetailChange(pldKey, field, v)}
                   onFileUploaded={onFileUploaded}
+                  lockValidityDates={isQualCert}
                 />
               </div>
             )}
@@ -2858,6 +2841,7 @@ function CriterionDetailPanel({
   relationId,
   onChange,
   onFileUploaded,
+  lockValidityDates,
 }: {
   pldKey: string;
   cfg: CriterionDetailConfig;
@@ -2866,6 +2850,7 @@ function CriterionDetailPanel({
   relationId: number;
   onChange: (field: keyof CriterionDetail, val: string) => void;
   onFileUploaded?: () => void;
+  lockValidityDates?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -2926,7 +2911,9 @@ function CriterionDetailPanel({
           type="date"
           value={detail.validity_start_date || ""}
           onChange={(e) => handleStartDateChange(e.target.value)}
-          className={inputCls}
+          disabled={lockValidityDates}
+          title={lockValidityDates ? "Determined automatically from the unit's certifications." : undefined}
+          className={`${inputCls} ${lockValidityDates ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
         />
       </div>
 
@@ -2947,7 +2934,9 @@ function CriterionDetailPanel({
             onChange("validity_end_date", e.target.value);
             onChange("auto_validity_end_date", "false");
           }}
-          className={inputCls}
+          disabled={lockValidityDates}
+          title={lockValidityDates ? "Determined automatically from the unit's certifications." : undefined}
+          className={`${inputCls} ${lockValidityDates ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
         />
       </div>
 

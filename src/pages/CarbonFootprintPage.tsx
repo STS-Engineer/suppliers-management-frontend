@@ -267,7 +267,7 @@ export default function CarbonFootprintPage() {
   const [units, setUnits] = useState<
     {
       id_supplier_unit: number;
-      supplier_code: string;
+      supplier_name: string;
       country?: string | null;
       continent?: string | null;
     }[]
@@ -468,7 +468,7 @@ export default function CarbonFootprintPage() {
       setRecords((prev) => [
         {
           ...created,
-          supplier_unit_code: selectedUnit?.supplier_code ?? null,
+          supplier_unit_code: selectedUnit?.supplier_name ?? null,
         },
         ...prev,
       ]);
@@ -1189,7 +1189,7 @@ export default function CarbonFootprintPage() {
                         key={u.id_supplier_unit}
                         value={u.id_supplier_unit}
                       >
-                        {u.supplier_code}
+                        {u.supplier_name}
                         {u.country ? ` — ${u.country}` : ""}
                       </option>
                     ))}

@@ -379,7 +379,7 @@ function SupplierBanner({
         <div className="py-3 min-w-0">
           <p className="truncate text-sm font-bold text-slate-900">{item.group_name || "—"}</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            {item.site_name || "—"} · {item.unit_supplier_code || "—"}
+            {item.site_name || "—"} · {item.unit_supplier_name || "—"}
           </p>
           {dp.plan_title && (
             <p className="mt-0.5 max-w-xs truncate text-[11px] font-medium text-slate-500 italic">
@@ -2606,7 +2606,7 @@ export default function DevelopmentPlansPage() {
 
       if (kw) {
         const hit = [
-          item.group_name, item.unit_supplier_code, item.unit_code,
+          item.group_name, item.unit_supplier_name, item.unit_code,
           item.site_name, item.site_city, item.site_country,
           dp.plan_title, dp.plan_status, rawGrade,
           owner, dp.approved_by, dp.rejected_by,
@@ -3050,9 +3050,9 @@ export default function DevelopmentPlansPage() {
                               </span>
                             )}
                           </p>
-                          {(item.unit_code || item.unit_supplier_code) && (
+                          {(item.unit_code || item.unit_supplier_name) && (
                             <p className="mt-0.5 font-mono text-[10px] text-slate-400">
-                              {[item.unit_code, item.unit_supplier_code].filter(Boolean).join(" · ")}
+                              {[item.unit_code, item.unit_supplier_name].filter(Boolean).join(" · ")}
                             </p>
                           )}
                           {(item.relation as any).supplier_owner && (

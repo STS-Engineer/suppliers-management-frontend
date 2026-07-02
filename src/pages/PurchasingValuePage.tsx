@@ -122,7 +122,7 @@ interface SiteOption {
 }
 interface SupplierOption {
   id_supplier_unit: number;
-  supplier_code?: string;
+  supplier_name?: string;
   group_name?: string;
   city?: string;
   country?: string;
@@ -269,7 +269,6 @@ interface Opp {
   reason_capacity?: boolean;
   reason_other?: string;
   secondary_plants?: string;
-  gate_conditions?: string;
   pending_stp_revision?: Record<string, unknown> | null;
   projects: ProjectRec[];
   financial_lines: FinLine[];
@@ -1190,7 +1189,6 @@ function EditTab({
     reason_capacity: opp.reason_capacity ?? false,
     reason_other: opp.reason_other ?? "",
     secondary_plants: opp.secondary_plants ?? "",
-    gate_conditions: opp.gate_conditions ?? "",
     plant_id: opp.plant_id ? String(opp.plant_id) : "",
   });
   const [loading, setLoading] = useState(false);
@@ -1731,7 +1729,6 @@ function EditTab({
         reason_capacity: form.reason_capacity,
         reason_other: form.reason_other || undefined,
         secondary_plants: form.secondary_plants || undefined,
-        gate_conditions: form.gate_conditions || undefined,
         changed_by: userEmail,
       });
       // Always refetch after save so server-computed fields (period saving, ROI,
@@ -2971,7 +2968,7 @@ function EditTab({
                               key={s.id_supplier_unit}
                               value={s.id_supplier_unit}
                             >
-                              {[s.group_name, s.supplier_code, s.city]
+                              {[s.group_name, s.supplier_name, s.city]
                                 .filter(Boolean)
                                 .join(" · ")}
                             </option>
@@ -2996,7 +2993,7 @@ function EditTab({
                             {before
                               ? [
                                   before.group_name,
-                                  before.supplier_code,
+                                  before.supplier_name,
                                   before.city,
                                 ]
                                   .filter(Boolean)
@@ -3042,7 +3039,7 @@ function EditTab({
                               key={s.id_supplier_unit}
                               value={s.id_supplier_unit}
                             >
-                              {[s.group_name, s.supplier_code, s.city]
+                              {[s.group_name, s.supplier_name, s.city]
                                 .filter(Boolean)
                                 .join(" · ")}
                             </option>

@@ -41,7 +41,7 @@ interface DueSummary {
 }
 
 interface ProcessedRow {
-  supplier_code: string;
+  supplier_name: string;
   plant_name: string;
   evaluation_date: string;
   grade: string;
@@ -56,7 +56,7 @@ interface ProcessedRow {
 }
 
 interface SkippedRow {
-  supplier_code: string;
+  supplier_name: string;
   plant_name: string;
   reason: string;
 }
@@ -592,7 +592,7 @@ function BatchUploadPanel() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {[
-                ["supplier_code",     "Unit identifier (pre-filled)",        "Text"],
+                ["supplier_name",     "Unit identifier (pre-filled)",        "Text"],
                 ["plant_name",        "Avocarbon plant (pre-filled)",         "Text"],
                 ["evaluation_date",   "Date of evaluation",                  "YYYY-MM-DD"],
                 ["operational_grade", "Operational scorecard result",         "A / B / C / D"],
@@ -799,7 +799,7 @@ function UploadResultPanel({ result, onReset }: { result: UploadResult; onReset:
                   const sc = SUPPLY_STATUS_CFG[row.new_status] ?? "";
                   return (
                     <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
-                      <td className="px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100">{row.supplier_code}</td>
+                      <td className="px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100">{row.supplier_name}</td>
                       <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{row.plant_name}</td>
                       <td className="px-4 py-2.5 text-slate-500">{row.evaluation_date}</td>
                       <td className="px-4 py-2.5">
@@ -844,7 +844,7 @@ function UploadResultPanel({ result, onReset }: { result: UploadResult; onReset:
           <ul className="divide-y divide-amber-100">
             {result.skipped_rows.map((row, i) => (
               <li key={i} className="flex items-start justify-between gap-6 px-5 py-3 text-xs">
-                <span className="font-semibold text-amber-900">{row.supplier_code} → {row.plant_name}</span>
+                <span className="font-semibold text-amber-900">{row.supplier_name} → {row.plant_name}</span>
                 <span className="shrink-0 text-amber-700">{row.reason}</span>
               </li>
             ))}

@@ -24,7 +24,6 @@ interface PlantEntry {
   supplier_scope?: string | null;
   last_evaluation_date?: string | null;
   annual_spend_value?: number | null;
-  annual_spend_currency?: string | null;
   // 11 criteria
   lta?: string | null;
   quality_certification?: string | null;
@@ -44,7 +43,7 @@ interface PlantEntry {
 
 interface SupplierEntry {
   id_supplier_unit: number;
-  supplier_code?: string | null;
+  supplier_name?: string | null;
   id_group?: number | null;
   group_name?: string | null;
   group_code?: string | null;
@@ -58,8 +57,6 @@ interface SupplierEntry {
   family?: string | null;
   sub_family?: string | null;
   product_line?: string | null;
-  product_type?: string | null;
-  product_category?: string | null;
   strategique: boolean;
   monopolistique: boolean;
   directed: boolean;
@@ -323,7 +320,7 @@ function PlantDetail({ p }: { p: PlantEntry }) {
         {p.last_evaluation_date && <MetaCell label="Last Evaluation" value={p.last_evaluation_date} />}
         {p.buyer_owner && <MetaCell label="Avocarbon Owner" value={p.buyer_owner} highlight />}
         {p.annual_spend_value != null && (
-          <MetaCell label="Annual Spend" value={`${p.annual_spend_value.toLocaleString()} ${p.annual_spend_currency ?? ""}`} />
+          <MetaCell label="Annual Spend" value={`${p.annual_spend_value.toLocaleString()}`} />
         )}
       </div>
 
@@ -406,7 +403,7 @@ function SupplierRow({ s }: { s: SupplierEntry }) {
             <div className="mt-0.5 h-9 w-1 shrink-0 rounded-full"
               style={{ background: s.plants[0]?.final_grade?.startsWith("A") ? "linear-gradient(#10b981,#059669)" : s.plants[0]?.final_grade?.startsWith("B") ? "linear-gradient(#38bdf8,#0ea5e9)" : s.plants[0]?.final_grade?.startsWith("C") ? "linear-gradient(#fbbf24,#f59e0b)" : "#cbd5e1" }} />
             <div className="min-w-0">
-              <p className="truncate font-mono text-sm font-semibold text-slate-900">{s.supplier_code ?? "—"}</p>
+              <p className="truncate font-mono text-sm font-semibold text-slate-900">{s.supplier_name ?? "—"}</p>
               <div className="mt-0.5 flex flex-wrap items-center gap-1">
                 {s.group_name && <span className="text-[11px] text-slate-500">{s.group_name}</span>}
                 {s.group_code && <span className="font-mono text-[10px] text-slate-300">{s.group_code}</span>}
@@ -564,7 +561,7 @@ function SupplierRow({ s }: { s: SupplierEntry }) {
               <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-4">
                   <InfoSection label="Identification">
-                    <InfoRow k="Supplier Code" v={s.supplier_code} mono />
+                    <InfoRow k="Supplier Name" v={s.supplier_name} mono />
                     <InfoRow k="Group" v={s.group_name} />
                     <InfoRow k="Group Code" v={s.group_code} mono />
                   </InfoSection>
@@ -584,8 +581,6 @@ function SupplierRow({ s }: { s: SupplierEntry }) {
                     <InfoRow k="Family" v={s.family} />
                     <InfoRow k="Sub-Family" v={s.sub_family} />
                     <InfoRow k="Product Line" v={s.product_line} />
-                    <InfoRow k="Product Type" v={s.product_type} />
-                    <InfoRow k="Category" v={s.product_category} />
                   </InfoSection>
                   <InfoSection label="Strategic Attributes">
                     <BoolRow k="Strategic" v={s.strategique} />
@@ -730,8 +725,8 @@ function GroupCard({ g }: { g: GroupEntry }) {
                   className={`flex w-full items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-blue-50/30 ${isSel ? "bg-blue-50/20" : ""}`}>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-800">{u.group_name ?? u.supplier_code ?? "—"}</p>
-                      {u.supplier_code && <span className="font-mono text-[11px] text-slate-400">{u.supplier_code}</span>}
+                      <p className="font-semibold text-slate-800">{u.group_name ?? u.supplier_name ?? "—"}</p>
+                      {u.supplier_name && <span className="font-mono text-[11px] text-slate-400">{u.supplier_name}</span>}
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {[u.city, u.country].filter(Boolean).join(", ")}
@@ -866,7 +861,7 @@ export default function PublicDirectoryPage() {
       if (!map.has(gid)) {
         map.set(gid, {
           id_group: gid,
-          group_name: u.group_name ?? u.supplier_code ?? "—",
+          group_name: u.group_name ?? u.supplier_name ?? "—",
           group_code: u.group_code ?? "",
           group_owner_email: u.group_owner_email,
           units: [],

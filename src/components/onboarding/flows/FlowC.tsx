@@ -50,7 +50,7 @@ interface CertRow {
 // ---------------------------------------------------------------------------
 
 const INITIAL_UNIT: UnitFormData = {
-  supplier_code: "",
+  supplier_name: "",
   address_line: "",
   city: "",
   country: "",
@@ -135,7 +135,7 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
           (c: ContactResponse) => toContactOption(c, "group"),
         );
 
-        const units: Array<{ id_supplier_unit: number; supplier_code: string }> =
+        const units: Array<{ id_supplier_unit: number; supplier_name: string }> =
           unitsRes.data?.units ?? [];
 
         const chunks = await Promise.all(
@@ -143,7 +143,7 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
             try {
               const r = await supplierAPI.listContactsForUnit(u.id_supplier_unit);
               return (r.data?.items ?? []).map((c: ContactResponse) =>
-                toContactOption(c, "unit", u.supplier_code || `Unit ${u.id_supplier_unit}`),
+                toContactOption(c, "unit", u.supplier_name || `Unit ${u.id_supplier_unit}`),
               );
             } catch { return []; }
           }),
@@ -177,7 +177,7 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
     const e: FormErrors = {};
     const ucErrors: { [k: number]: FormErrors } = {};
 
-    if (!unitData.supplier_code.trim()) e.supplier_code = "Unit name is required";
+    if (!unitData.supplier_name.trim()) e.supplier_name = "Unit name is required";
 
     (unitData.unit_contacts ?? []).forEach((nc, i) => {
       const hasData = nc.full_name.trim() || nc.email.trim() || nc.phone.trim();
@@ -246,7 +246,7 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
 
       await supplierAPI.createUnitComplete(groupId, {
         unit: {
-          supplier_code:         unitData.supplier_code,
+          supplier_name:         unitData.supplier_name,
           address_line:          unitData.address_line          || undefined,
           city:                  unitData.city                  || undefined,
           country:               unitData.country               || undefined,

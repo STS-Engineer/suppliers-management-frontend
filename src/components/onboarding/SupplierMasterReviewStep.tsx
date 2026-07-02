@@ -77,14 +77,6 @@ export const SupplierMasterReviewStep: React.FC<
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Category
-              </p>
-              <p className="mt-1 text-gray-900">
-                {data.group.supplier_type.join(", ") || "Not set"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Group Context
               </p>
               <p className="mt-1 text-gray-900">
@@ -121,7 +113,7 @@ export const SupplierMasterReviewStep: React.FC<
                 Unit Code
               </p>
               <p className="mt-1 text-gray-900">
-                {data.unit.supplier_code || "Not set"}
+                {data.unit.supplier_name || "Not set"}
               </p>
             </div>
             <div>

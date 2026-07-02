@@ -130,11 +130,10 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
               Plant Assignments
             </p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">
-              {selectedUnit.supplier_code}
+              {selectedUnit.supplier_name}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
               {[selectedUnit.city, selectedUnit.country].filter(Boolean).join(", ")}
-              {selectedUnit.product_type ? ` · ${selectedUnit.product_type}` : ""}
             </p>
           </div>
 
@@ -204,7 +203,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
                 <RelationCard
                   key={rel.id_relation}
                   relation={rel}
-                  unitName={selectedUnit.supplier_code}
+                  unitName={selectedUnit.supplier_name}
                   siteName={site?.site_name ?? `Plant #${rel.id_site}`}
                   siteLocation={[site?.city, site?.country].filter(Boolean).join(", ")}
                   scope={scope}
@@ -302,7 +301,7 @@ const RelationCard: React.FC<RelCardProps> = ({
             value={`${Number(latestSpend.spend_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${latestSpend.spend_currency}`}
           />
         ) : relation.annual_spend_value != null ? (
-          <Meta label="Annual Spend" value={`${Number(relation.annual_spend_value).toLocaleString()} ${relation.annual_spend_currency ?? ""}`} />
+          <Meta label="Annual Spend" value={`${Number(relation.annual_spend_value).toLocaleString()}`} />
         ) : null}
         {relation.evaluation_frequency && <Meta label="Frequency" value={relation.evaluation_frequency} />}
         {relation.strategic_mention && relation.strategic_mention !== "none" && (

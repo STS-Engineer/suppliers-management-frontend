@@ -577,9 +577,9 @@ function RelationDetailModal({
                   {name}
                 </h3>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  {record.unit.supplier_code && (
+                  {record.unit.supplier_name && (
                     <span className="font-mono text-[10px] font-semibold text-blue-300/90">
-                      {record.unit.supplier_code}
+                      {record.unit.supplier_name}
                     </span>
                   )}
                   {record.site.site_name && (
@@ -712,7 +712,7 @@ function RelationDetailModal({
                     {name}
                   </p>
                   <p className="font-mono text-[10px] text-slate-400">
-                    {record.unit.supplier_code ||
+                    {record.unit.supplier_name ||
                       `UNT-${String(record.unit.id_supplier_unit).padStart(6, "0")}`}
                   </p>
                 </div>
@@ -736,18 +736,10 @@ function RelationDetailModal({
             </div>
 
             {/* Taxonomy chips */}
-            {(record.group.supplier_type ||
-              record.unit.family ||
+            {(record.unit.family ||
               record.unit.sub_family ||
               record.unit.product_line) && (
               <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5">
-                {record.group.supplier_type && (
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tagColor(record.group.supplier_type)}`}
-                  >
-                    {record.group.supplier_type}
-                  </span>
-                )}
                 {record.unit.family && (
                   <span
                     className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-semibold ${tagColor(record.unit.family)}`}
@@ -1082,7 +1074,6 @@ export default function ActiveSitesPage() {
   const [search, setSearch] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
   const [filterScope, setFilterScope] = useState("");
   const [filterPlant, setFilterPlant] = useState("");
   const [filterFamily, setFilterFamily] = useState("");
@@ -1111,7 +1102,6 @@ export default function ActiveSitesPage() {
           site_name: search || undefined,
           class_grade: filterGrade || undefined,
           status: filterStatus || undefined,
-          category: filterCategory || undefined,
           scope: filterScope || undefined,
           family: filterFamily || undefined,
           sub_family: filterSubFamily || undefined,
@@ -1145,7 +1135,6 @@ export default function ActiveSitesPage() {
     search,
     filterGrade,
     filterStatus,
-    filterCategory,
     filterScope,
     filterFamily,
     filterSubFamily,
@@ -1175,7 +1164,6 @@ export default function ActiveSitesPage() {
         a.localeCompare(b),
       );
     return {
-      categories: uniq(relationRows.map((r) => r.group.supplier_type)),
       statuses: uniq(relationRows.map((r) => r.relation.supplier_status)),
       families: uniq(relationRows.map((r) => r.unit.family)),
       subFamilies: uniq(relationRows.map((r) => r.unit.sub_family)),
@@ -1208,8 +1196,7 @@ export default function ActiveSitesPage() {
         (row) =>
           normalizeText(row.site.site_name).includes(keyword) ||
           normalizeText(row.group.nom).includes(keyword) ||
-          normalizeText(row.group.supplier_type).includes(keyword) ||
-          normalizeText(row.unit.supplier_code).includes(keyword) ||
+          normalizeText(row.unit.supplier_name).includes(keyword) ||
           normalizeText(row.unit.family ?? "").includes(keyword) ||
           normalizeText(row.unit.product_line ?? "").includes(keyword),
       );
@@ -1251,7 +1238,6 @@ export default function ActiveSitesPage() {
     search ||
     filterGrade ||
     filterStatus ||
-    filterCategory ||
     filterScope ||
     filterPlant ||
     filterFamily ||
@@ -1262,7 +1248,6 @@ export default function ActiveSitesPage() {
     setSearch("");
     setFilterGrade("");
     setFilterStatus("");
-    setFilterCategory("");
     setFilterScope("");
     setFilterPlant("");
     setFilterFamily("");
@@ -1360,7 +1345,6 @@ export default function ActiveSitesPage() {
                     search,
                     filterGrade,
                     filterStatus,
-                    filterCategory,
                     filterScope,
                     filterPlant,
                     filterFamily,
@@ -1392,14 +1376,6 @@ export default function ActiveSitesPage() {
               placeholder="Name, code or site…"
             />
           </div>
-          <FilterSelect
-            label="Commodity"
-            value={filterCategory}
-            onChange={setFilterCategory}
-            options={filterOptions.categories}
-            placeholder="All commodities"
-            active={!!filterCategory}
-          />
           <FilterSelect
             label="Status"
             value={filterStatus}
@@ -1467,11 +1443,6 @@ export default function ActiveSitesPage() {
           <div className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-3 dark:border-white/[0.06]">
             {[
               { label: "Search", value: search, clear: () => setSearch("") },
-              {
-                label: "Commodity",
-                value: filterCategory,
-                clear: () => setFilterCategory(""),
-              },
               {
                 label: "Status",
                 value: filterStatus,
@@ -1606,9 +1577,6 @@ export default function ActiveSitesPage() {
                     Scope
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-                    Commodity
-                  </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
                     Family
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1655,10 +1623,6 @@ export default function ActiveSitesPage() {
                     {/* Scope */}
                     <td className="px-5 py-3.5">
                       <div className="h-6 w-14 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
-                    </td>
-                    {/* Commodity */}
-                    <td className="px-5 py-3.5">
-                      <div className="h-6 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.06]" />
                     </td>
                     {/* Family */}
                     <td className="px-5 py-3.5">
@@ -1730,9 +1694,6 @@ export default function ActiveSitesPage() {
                     Scope
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-                    Commodity
-                  </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
                     Family
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1782,7 +1743,7 @@ export default function ActiveSitesPage() {
                               {name}
                             </div>
                             <div className="font-mono text-[10.5px] text-slate-400 dark:text-slate-500">
-                              {row.unit.supplier_code ||
+                              {row.unit.supplier_name ||
                                 `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`}
                             </div>
                           </div>
@@ -1819,19 +1780,6 @@ export default function ActiveSitesPage() {
                             }`}
                           >
                             {row.relation.global_status}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
-                        )}
-                      </td>
-
-                      {/* Commodity — supplier_type */}
-                      <td className="px-5 py-3.5">
-                        {row.group.supplier_type ? (
-                          <span
-                            className={`inline-flex max-w-[120px] items-center truncate rounded-full px-2.5 py-1 text-[11px] font-semibold ${tagColor(row.group.supplier_type)}`}
-                          >
-                            {row.group.supplier_type}
                           </span>
                         ) : (
                           <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -2100,7 +2048,7 @@ export default function ActiveSitesPage() {
         <CommitteeProgressModal
           relationId={committeeProgressRow.relation.id_relation}
           supplierName={committeeProgressRow.group.nom ?? ""}
-          supplierCode={committeeProgressRow.unit.supplier_code ?? ""}
+          supplierCode={committeeProgressRow.unit.supplier_name ?? ""}
           siteName={committeeProgressRow.site.site_name ?? ""}
           isVpConversion={isVpConversion}
           onClose={() => setCommitteeProgressRow(null)}
@@ -2114,7 +2062,7 @@ export default function ActiveSitesPage() {
           supplierInfo={{
             relationId: committeeRow.relation.id_relation,
             supplierName: committeeRow.group.nom ?? "",
-            supplierCode: committeeRow.unit.supplier_code ?? "",
+            supplierCode: committeeRow.unit.supplier_name ?? "",
             siteName: committeeRow.site.site_name ?? "",
           }}
           onClose={() => setCommitteeRow(null)}

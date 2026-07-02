@@ -140,7 +140,6 @@ export default function CommitteeVotePage() {
           <div className="grid grid-cols-2 gap-0 divide-x divide-y divide-slate-100 sm:grid-cols-3">
             {[
               { label: "Supplier", value: snap.supplier_name },
-              { label: "Code", value: snap.supplier_code },
               { label: "Plant", value: snap.site_name },
               { label: "Family", value: snap.family },
               { label: "Grade", value: snap.final_grade },

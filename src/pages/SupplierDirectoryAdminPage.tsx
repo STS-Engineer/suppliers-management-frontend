@@ -10,7 +10,7 @@ interface PlantRow {
 
 interface UnitRow {
   id_supplier_unit: number;
-  supplier_code: string | null;
+  supplier_name: string | null;
   group_name: string | null;
   city: string | null;
   country: string | null;
@@ -112,7 +112,7 @@ async function fetchAllUnits(_searchQ: string): Promise<UnitRow[]> {
       if (!unitMap.has(uid)) {
         unitMap.set(uid, {
           id_supplier_unit: uid,
-          supplier_code: unit.supplier_code ?? null,
+          supplier_name: unit.supplier_name ?? null,
           group_name: rel.group?.nom ?? null,
           city: unit.city ?? null,
           country: unit.country ?? null,
@@ -161,7 +161,7 @@ export default function SupplierDirectoryAdminPage() {
         const ql = q.toLowerCase();
         return (
           (u.group_name ?? "").toLowerCase().includes(ql) ||
-          (u.supplier_code ?? "").toLowerCase().includes(ql) ||
+          (u.supplier_name ?? "").toLowerCase().includes(ql) ||
           (u.country ?? "").toLowerCase().includes(ql)
         );
       })
@@ -308,9 +308,9 @@ export default function SupplierDirectoryAdminPage() {
                       <p className="font-semibold text-slate-800">
                         {unit.group_name ?? "—"}
                       </p>
-                      {unit.supplier_code && (
+                      {unit.supplier_name && (
                         <p className="font-mono text-[11px] text-slate-400">
-                          {unit.supplier_code}
+                          {unit.supplier_name}
                         </p>
                       )}
                     </td>

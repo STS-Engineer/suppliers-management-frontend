@@ -35,7 +35,6 @@ interface ConfigurationFormProps {
   supplierScope: SupplierScope;
   supplierOwner: string;
   annualSpendValue: string;
-  annualSpendCurrency: string;
   fiscalYear: number | "";
   templateId: number | "";
   errors: FormErrors;
@@ -48,14 +47,11 @@ interface ConfigurationFormProps {
   unitContactRole?: string;
 }
 
-const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CNY", "INR", "MAD", "other"];
-
 export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
   siteId,
   supplierScope,
   supplierOwner,
   annualSpendValue,
-  annualSpendCurrency,
   fiscalYear,
   templateId,
   errors,
@@ -217,15 +213,6 @@ export const ConfigurationForm: React.FC<ConfigurationFormProps> = ({
           placeholder="0.00"
           error={errors.annual_spend_value}
           helperText="Estimated annual purchase amount for this relation"
-        />
-
-        <FormSelect
-          label="Currency"
-          name="annual_spend_currency"
-          value={annualSpendCurrency}
-          onChange={(e) => onChange("annual_spend_currency", e.target.value)}
-          options={CURRENCIES.map((c) => ({ value: c, label: c }))}
-          placeholder="Select currency"
         />
 
         <div className="col-span-2">

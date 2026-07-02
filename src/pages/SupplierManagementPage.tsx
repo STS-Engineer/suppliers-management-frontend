@@ -11,30 +11,22 @@ import {
   ChevronRight,
   Edit2,
   Globe,
+  Layers,
+  Mail,
+  Phone,
   Plus,
   RefreshCw,
   Save,
   Search,
-  Shield,
-  Sliders,
   TrendingDown,
   TrendingUp,
   Users,
   X,
 } from "lucide-react";
 import { SupplierManagement } from "../components/onboarding/SupplierManagement";
-import { CreatableMultiSelect } from "../components/onboarding/FormElements";
 import { InlineAlert, PageIntro } from "../components/UI";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import type { SupplierGroupSummary } from "../types/onboarding";
-
-const DEFAULT_CATEGORIES = [
-  "Ferrites", "Chokes", "Wire coils", "Inductors", "Transformers",
-  "Capacitors", "Resistors", "Diodes", "MOSFETs", "IGBTs",
-  "Sensors", "Filters", "Connectors", "Switches", "Relays",
-  "Motors", "PCB Assemblies", "Cables", "Coatings", "Laminates",
-  "Electronics", "Magnetics", "Passive Components", "Electromechanical",
-];
 
 // ── design helpers ────────────────────────────────────────────────────────────
 
@@ -49,7 +41,6 @@ const FLAG_CFG = [
   { key: "monopolistique", label: "Monopolistic",  cls: "bg-amber-50  text-amber-700  border-amber-200" },
   { key: "directed",       label: "Directed",     cls: "bg-sky-50    text-sky-700    border-sky-200" },
   { key: "multi_site",     label: "Multi-site",   cls: "bg-teal-50   text-teal-700   border-teal-200" },
-  { key: "exit_supplier",  label: "Exit",         cls: "bg-rose-50   text-rose-700   border-rose-200" },
 ] as const;
 
 const AVATAR_GRADIENTS = [
@@ -126,12 +117,6 @@ function GroupCard({
               <span className="truncate">{group.supplier_owner}</span>
             </div>
           )}
-          {group.supplier_type && (
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Sliders className="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
-              <span className="truncate">{group.supplier_type}</span>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
@@ -158,13 +143,10 @@ type EditState = {
   nom: string;
   supplier_scope: string;
   supplier_owner: string;
-  category: string[];
-  strategic_reason: string;
   strategique: boolean;
   monopolistique: boolean;
   directed: boolean;
   multi_site: boolean;
-  exit_supplier: boolean;
 };
 
 function fromGroup(g: SupplierGroupSummary): EditState {
@@ -172,15 +154,10 @@ function fromGroup(g: SupplierGroupSummary): EditState {
     nom: g.nom,
     supplier_scope: g.supplier_scope ?? "",
     supplier_owner: g.supplier_owner ?? "",
-    category: g.supplier_type
-      ? g.supplier_type.split(",").map((s) => s.trim()).filter(Boolean)
-      : [],
-    strategic_reason: g.strategic_reason ?? "",
     strategique: g.strategique ?? false,
     monopolistique: g.monopolistique ?? false,
     directed: g.directed ?? false,
     multi_site: g.multi_site ?? false,
-    exit_supplier: g.exit_supplier ?? false,
   };
 }
 
@@ -216,7 +193,6 @@ function GroupDrawer({
       const res = await supplierAPI.updateSupplierGroup(group.id_group, {
         supplier_scope: form.supplier_scope || undefined,
         supplier_owner: form.supplier_owner || undefined,
-        supplier_type: form.category.length > 0 ? form.category.join(", ") : undefined,
       });
       onGroupUpdated(res.data);
       setEditing(false);
@@ -327,18 +303,6 @@ function GroupDrawer({
                 />
               </div>
 
-              {/* Category */}
-              <CreatableMultiSelect
-                label="Category"
-                name="group_category"
-                value={form.category}
-                onChange={(v) => set("category", v)}
-                storageKey="group_category"
-                defaultOptions={DEFAULT_CATEGORIES}
-                placeholder="e.g. Ferrites, Chokes, Wire coils…"
-                helperText="Product categories supplied by this group"
-              />
-
               <div className="flex gap-2.5 pt-1">
                 <button type="button" onClick={handleSave} disabled={saving || (form.supplier_scope === "global" && !form.supplier_owner.trim())}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40">
@@ -357,15 +321,23 @@ function GroupDrawer({
               <div className="grid grid-cols-2 gap-3">
                 <InfoBlock icon={<Globe className="h-4 w-4" />} label="Scope" value={group.supplier_scope || "—"} />
                 <InfoBlock icon={<Users className="h-4 w-4" />} label="Owner" value={group.supplier_owner || "—"} />
-                {group.supplier_type && (
-                  <div className="col-span-2">
-                    <InfoBlock icon={<Sliders className="h-4 w-4" />} label="Categories" value={group.supplier_type} />
+              </div>
+
+              {/* Commodity — read-only, aggregated from the group's supplier units */}
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                  <Layers className="h-3.5 w-3.5" /> Commodity
+                </p>
+                {group.commodities && group.commodities.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.commodities.map((c) => (
+                      <span key={c} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+                        {c}
+                      </span>
+                    ))}
                   </div>
-                )}
-                {group.strategic_reason && (
-                  <div className="col-span-2">
-                    <InfoBlock icon={<Shield className="h-4 w-4" />} label="Strategic reason" value={group.strategic_reason} />
-                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400">—</p>
                 )}
               </div>
 
@@ -402,6 +374,44 @@ function GroupDrawer({
                     {group.units.length > 5 && (
                       <p className="px-1 text-xs text-slate-400">+{group.units.length - 5} more units</p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Group contacts */}
+              {group.contacts && group.contacts.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                    Contacts ({group.contacts.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {group.contacts.map((c) => (
+                      <div key={c.id_contact} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-semibold text-slate-800">{c.full_name || "—"}</span>
+                          {c.is_primary_contact && (
+                            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        {c.role_label && <p className="text-xs text-slate-500">{c.role_label}</p>}
+                        {(c.email || c.phone) && (
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                            {c.email && (
+                              <a href={`mailto:${c.email}`} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                                <Mail className="h-3 w-3" /> {c.email}
+                              </a>
+                            )}
+                            {c.phone && (
+                              <span className="flex items-center gap-1 text-xs text-slate-500">
+                                <Phone className="h-3 w-3" /> {c.phone}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -475,7 +485,6 @@ export const SupplierManagementPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [scopeFilter, setScopeFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
   const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(null);
   const [directGroup, setDirectGroup] = useState<SupplierGroupSummary | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
@@ -504,48 +513,28 @@ export const SupplierManagementPage = () => {
   }, [groupId, reloadTick]);
 
   // Reset page on filter/search change
-  useEffect(() => { setPage(0); }, [search, scopeFilter, categoryFilter]);
+  useEffect(() => { setPage(0); }, [search, scopeFilter]);
 
   const filtered = useMemo(() => {
     let list = groups;
     if (scopeFilter) {
       list = list.filter((g) => (g.supplier_scope ?? "").toLowerCase() === scopeFilter);
     }
-    if (categoryFilter) {
-      const kw = categoryFilter.toLowerCase();
-      list = list.filter((g) =>
-        (g.supplier_type ?? "").toLowerCase().includes(kw)
-      );
-    }
     const kw = search.trim().toLowerCase();
     if (kw) {
       list = list.filter((g) =>
-        [g.nom, g.supplier_scope, g.supplier_type, g.group_code]
+        [g.nom, g.supplier_scope, g.group_code]
           .filter(Boolean).some((v) => String(v).toLowerCase().includes(kw))
       );
     }
     return list;
-  }, [groups, search, scopeFilter, categoryFilter]);
+  }, [groups, search, scopeFilter]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  const hasFilters = !!(search || scopeFilter || categoryFilter);
-  const clearFilters = () => { setSearch(""); setScopeFilter(""); setCategoryFilter(""); };
-
-  // All categories from loaded groups
-  const allCategories = useMemo(() => {
-    const set = new Set<string>();
-    groups.forEach((g) => {
-      if (g.supplier_type) {
-        g.supplier_type.split(/[,;]/).forEach((c) => {
-          const t = c.trim();
-          if (t) set.add(t);
-        });
-      }
-    });
-    return Array.from(set).sort();
-  }, [groups]);
+  const hasFilters = !!(search || scopeFilter);
+  const clearFilters = () => { setSearch(""); setScopeFilter(""); };
 
   // Direct navigation to /suppliers/:groupId/manage
   if (groupId && directGroup) {
@@ -599,18 +588,6 @@ export const SupplierManagementPage = () => {
         >
           {SCOPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-
-        {/* Category filter */}
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-10 max-w-[180px] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-        >
-          <option value="">All categories</option>
-          {allCategories.map((c) => (
-            <option key={c} value={c}>{c}</option>
           ))}
         </select>
 

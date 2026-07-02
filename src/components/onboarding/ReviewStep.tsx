@@ -145,7 +145,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
                 Unit Code
               </p>
               <p className="mt-2 text-lg font-medium text-gray-900">
-                {data.unit.supplier_code}
+                {data.unit.supplier_name}
               </p>
             </div>
           </div>

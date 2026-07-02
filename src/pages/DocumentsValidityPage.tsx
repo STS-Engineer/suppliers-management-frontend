@@ -788,7 +788,7 @@ export default function DocumentsValidityPage() {
     for (const item of relations) {
       const relId = item.relation.id_relation;
       map[relId] = {
-        supplierName: item.unit?.supplier_code ?? item.group?.nom ?? `Supplier #${relId}`,
+        supplierName: item.unit?.supplier_name ?? item.group?.nom ?? `Supplier #${relId}`,
         siteName:
           sites[item.relation.id_site!] ?? `Site #${item.relation.id_site}`,
       };

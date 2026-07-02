@@ -51,9 +51,9 @@ const formatNumber = (value?: number | null) => {
   return String(value);
 };
 
-const formatMoney = (value?: number | null, currency?: string | null) => {
+const formatMoney = (value?: number | null) => {
   if (value === null || value === undefined) return "—";
-  return `${Number(value).toLocaleString()} ${currency ?? ""}`.trim();
+  return Number(value).toLocaleString();
 };
 
 const labelize = (value: string) =>
@@ -312,7 +312,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               <p className="mt-1 text-sm text-slate-500">
                 {(site?.site_name || "Unknown site") +
                   " · " +
-                  (unit?.supplier_code || relation?.unit_code || "Unknown unit")}
+                  (unit?.supplier_name || relation?.unit_code || "Unknown unit")}
               </p>
             </div>
             <button
@@ -395,18 +395,14 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                     items={[
                       { label: "Relation Code", value: relation?.relation_code || "—" },
                       { label: "Plant Alias", value: relation?.alias_1 || "—" },
-                      { label: "SB1 Item", value: relation?.sb1_item_name || "—" },
                       { label: "Group", value: groupName || "—" },
                       { label: "Site", value: site?.site_name || "—" },
-                      { label: "Unit", value: unit?.supplier_code || relation?.unit_code || "—" },
+                      { label: "Unit", value: unit?.supplier_name || relation?.unit_code || "—" },
                       { label: "Scope", value: relation?.supplier_scope || "—" },
                       { label: "Owner", value: relation?.supplier_owner || "—" },
                       {
                         label: "Annual Spend",
-                        value: formatMoney(
-                          relation?.annual_spend_value ?? null,
-                          relation?.annual_spend_currency ?? null,
-                        ),
+                        value: formatMoney(relation?.annual_spend_value ?? null),
                       },
                       {
                         label: "Frequency",
@@ -442,7 +438,6 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 <div className="px-5 py-5">
                   <DetailGrid
                     items={[
-                      { label: "Preferred Dev Supplier", value: relation?.preferred_dev_supplier === true ? "Yes" : relation?.preferred_dev_supplier === false ? "No" : "—" },
                       { label: "Last Eval Score", value: relation?.last_eval_score != null ? String(relation.last_eval_score) : "—" },
                     ]}
                   />

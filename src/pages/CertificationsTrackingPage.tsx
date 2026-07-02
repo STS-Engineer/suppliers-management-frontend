@@ -22,7 +22,10 @@ import {
 import { Link } from "react-router-dom";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import type { SupplierCertificationResponse } from "../types/onboarding";
-import { CERT_TYPES_BY_STANDARD } from "../utils/onboarding";
+import {
+  CERTIFICATION_STANDARD_TYPE_OPTIONS,
+  CERT_TYPES_BY_STANDARD,
+} from "../utils/onboarding";
 import { PageIntro } from "../components/UI";
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i;
@@ -104,7 +107,7 @@ function groupByUnit(certs: SupplierCertificationResponse[]): UnitGroup[] {
     const key = String(c.id_supplier_unit ?? "unknown");
     if (!map.has(key)) {
       const label =
-        c.supplier_code || c.group_nom || `Unit #${c.id_supplier_unit ?? "?"}`;
+        c.supplier_name || c.group_nom || `Unit #${c.id_supplier_unit ?? "?"}`;
       map.set(key, {
         unitId: c.id_supplier_unit ?? null,
         supplierCode: label,
@@ -194,6 +197,7 @@ function DocCell({ url, name }: { url?: string | null; name?: string | null }) {
 
 // ---------------------------------------------------------------------------
 interface EditDraft {
+  standard_type: string;
   certification_type: string;
   certificate_name: string;
   start_date: string;
@@ -203,6 +207,7 @@ interface EditDraft {
 
 function certToDraft(c: SupplierCertificationResponse): EditDraft {
   return {
+    standard_type: c.standard_type ?? "",
     certification_type: c.certification_type ?? "",
     certificate_name: c.certificate_name ?? "",
     start_date: c.start_date ?? "",
@@ -240,9 +245,13 @@ function EditPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const certOptions = CERT_TYPES_BY_STANDARD[cert.standard_type ?? ""] ?? [];
+  const certOptions = CERT_TYPES_BY_STANDARD[draft.standard_type] ?? [];
   const inp =
     "h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:border-blue-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white";
+
+  function handleStandardTypeChange(value: string) {
+    setDraft((d) => ({ ...d, standard_type: value, certification_type: "" }));
+  }
 
   async function save() {
     if (
@@ -292,41 +301,47 @@ function EditPanel({
       <td colSpan={8} className="px-6 py-3">
         {/* Metadata fields */}
         <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-[170px] flex-col gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Standard Type
+            </label>
+            <select
+              value={draft.standard_type}
+              onChange={(e) => handleStandardTypeChange(e.target.value)}
+              className={inp}
+            >
+              <option value="">— Select —</option>
+              {CERTIFICATION_STANDARD_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex min-w-[190px] flex-col gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               Certification
             </label>
-            {certOptions.length > 0 ? (
-              <select
-                value={draft.certification_type}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    certification_type: e.target.value,
-                  }))
-                }
-                className={inp}
-              >
-                <option value="">— Select —</option>
-                {certOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.value}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={draft.certification_type}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    certification_type: e.target.value,
-                  }))
-                }
-                className={inp}
-                placeholder="Type"
-              />
-            )}
+            <select
+              value={draft.certification_type}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  certification_type: e.target.value,
+                }))
+              }
+              disabled={!draft.standard_type}
+              className={inp}
+            >
+              <option value="">
+                {draft.standard_type ? "— Select —" : "Select standard type first"}
+              </option>
+              {certOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.value}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex min-w-[150px] flex-col gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -371,12 +386,13 @@ function EditPanel({
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               Comments
             </label>
-            <input
+            <textarea
               value={draft.comments}
               onChange={(e) =>
                 setDraft((d) => ({ ...d, comments: e.target.value }))
               }
-              className={inp}
+              rows={1}
+              className={inp + " h-8 resize-y py-1"}
               placeholder="Optional note"
             />
           </div>
@@ -759,6 +775,7 @@ export default function CertificationsTrackingPage() {
       cert.id_supplier_unit!,
       cert.id_certification,
       {
+        standard_type: draft.standard_type || undefined,
         certification_type: draft.certification_type || undefined,
         certificate_name: draft.certificate_name || undefined,
         start_date: draft.start_date || undefined,
@@ -769,7 +786,7 @@ export default function CertificationsTrackingPage() {
     setCerts((prev) =>
       prev.map((c) =>
         c.id_certification === cert.id_certification
-          ? { ...res.data, supplier_code: cert.supplier_code }
+          ? { ...res.data, supplier_name: cert.supplier_name }
           : c,
       ),
     );

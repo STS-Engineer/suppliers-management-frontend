@@ -963,13 +963,10 @@ class SupplierOnboardingAPI {
       nom: string;
       supplier_scope: string;
       supplier_owner: string;
-      supplier_type: string;
       strategique: boolean;
       monopolistique: boolean;
       directed: boolean;
       multi_site: boolean;
-      exit_supplier: boolean;
-      strategic_reason: string;
     }>,
   ): Promise<{ status: string; data: SupplierGroupSummary }> {
     return this.request(
@@ -1797,7 +1794,6 @@ class SupplierOnboardingAPI {
       reason_other?: string;
       // STP — missing workbook fields (rev 1.2)
       secondary_plants?: string;
-      gate_conditions?: string;
       changed_by?: string;
     },
   ) {
@@ -2510,6 +2506,7 @@ class SupplierOnboardingAPI {
     unitId: number,
     certId: number,
     data: {
+      standard_type?: string | null;
       certification_type?: string | null;
       certificate_name?: string | null;
       start_date?: string | null;

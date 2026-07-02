@@ -553,7 +553,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
           site_name: site?.site_name ?? null,
           site_city: site?.city ?? null,
           site_country: site?.country ?? null,
-          unit_supplier_code: shared.selectedUnit?.supplier_code ?? null,
+          unit_supplier_name: shared.selectedUnit?.supplier_name ?? null,
           unit_code: shared.selectedUnit?.unit_code ?? null,
           group_id: groupId,
           group_name: groupName,
@@ -1883,10 +1883,9 @@ const UnitSearchBox: React.FC<{
     query.length > 0
       ? units.filter(
           (unit) =>
-            unit.supplier_code?.toLowerCase().includes(query.toLowerCase()) ||
+            unit.supplier_name?.toLowerCase().includes(query.toLowerCase()) ||
             unit.city?.toLowerCase().includes(query.toLowerCase()) ||
-            unit.country?.toLowerCase().includes(query.toLowerCase()) ||
-            unit.product_type?.toLowerCase().includes(query.toLowerCase()),
+            unit.country?.toLowerCase().includes(query.toLowerCase()),
         )
       : [];
 
@@ -1915,10 +1914,9 @@ const UnitSearchBox: React.FC<{
               className={`w-full border-b border-slate-50 px-4 py-3 text-left transition last:border-b-0 ${
                 selectedUnitId === unit.id_supplier_unit ? "bg-blue-50" : "bg-white hover:bg-slate-50"
               }`}>
-              <div className="text-sm font-semibold text-slate-900">{unit.supplier_code}</div>
+              <div className="text-sm font-semibold text-slate-900">{unit.supplier_name}</div>
               <div className="mt-0.5 text-xs text-slate-400">
                 {[unit.city, unit.country].filter(Boolean).join(", ")}
-                {unit.product_type ? ` · ${unit.product_type}` : ""}
               </div>
             </button>
           ))}
@@ -1944,17 +1942,13 @@ const UnitCard: React.FC<{
       <div className="min-w-0 flex-1">
         {/* Primary: unit name */}
         <div className={`truncate text-sm font-bold ${isSelected ? "text-[#062B49]" : "text-slate-900"}`}>
-          {unit.supplier_code}
+          {unit.supplier_name}
         </div>
         {/* Location */}
         {(unit.city || unit.country) && (
           <div className="mt-0.5 text-[11px] text-slate-500">
             {[unit.city, unit.country].filter(Boolean).join(", ")}
           </div>
-        )}
-        {/* Product */}
-        {unit.product_type && (
-          <div className="mt-0.5 text-[11px] text-slate-400">{unit.product_type}</div>
         )}
         {/* Grade chips */}
         <div className="mt-2.5 flex flex-wrap gap-1.5">

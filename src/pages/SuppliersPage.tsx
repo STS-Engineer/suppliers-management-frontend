@@ -12,7 +12,6 @@ import {
   ExternalLink,
   Eye,
   Factory,
-  Filter,
   Layers3,
   Plus,
   RefreshCw,
@@ -429,10 +428,6 @@ function RelationDetailModal({
                 }
               />
               <Field
-                label="Group Categories"
-                value={record.group.supplier_type || "-"}
-              />
-              <Field
                 label="Unit Code"
                 value={
                   record.unit.unit_code ||
@@ -718,7 +713,6 @@ function RelationsTable({
           <tr className="border-b border-slate-100 text-left">
             <th className="w-8 px-3 py-3" />
             <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Supplier</th>
-            <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Category</th>
             <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Grade</th>
             <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Status</th>
             <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Panel</th>
@@ -757,15 +751,6 @@ function RelationsTable({
                     </div>
                   </td>
 
-                  {/* Category */}
-                  <td className="px-4 py-3.5">
-                    {record.group.supplier_type ? (
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                        {record.group.supplier_type}
-                      </span>
-                    ) : <span className="text-slate-300">—</span>}
-                  </td>
-
                   {/* Grade */}
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex h-8 w-10 items-center justify-center rounded-lg text-sm font-extrabold ${gradeTileClass}`}>
@@ -793,7 +778,7 @@ function RelationsTable({
                 {isExpanded && (
                   <tr key={`${record.relation.id_relation}-detail`} className="border-b border-slate-100 bg-slate-50">
                     <td />
-                    <td colSpan={6} className="px-4 pb-5 pt-3">
+                    <td colSpan={5} className="px-4 pb-5 pt-3">
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Group</p>
@@ -855,7 +840,6 @@ export default function SuppliersPage() {
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
 
   const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
   const [filterGrade, setFilterGrade] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -891,7 +875,6 @@ export default function SuppliersPage() {
           class_grade: filterGrade || undefined,
           status: filterStatus || undefined,
           panel_decision: filterPanelDecision || undefined,
-          category: filterCategory || undefined,
           evaluation_start: filterStartDate || undefined,
           evaluation_end: filterEndDate || undefined,
           purchase_manager: filterPurchaseManager || undefined,
@@ -934,7 +917,6 @@ export default function SuppliersPage() {
     page,
     search,
     filterOwner,
-    filterCategory,
     filterGrade,
     filterStatus,
     filterPanelDecision,
@@ -943,18 +925,6 @@ export default function SuppliersPage() {
     filterPurchaseManager,
     filterPlantManager,
   ]);
-
-  const allCategories = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          siteBundles.flatMap((bundle) =>
-            bundle.relations.flatMap((entry) => entry.group_categories),
-          ),
-        ),
-      ).sort(),
-    [siteBundles],
-  );
 
   const gradeOptions = [
     "A1",
@@ -1076,19 +1046,6 @@ export default function SuppliersPage() {
               </div>
             </div>
 
-            <div className="w-48">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Category</label>
-              <div className="relative">
-                <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
-                  className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200 dark:focus:border-blue-500/40 dark:focus:ring-blue-500/10">
-                  <option value="">All categories</option>
-                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
             <div className="w-36">
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Grade</label>
               <div className="relative">
@@ -1117,8 +1074,8 @@ export default function SuppliersPage() {
               {showFilters ? "Less" : "More filters"}
             </button>
 
-            {(search || filterOwner || filterCategory || filterGrade || filterStatus || filterPanelDecision || filterStartDate || filterEndDate || filterPurchaseManager || filterPlantManager) && (
-              <button type="button" onClick={() => { setSearch(""); setFilterCategory(""); setFilterOwner(""); setFilterGrade(""); setFilterStatus(""); setFilterPanelDecision(""); setFilterStartDate(""); setFilterEndDate(""); setFilterPurchaseManager(""); setFilterPlantManager(""); setPage(1); }}
+            {(search || filterOwner || filterGrade || filterStatus || filterPanelDecision || filterStartDate || filterEndDate || filterPurchaseManager || filterPlantManager) && (
+              <button type="button" onClick={() => { setSearch(""); setFilterOwner(""); setFilterGrade(""); setFilterStatus(""); setFilterPanelDecision(""); setFilterStartDate(""); setFilterEndDate(""); setFilterPurchaseManager(""); setFilterPlantManager(""); setPage(1); }}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400 dark:hover:border-white/[0.15] dark:hover:text-slate-200">
                 <X className="h-3.5 w-3.5" /> Clear
               </button>

@@ -157,7 +157,7 @@ export const FlowB: React.FC<FlowBProps> = ({
         );
 
         const unitLabel =
-          resolvedUnit?.supplier_code ??
+          resolvedUnit?.supplier_name ??
           (unitId ? `Unit ${unitId}` : undefined);
         const uc: ContactOption[] =
           unitId !== null
@@ -201,7 +201,7 @@ export const FlowB: React.FC<FlowBProps> = ({
   const filteredUnits = unitSearch
     ? units.filter(
         (u) =>
-          u.supplier_code?.toLowerCase().includes(unitSearch.toLowerCase()) ||
+          u.supplier_name?.toLowerCase().includes(unitSearch.toLowerCase()) ||
           u.city?.toLowerCase().includes(unitSearch.toLowerCase()),
       )
     : units;
@@ -440,11 +440,10 @@ export const FlowB: React.FC<FlowBProps> = ({
                     }}
                   >
                     <span className="font-semibold text-slate-900">
-                      {u.supplier_code}
+                      {u.supplier_name}
                     </span>
                     <span className="text-xs text-slate-400">
                       {[u.city, u.country].filter(Boolean).join(", ")}
-                      {u.product_type ? ` · ${u.product_type}` : ""}
                     </span>
                   </PickItem>
                 ))
@@ -459,7 +458,7 @@ export const FlowB: React.FC<FlowBProps> = ({
             <p className="text-sm text-slate-500">
               Select the Avocarbon plant for{" "}
               <span className="font-semibold text-slate-800">
-                {resolvedUnit?.supplier_code}
+                {resolvedUnit?.supplier_name}
               </span>
               .
             </p>
@@ -503,7 +502,7 @@ export const FlowB: React.FC<FlowBProps> = ({
               <p className="mt-1 text-xs text-slate-500">
                 This person will be linked to the{" "}
                 <span className="font-semibold text-slate-700">
-                  {resolvedUnit?.supplier_code} → {resolvedSite?.site_name}
+                  {resolvedUnit?.supplier_name} → {resolvedSite?.site_name}
                 </span>{" "}
                 relation as the external contact.{" "}
                 <span className="font-semibold text-red-600">Required.</span>
@@ -887,7 +886,7 @@ export const FlowB: React.FC<FlowBProps> = ({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <SummaryTile
                 label="Supplier Unit"
-                primary={resolvedUnit?.supplier_code ?? "—"}
+                primary={resolvedUnit?.supplier_name ?? "—"}
                 secondary={[resolvedUnit?.city, resolvedUnit?.country]
                   .filter(Boolean)
                   .join(", ")}

@@ -57,12 +57,9 @@ const EMPTY_FORM: OnboardingFormData = {
     monopolistique: false,
     multi_site: false,
     directed: false,
-    exit_supplier: false,
-    strategic_reason: "",
-    supplier_type: [],
   },
   unit: {
-    supplier_code: "",
+    supplier_name: "",
     address_line: "",
     city: "",
     country: "",
@@ -126,7 +123,6 @@ const EMPTY_FORM: OnboardingFormData = {
   supplier_scope: "local",
   supplier_owner: "",
   annual_spend_value: "",
-  annual_spend_currency: "USD",
   template_id: "",
 };
 
@@ -166,7 +162,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     !!masterResponse === false &&
     (formData.group.nom.trim().length > 0 ||
       formData.contacts.some(hasMeaningfulContactData) ||
-      formData.unit.supplier_code.trim().length > 0 ||
+      formData.unit.supplier_name.trim().length > 0 ||
       formData.unit.unit_contacts.some(hasMeaningfulContactData) ||
       formData.certifications.some(
         (certification) =>
@@ -453,8 +449,8 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
       case "unit": {
         const unitErrors: Record<string, string> = {};
-        if (!formData.unit.supplier_code) {
-          unitErrors.supplier_code = "Supplier code is required";
+        if (!formData.unit.supplier_name) {
+          unitErrors.supplier_name = "Supplier name is required";
         }
         if (Object.keys(unitErrors).length > 0) {
           newErrors.unit = unitErrors;
@@ -567,7 +563,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       const payloadData = {
         group: {
           ...formData.group,
-          supplier_type: formData.group.supplier_type.join(", "),
         },
         unit: cleanedUnitPayload(formData.unit),
         unit_contacts: unit_contacts.filter(hasMeaningfulContactData),
@@ -576,7 +571,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           c.standard_type?.trim(),
         ),
         annual_spend_value: formData.annual_spend_value || undefined,
-        annual_spend_currency: formData.annual_spend_currency || undefined,
       };
 
       console.log("Submitting supplier master data:", payloadData);

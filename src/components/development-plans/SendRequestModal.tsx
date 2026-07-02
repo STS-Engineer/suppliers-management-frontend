@@ -238,7 +238,7 @@ function SupplierBanner({ item }: { item: DevelopmentPlanRegisterRow }) {
             {item.group_name || "—"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            {item.site_name || "—"} · {item.unit_supplier_code || "—"}
+            {item.site_name || "—"} · {item.unit_supplier_name || "—"}
           </p>
           {plan.plan_title && (
             <p className="mt-0.5 max-w-xs truncate text-[11px] font-medium italic text-slate-500">

@@ -109,11 +109,11 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
           <div className="md:col-span-2">
             <FormInput
               label="Unit Name"
-              name="supplier_code"
-              value={data.supplier_code}
-              onChange={(e) => onChange("supplier_code", e.target.value)}
+              name="supplier_name"
+              value={data.supplier_name}
+              onChange={(e) => onChange("supplier_name", e.target.value)}
               placeholder="e.g., ACME-CN-001"
-              error={errors.supplier_code}
+              error={errors.supplier_name}
               required
               helperText="Unique identifier for this unit"
             />

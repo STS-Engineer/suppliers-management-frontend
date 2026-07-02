@@ -14,13 +14,10 @@ export interface GroupFormData {
   monopolistique: boolean;
   multi_site: boolean;
   directed: boolean;
-  exit_supplier: boolean;
-  strategic_reason: string;
-  supplier_type: string[];
 }
 
 export interface UnitFormData {
-  supplier_code: string;
+  supplier_name: string;
   address_line: string;
   city: string;
   country: string;
@@ -81,7 +78,7 @@ export interface CertificationFormData {
 export interface SupplierCertificationResponse {
   id_certification: number;
   id_supplier_unit?: number | null;
-  supplier_code?: string | null;
+  supplier_name?: string | null;
   group_nom?: string | null;
   standard_type?: string | null;
   certification_type?: string | null;
@@ -229,7 +226,7 @@ export interface DevelopmentPlanRegisterRow {
   site_name?: string | null;
   site_city?: string | null;
   site_country?: string | null;
-  unit_supplier_code?: string | null;
+  unit_supplier_name?: string | null;
   unit_code?: string | null;
   group_id?: number | null;
   group_name?: string | null;
@@ -284,7 +281,6 @@ export interface OnboardingFormData {
   supplier_scope: string;
   supplier_owner: string;
   annual_spend_value: string;
-  annual_spend_currency: string;
   template_id: number | '';
 }
 
@@ -320,7 +316,6 @@ export interface OnboardingRequest {
   supplier_scope: string;
   supplier_owner: string;
   annual_spend_value: string | null;
-  annual_spend_currency: string;
   template_id: number | null;
 }
 
@@ -384,18 +379,17 @@ export interface SupplierGroupSummary {
   nom: string;
   supplier_scope?: string;
   supplier_owner?: string;
-  supplier_type?: string;
   strategique?: boolean;
   monopolistique?: boolean;
   directed?: boolean;
   multi_site?: boolean;
-  exit_supplier?: boolean;
-  strategic_reason?: string;
   validation_status?: string;
   created_at?: string;
   updated_at?: string;
   units?: SupplierUnitResponse[];
   contacts?: ContactResponse[];
+  /** Read-only, aggregated from this group's supplier units' commodity field. */
+  commodities?: string[];
 }
 
 // ============================================================================
@@ -406,14 +400,12 @@ export interface SupplierUnitResponse {
   id_supplier_unit: number;
   id_group: number;
   unit_code?: string;
-  supplier_code: string;
+  supplier_name: string;
   address_line?: string;
   city?: string;
   country?: string;
   continent?: string | null;
   area?: string | null;
-  product_type?: string;
-  product_category?: string;
   commodity?: string | null;
   family?: string | null;
   sub_family?: string | null;
@@ -421,8 +413,6 @@ export interface SupplierUnitResponse {
   website?: string | null;
   carbon_footprint?: string | null;
   green_electricity_pct?: string | null;
-  amount_value?: number | null;
-  amount_currency?: string;
   strategique?: boolean;
   monopolistique?: boolean;
   directed?: boolean;
@@ -435,7 +425,6 @@ export interface SiteRelationData {
   supplier_scope?: string;
   supplier_owner?: string;
   annual_spend_value?: number | string;
-  annual_spend_currency?: string;
   operational_grade?: string;
   class_value?: number;
   evaluation_frequency?: string;
@@ -467,11 +456,9 @@ export interface SupplierSiteRelation {
   id_supplier_unit: number;
   relation_code?: string;
   unit_code?: string;
-  sb1_item_name?: string | null;
   supplier_scope?: string;
   supplier_owner?: string;
   annual_spend_value?: number | null;
-  annual_spend_currency?: string | null;
   operational_grade?: string;
   class_value?: number;
   evaluation_frequency?: string;
@@ -489,7 +476,6 @@ export interface SupplierSiteRelation {
   evaluation_comments?: string;
   // Supplier Panel (SB1) fields
   last_eval_score?: number | null;
-  preferred_dev_supplier?: boolean | null;
   is_active?: boolean;
 }
 
@@ -575,7 +561,6 @@ export interface SitePanelRelation {
   relation: SupplierSiteRelation;
   unit: SupplierUnitResponse;
   group: SupplierGroupSummary;
-  group_categories: string[];
   has_development_plan?: boolean;
   development_plan_status?: string | null;
   committee_review_status?: string | null;
