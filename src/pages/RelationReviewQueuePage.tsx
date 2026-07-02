@@ -14,6 +14,7 @@ type RelationRecord = {
   supplier_owner?: string;
   site_id?: number;
   site_name?: string;
+  alias_1?: string;
   validation_status: string;
 };
 
@@ -68,6 +69,11 @@ function RelationCard({ item, onDone, canApprove }: { item: RelationRecord; onDo
             </p>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {item.unit_code} · REL-{String(item.relation_id).padStart(6, "0")}
+              {item.alias_1 && (
+                <span className="ml-2 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:ring-amber-700">
+                  {item.alias_1}
+                </span>
+              )}
             </p>
           </div>
         </div>

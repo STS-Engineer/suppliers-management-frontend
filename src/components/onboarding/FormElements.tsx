@@ -186,6 +186,9 @@ interface CreatableMultiSelectProps {
   defaultOptions?: string[];
   /** When provided, the dropdown shows only these options (cascading filter). */
   availableOptions?: string[];
+  /** Optional display transformer. The raw key is stored; only the label shown in UI changes.
+   *  e.g. toDisplayLabel converts "Sintered_Part" → "Sintered Part". */
+  displayLabel?: (key: string) => string;
   placeholder?: string;
   required?: boolean;
   helperText?: string;
@@ -195,9 +198,12 @@ interface CreatableMultiSelectProps {
 export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
   label, name, value, onChange, storageKey,
   defaultOptions = [], availableOptions,
+  displayLabel,
   placeholder = "Search or create…",
   required = false, helperText, error,
 }) => {
+  const label_ = displayLabel ?? ((k: string) => k);
+
   const [options, setOptions] = useState<string[]>(() =>
     loadOptions(storageKey, defaultOptions)
   );
@@ -221,15 +227,20 @@ export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
   // When availableOptions is provided use it as the source; otherwise use full options list.
   const sourceOptions = availableOptions ?? options;
 
+  const q = search.toLowerCase();
   const filtered = sourceOptions.filter(
     (o) =>
-      o.toLowerCase().includes(search.toLowerCase()) &&
+      (label_(o).toLowerCase().includes(q) || o.toLowerCase().includes(q)) &&
       !value.includes(o)
   );
 
   const canCreate =
     search.trim().length > 0 &&
-    !options.some((o) => o.toLowerCase() === search.trim().toLowerCase());
+    !options.some(
+      (o) =>
+        label_(o).toLowerCase() === search.trim().toLowerCase() ||
+        o.toLowerCase() === search.trim().toLowerCase(),
+    );
 
   const toggle = (option: string) => {
     onChange(
@@ -276,7 +287,7 @@ export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
               key={v}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
             >
-              {v}
+              {label_(v)}
               <button
                 type="button"
                 onClick={() => onChange(value.filter((x) => x !== v))}
@@ -327,7 +338,7 @@ export const CreatableMultiSelect: React.FC<CreatableMultiSelectProps> = ({
                   onClick={() => { toggle(o); setSearch(""); inputRef.current?.focus(); }}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
                 >
-                  <span className="flex-1">{o}</span>
+                  <span className="flex-1">{label_(o)}</span>
                   {value.includes(o) && <Check className="h-4 w-4 text-blue-600" />}
                 </button>
               ))}

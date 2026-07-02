@@ -339,6 +339,12 @@ function RelationDetailModal({
                 {record.siteName}
               </h3>
 
+              {record.relation.alias_1 && (
+                <p className="mt-1 text-sm text-amber-300/90">
+                  Plant alias: <span className="font-semibold">{record.relation.alias_1}</span>
+                </p>
+              )}
+
               <p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100/80">
                 Consolidated supplier relation status, evaluation metrics,
                 operational maturity, decision trail and supporting evidence.
@@ -813,6 +819,11 @@ function RelationsTable({
                           <p className="mt-1 font-mono text-sm text-slate-700">
                             {record.relation.relation_code || `REL-${String(record.relation.id_relation).padStart(6,"0")}`}
                           </p>
+                          {record.relation.alias_1 && (
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              alias: <span className="font-medium text-slate-600">{record.relation.alias_1}</span>
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">

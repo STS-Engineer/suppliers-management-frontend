@@ -130,3 +130,8 @@ export function getSubFamiliesForFamilies(families: string[]): string[] {
   if (families.length === 0) return ALL_SUBFAMILIES;
   return [...new Set(families.flatMap((f) => FAMILY_SUBFAMILIES[f] ?? []))];
 }
+
+/** Converts internal underscore keys to human-readable labels.
+ *  e.g. "Sintered_Part" → "Sintered Part", "Stamping_Deep_Drawing" → "Stamping Deep Drawing"
+ *  Sub-family values are already readable strings — this is a no-op for them. */
+export const toDisplayLabel = (key: string): string => key.replace(/_/g, " ");

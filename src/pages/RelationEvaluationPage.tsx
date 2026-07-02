@@ -13,6 +13,10 @@ import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import CommitteeReviewPanel from "../components/committee/CommitteeReviewPanel";
 import {
+  CERTIFICATION_STANDARD_TYPE_OPTIONS,
+  CERT_TYPES_BY_STANDARD,
+} from "../utils/onboarding";
+import {
   EvaluationDetailsFormData,
   SupplierSiteRelation,
   SupplierStatusHistoryEntry,
@@ -492,6 +496,7 @@ const TABS = [
   { id: "operational", label: "Operational" },
   { id: "decision", label: "Decision & Impact" },
   { id: "history", label: "History & Documents" },
+  { id: "certifications", label: "Certifications" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -1484,6 +1489,14 @@ export default function RelationEvaluationPage() {
                 strategicMentions={strategicMentions}
                 onToggleStrategic={toggleStrategicMention}
                 readOnly={(!isPrivileged && extra.baseline_locked) || nonVpLocked}
+              />
+            )}
+            {tab === "certifications" && (
+              <CertificationsTab
+                unitId={relation?.id_supplier_unit ?? 0}
+                unitName={unitName}
+                certs={extra.unit_certifications ?? []}
+                onRefresh={load}
               />
             )}
           </>
@@ -4197,6 +4210,363 @@ function DecisionTab({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab 5 — Certifications
+// Certifications are per supplier unit. Adding a quality cert (IATF / ISO 9001)
+// automatically re-derives the quality_certification score on all active
+// evaluations for that unit (handled by the backend on POST).
+// ---------------------------------------------------------------------------
+
+type CertRow = {
+  standard_type: string;
+  certification_type: string;
+  certificate_name: string;
+  start_date: string;
+  end_date: string;
+  comments: string;
+};
+
+const EMPTY_CERT_ROW: CertRow = {
+  standard_type: "",
+  certification_type: "",
+  certificate_name: "",
+  start_date: "",
+  end_date: "",
+  comments: "",
+};
+
+const QUALITY_STANDARDS = new Set(["quality"]);
+
+function CertificationsTab({
+  unitId,
+  unitName,
+  certs,
+  onRefresh,
+}: {
+  unitId: number;
+  unitName: string;
+  certs: Array<{
+    id_certification: number;
+    standard_type?: string;
+    certification_type?: string;
+    certificate_name?: string;
+    start_date?: string;
+    end_date?: string;
+  }>;
+  onRefresh: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<CertRow>({ ...EMPTY_CERT_ROW });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const isQualityStandard = QUALITY_STANDARDS.has(form.standard_type);
+
+  const typeOptions = form.standard_type
+    ? (CERT_TYPES_BY_STANDARD[form.standard_type] ?? [])
+    : [];
+
+  const setField = (k: keyof CertRow, v: string) => {
+    setForm((p) => ({
+      ...p,
+      [k]: v,
+      ...(k === "standard_type" ? { certification_type: "" } : {}),
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.standard_type || !form.certification_type) {
+      setError("Standard type and certification are required.");
+      return;
+    }
+    if (form.start_date && form.end_date && form.end_date < form.start_date) {
+      setError("Expiry date must be after issue date.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await supplierAPI.addCertificationToUnit(unitId, {
+        standard_type: form.standard_type,
+        certification_type: form.certification_type,
+        certificate_name: form.certificate_name || undefined,
+        start_date: form.start_date || undefined,
+        end_date: form.end_date || undefined,
+        comments: form.comments || undefined,
+      });
+      setForm({ ...EMPTY_CERT_ROW });
+      setShowForm(false);
+      setSuccess(
+        isQualityStandard
+          ? "Certification added. The Quality Certification score in Class Evaluation has been updated automatically."
+          : "Certification added successfully.",
+      );
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add certification.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Certifications
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Unit: <span className="font-semibold text-slate-700 dark:text-slate-300">{unitName}</span>
+            {" "}— certifications are attached to the supplier unit, not the relation.
+          </p>
+        </div>
+        {!showForm && (
+          <button
+            type="button"
+            onClick={() => { setShowForm(true); setSuccess(null); }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#062B49] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381]"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add certification
+          </button>
+        )}
+      </div>
+
+      {/* Success notice */}
+      {success && (
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300">
+          <svg className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+          {success}
+        </div>
+      )}
+
+      {/* Add form */}
+      {showForm && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/[0.08] dark:bg-[#0d1929]">
+          <h4 className="mb-4 text-sm font-bold text-slate-900 dark:text-slate-100">
+            New certification
+          </h4>
+
+          {/* Quality cert info banner */}
+          {isQualityStandard && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-900/20 dark:text-sky-300">
+              <svg className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              Quality certifications (IATF 16949, ISO 9001…) automatically update the
+              <strong className="mx-1">Quality Certification score</strong>
+              in Class Evaluation once saved.
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Standard type */}
+            <CertField label="Standard Type *">
+              <select
+                value={form.standard_type}
+                onChange={(e) => setField("standard_type", e.target.value)}
+                className={inputCls}
+              >
+                <option value="">Select type…</option>
+                {CERTIFICATION_STANDARD_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </CertField>
+
+            {/* Certification (cascades from standard_type) */}
+            <CertField label="Certification *">
+              <select
+                value={form.certification_type}
+                onChange={(e) => setField("certification_type", e.target.value)}
+                disabled={!form.standard_type}
+                className={inputCls}
+              >
+                <option value="">
+                  {form.standard_type ? "Select certification…" : "Select a standard first"}
+                </option>
+                {typeOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </CertField>
+
+            {/* Certificate name / reference */}
+            <CertField label="Reference / Name" span={2}>
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="e.g. IATF-2024-CN-001"
+                value={form.certificate_name}
+                onChange={(e) => setField("certificate_name", e.target.value)}
+              />
+            </CertField>
+
+            {/* Dates */}
+            <CertField label="Issue Date">
+              <input
+                type="date"
+                className={inputCls}
+                value={form.start_date}
+                onChange={(e) => setField("start_date", e.target.value)}
+              />
+            </CertField>
+
+            <CertField label="Expiry Date">
+              <input
+                type="date"
+                className={inputCls}
+                value={form.end_date}
+                onChange={(e) => setField("end_date", e.target.value)}
+              />
+            </CertField>
+
+            {/* Comments */}
+            <CertField label="Comments" span={2}>
+              <textarea
+                className={`${inputCls} min-h-[64px]`}
+                rows={2}
+                placeholder="Optional notes…"
+                value={form.comments}
+                onChange={(e) => setField("comments", e.target.value)}
+              />
+            </CertField>
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-4 dark:border-white/[0.06]">
+            <button
+              type="button"
+              onClick={() => { setShowForm(false); setForm({ ...EMPTY_CERT_ROW }); setError(null); }}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:opacity-50"
+            >
+              {submitting ? "Saving…" : "Save certification"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing certifications list */}
+      {certs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center dark:border-white/[0.08]">
+          <svg className="mx-auto mb-3 h-8 w-8 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">No certifications yet</p>
+          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+            Click "Add certification" to register the first one.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {certs.map((c) => {
+            const expired = c.end_date ? c.end_date < today : false;
+            const expiringSoon =
+              !expired && c.end_date
+                ? c.end_date <= new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
+                : false;
+            const isQuality = c.standard_type === "quality";
+            return (
+              <div
+                key={c.id_certification}
+                className="flex items-start gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 dark:border-white/[0.08] dark:bg-[#0d1929]"
+              >
+                {/* Icon */}
+                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                  isQuality
+                    ? "bg-sky-50 text-sky-600 dark:bg-sky-900/20 dark:text-sky-400"
+                    : "bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400"
+                }`}>
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+
+                {/* Content */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {c.certification_type || "—"}
+                    </span>
+                    {isQuality && (
+                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 dark:bg-sky-900/20 dark:text-sky-400 dark:ring-sky-700">
+                        Quality · affects score
+                      </span>
+                    )}
+                    {expired ? (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700 ring-1 ring-red-200 dark:bg-red-900/20 dark:text-red-400 dark:ring-red-700">
+                        Expired
+                      </span>
+                    ) : expiringSoon ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:ring-amber-700">
+                        Expiring soon
+                      </span>
+                    ) : null}
+                  </div>
+                  {c.certificate_name && (
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{c.certificate_name}</p>
+                  )}
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+                    {c.standard_type && <span>Standard: {c.standard_type}</span>}
+                    {c.start_date && <span>Issued: {c.start_date}</span>}
+                    {c.end_date && (
+                      <span className={expired ? "font-semibold text-red-500" : expiringSoon ? "font-semibold text-amber-500" : ""}>
+                        Expires: {c.end_date}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// CertField — lightweight label wrapper used only in CertificationsTab
+function CertField({
+  label,
+  span,
+  children,
+}: {
+  label: string;
+  span?: 2;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={span === 2 ? "sm:col-span-2" : ""}>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }

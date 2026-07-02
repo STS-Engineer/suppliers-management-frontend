@@ -796,6 +796,9 @@ function RelationDetailModal({
               }
               mono
             />
+            {record.relation.alias_1 && (
+              <InfoRow label="Plant alias" value={record.relation.alias_1} />
+            )}
             <InfoRow label="Scope" value={record.relation.supplier_scope} />
           </DrawerSection>
 

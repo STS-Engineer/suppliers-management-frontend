@@ -259,6 +259,11 @@ const RelationCard: React.FC<RelCardProps> = ({
     <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4">
       <div className="flex min-w-0 items-center gap-2 flex-wrap">
         <span className="text-sm font-semibold text-slate-700">{unitName}</span>
+        {relation.alias_1 && (
+          <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200">
+            {relation.alias_1}
+          </span>
+        )}
         <span className="text-slate-300">→</span>
         <span className="text-sm font-bold text-[#062B49]">{siteName}</span>
         {siteLocation && (
@@ -289,6 +294,7 @@ const RelationCard: React.FC<RelCardProps> = ({
     {/* Card body: meta */}
     <div className="px-5 py-4">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
+        {relation.alias_1 && <Meta label="Plant alias" value={relation.alias_1} />}
         {relation.supplier_owner && <Meta label="Owner" value={relation.supplier_owner} />}
         {latestSpend ? (
           <Meta

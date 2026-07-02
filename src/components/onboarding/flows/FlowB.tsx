@@ -99,12 +99,15 @@ export const FlowB: React.FC<FlowBProps> = ({
     groupScope === "global" ? (groupOwner ?? "") : "",
   );
   const [supplierScope] = useState(groupScope ?? "local");
+  const [alias, setAlias] = useState("");
 
   // Annual spend
   const [spendRaw, setSpendRaw] = useState("");
   const [spendDisplay, setSpendDisplay] = useState("");
   const [spendCurrency, setSpendCurrency] = useState("EUR");
-  const [fiscalYear, setFiscalYear] = useState(String(new Date().getFullYear()));
+  const [fiscalYear, setFiscalYear] = useState(
+    String(new Date().getFullYear()),
+  );
 
   const spendValue = spendRaw;
 
@@ -115,11 +118,12 @@ export const FlowB: React.FC<FlowBProps> = ({
     setSpendDisplay(formatted);
   };
 
-
   // Contact step
   const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
-  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(
+    null,
+  );
   const [addNew, setAddNew] = useState(false);
   const [newContact, setNewContact] = useState<NewContact>({
     full_name: "",
@@ -137,8 +141,11 @@ export const FlowB: React.FC<FlowBProps> = ({
 
     const load = async () => {
       try {
-        const fetches: Promise<any>[] = [supplierAPI.listContactsForGroup(groupId)];
-        if (unitId !== null) fetches.push(supplierAPI.listContactsForUnit(unitId));
+        const fetches: Promise<any>[] = [
+          supplierAPI.listContactsForGroup(groupId),
+        ];
+        if (unitId !== null)
+          fetches.push(supplierAPI.listContactsForUnit(unitId));
 
         const [gRes, uRes] = await Promise.all(fetches);
         if (!active) return;
@@ -147,12 +154,15 @@ export const FlowB: React.FC<FlowBProps> = ({
           (c: ContactResponse) => toContactOption(c, "group"),
         );
 
-        const unitLabel = resolvedUnit?.supplier_code ?? (unitId ? `Unit ${unitId}` : undefined);
-        const uc: ContactOption[] = unitId !== null
-          ? (uRes?.data?.items ?? []).map((c: ContactResponse) =>
-              toContactOption(c, "unit", unitLabel),
-            )
-          : [];
+        const unitLabel =
+          resolvedUnit?.supplier_code ??
+          (unitId ? `Unit ${unitId}` : undefined);
+        const uc: ContactOption[] =
+          unitId !== null
+            ? (uRes?.data?.items ?? []).map((c: ContactResponse) =>
+                toContactOption(c, "unit", unitLabel),
+              )
+            : [];
 
         if (!active) return;
         const seen = new Set<number>();
@@ -205,7 +215,11 @@ export const FlowB: React.FC<FlowBProps> = ({
     if (step === 1) return unitId !== null;
     if (step === 2) return siteId !== null;
     if (step === 3) {
-      if (addNew) return newContact.full_name.trim().length > 0 && newContact.email.trim().length > 0;
+      if (addNew)
+        return (
+          newContact.full_name.trim().length > 0 &&
+          newContact.email.trim().length > 0
+        );
       return selectedContactId !== null;
     }
     if (step === 4) return supplierOwner.trim().length > 0;
@@ -220,6 +234,7 @@ export const FlowB: React.FC<FlowBProps> = ({
       const relRes = await supplierAPI.linkUnitToSite(unitId, siteId, {
         supplier_owner: supplierOwner,
         supplier_scope: supplierScope,
+        alias_1: alias.trim() || undefined,
       });
 
       const relationId: number | undefined =
@@ -273,21 +288,32 @@ export const FlowB: React.FC<FlowBProps> = ({
 
   return (
     <div className="mb-6 overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-md">
-
       {/* ── Header ── */}
       <div className="flex items-center justify-between border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-6 py-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500">
             Assign Unit to Plant
           </p>
-          <h3 className="mt-0.5 text-base font-bold text-slate-900">{groupName}</h3>
+          <h3 className="mt-0.5 text-base font-bold text-slate-900">
+            {groupName}
+          </h3>
         </div>
         <button
           onClick={onCancel}
           className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
       </div>
@@ -305,13 +331,23 @@ export const FlowB: React.FC<FlowBProps> = ({
                     done
                       ? "bg-[#0f2744] text-white"
                       : active
-                      ? "bg-amber-400 text-slate-900 shadow-sm"
-                      : "border-2 border-slate-200 bg-white text-slate-300"
+                        ? "bg-amber-400 text-slate-900 shadow-sm"
+                        : "border-2 border-slate-200 bg-white text-slate-300"
                   }`}
                 >
                   {done ? (
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   ) : (
                     i + 1
@@ -319,7 +355,11 @@ export const FlowB: React.FC<FlowBProps> = ({
                 </div>
                 <span
                   className={`text-[10px] font-semibold ${
-                    active ? "text-amber-600" : done ? "text-slate-500" : "text-slate-300"
+                    active
+                      ? "text-amber-600"
+                      : done
+                        ? "text-slate-500"
+                        : "text-slate-300"
                   }`}
                 >
                   {label}
@@ -341,8 +381,16 @@ export const FlowB: React.FC<FlowBProps> = ({
       <div className="px-6 py-6">
         {error && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="mt-0.5 h-4 w-4 shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
             {error}
           </div>
@@ -354,9 +402,12 @@ export const FlowB: React.FC<FlowBProps> = ({
             <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
               Supplier Group
             </p>
-            <h4 className="mt-2 text-2xl font-bold text-slate-900">{groupName}</h4>
+            <h4 className="mt-2 text-2xl font-bold text-slate-900">
+              {groupName}
+            </h4>
             <p className="mt-2 text-sm text-slate-500">
-              {units.length} unit{units.length !== 1 ? "s" : ""} registered · Confirm to continue to unit selection.
+              {units.length} unit{units.length !== 1 ? "s" : ""} registered ·
+              Confirm to continue to unit selection.
             </p>
           </div>
         )}
@@ -364,7 +415,9 @@ export const FlowB: React.FC<FlowBProps> = ({
         {/* Step 1 — Choose unit */}
         {step === 1 && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">Select the unit to assign to a plant.</p>
+            <p className="text-sm text-slate-500">
+              Select the unit to assign to a plant.
+            </p>
             <SearchInput
               value={unitSearch}
               onChange={setUnitSearch}
@@ -383,7 +436,9 @@ export const FlowB: React.FC<FlowBProps> = ({
                       if (siteId) setSiteId(null);
                     }}
                   >
-                    <span className="font-semibold text-slate-900">{u.supplier_code}</span>
+                    <span className="font-semibold text-slate-900">
+                      {u.supplier_code}
+                    </span>
                     <span className="text-xs text-slate-400">
                       {[u.city, u.country].filter(Boolean).join(", ")}
                       {u.product_type ? ` · ${u.product_type}` : ""}
@@ -400,7 +455,10 @@ export const FlowB: React.FC<FlowBProps> = ({
           <div className="space-y-3">
             <p className="text-sm text-slate-500">
               Select the Avocarbon plant for{" "}
-              <span className="font-semibold text-slate-800">{resolvedUnit?.supplier_code}</span>.
+              <span className="font-semibold text-slate-800">
+                {resolvedUnit?.supplier_code}
+              </span>
+              .
             </p>
             <SearchInput
               value={siteSearch}
@@ -417,7 +475,9 @@ export const FlowB: React.FC<FlowBProps> = ({
                     selected={siteId === s.id_site}
                     onClick={() => setSiteId(s.id_site)}
                   >
-                    <span className="font-semibold text-slate-900">{s.site_name}</span>
+                    <span className="font-semibold text-slate-900">
+                      {s.site_name}
+                    </span>
                     <span className="text-xs text-slate-400">
                       {[s.city, s.country].filter(Boolean).join(", ")}
                       {!s.active ? " · Inactive" : ""}
@@ -475,28 +535,46 @@ export const FlowB: React.FC<FlowBProps> = ({
                           {/* Initial avatar */}
                           <div
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                              sel ? "bg-[#0f2744] text-white" : "bg-slate-100 text-slate-500"
+                              sel
+                                ? "bg-[#0f2744] text-white"
+                                : "bg-slate-100 text-slate-500"
                             }`}
                           >
                             {sel ? (
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M5 13l4 4L19 7"
+                                />
                               </svg>
                             ) : (
-                              c.full_name?.[0]?.toUpperCase() ?? "?"
+                              (c.full_name?.[0]?.toUpperCase() ?? "?")
                             )}
                           </div>
 
                           {/* Name + role + email */}
                           <div className="min-w-0 flex-1">
-                            <div className={`truncate font-semibold ${sel ? "text-[#0f2744]" : "text-slate-900"}`}>
+                            <div
+                              className={`truncate font-semibold ${sel ? "text-[#0f2744]" : "text-slate-900"}`}
+                            >
                               {c.full_name}
                             </div>
                             {c.role_label && (
-                              <div className="truncate text-xs text-slate-500">{c.role_label}</div>
+                              <div className="truncate text-xs text-slate-500">
+                                {c.role_label}
+                              </div>
                             )}
                             {c.email && (
-                              <div className={`truncate text-xs ${sel ? "text-[#0f2744]/60" : "text-slate-400"}`}>
+                              <div
+                                className={`truncate text-xs ${sel ? "text-[#0f2744]/60" : "text-slate-400"}`}
+                              >
                                 {c.email}
                               </div>
                             )}
@@ -525,7 +603,9 @@ export const FlowB: React.FC<FlowBProps> = ({
                 {/* Divider */}
                 <div className="flex items-center gap-3">
                   <div className="h-px flex-1 bg-slate-100" />
-                  <span className="text-[11px] font-medium text-slate-400">or add a new contact</span>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    or add a new contact
+                  </span>
                   <div className="h-px flex-1 bg-slate-100" />
                 </div>
 
@@ -543,16 +623,34 @@ export const FlowB: React.FC<FlowBProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <div className={`flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold transition ${
-                      addNew ? "border-[#0f2744] bg-[#0f2744] text-white" : "border-slate-300 text-slate-300"
-                    }`}>
+                    <div
+                      className={`flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold transition ${
+                        addNew
+                          ? "border-[#0f2744] bg-[#0f2744] text-white"
+                          : "border-slate-300 text-slate-300"
+                      }`}
+                    >
                       {addNew ? (
-                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2.5}
+                            d="M5 13l4 4L19 7"
+                          />
                         </svg>
-                      ) : "+"}
+                      ) : (
+                        "+"
+                      )}
                     </div>
-                    <span className={addNew ? "font-semibold text-slate-800" : ""}>
+                    <span
+                      className={addNew ? "font-semibold text-slate-800" : ""}
+                    >
                       New contact not in the list
                     </span>
                   </div>
@@ -565,7 +663,12 @@ export const FlowB: React.FC<FlowBProps> = ({
                         className={inputCls}
                         placeholder="Marie Dupont"
                         value={newContact.full_name}
-                        onChange={(e) => setNewContact((p) => ({ ...p, full_name: e.target.value }))}
+                        onChange={(e) =>
+                          setNewContact((p) => ({
+                            ...p,
+                            full_name: e.target.value,
+                          }))
+                        }
                       />
                     </FieldWrap>
                     <FieldWrap label="Email *">
@@ -574,7 +677,12 @@ export const FlowB: React.FC<FlowBProps> = ({
                         className={inputCls}
                         placeholder="marie@avocarbon.com"
                         value={newContact.email}
-                        onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))}
+                        onChange={(e) =>
+                          setNewContact((p) => ({
+                            ...p,
+                            email: e.target.value,
+                          }))
+                        }
                       />
                     </FieldWrap>
                     <FieldWrap label="Phone">
@@ -582,7 +690,12 @@ export const FlowB: React.FC<FlowBProps> = ({
                         className={inputCls}
                         placeholder="+33 1 23 45 67 89"
                         value={newContact.phone}
-                        onChange={(e) => setNewContact((p) => ({ ...p, phone: e.target.value }))}
+                        onChange={(e) =>
+                          setNewContact((p) => ({
+                            ...p,
+                            phone: e.target.value,
+                          }))
+                        }
                       />
                     </FieldWrap>
                     <FieldWrap label="Role / Function" span={2}>
@@ -590,7 +703,12 @@ export const FlowB: React.FC<FlowBProps> = ({
                         className={inputCls}
                         placeholder="e.g. Commodity Buyer, Quality Engineer"
                         value={newContact.role_label}
-                        onChange={(e) => setNewContact((p) => ({ ...p, role_label: e.target.value }))}
+                        onChange={(e) =>
+                          setNewContact((p) => ({
+                            ...p,
+                            role_label: e.target.value,
+                          }))
+                        }
                       />
                     </FieldWrap>
                   </div>
@@ -603,12 +721,37 @@ export const FlowB: React.FC<FlowBProps> = ({
         {/* Step 4 — Owner & Spend */}
         {step === 4 && (
           <div className="space-y-5">
-            {/* Owner */}
+            {/* Alias */}
             <div className="space-y-3">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Supplier Owner Assignment</h4>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Plant Alias{" "}
+                  <span className="text-slate-400 font-normal">(optional)</span>
+                </h4>
                 <p className="mt-1 text-xs text-slate-500">
-                  The Avocarbon buyer or commodity leader responsible for this relation.
+                  Name this plant uses internally for the supplier unit
+                </p>
+              </div>
+              <FieldWrap label="Alias">
+                <input
+                  type="text"
+                  className={inputCls}
+                  placeholder="e.g. ACME-Tianjin, TJ-Brush-01"
+                  value={alias}
+                  onChange={(e) => setAlias(e.target.value)}
+                />
+              </FieldWrap>
+            </div>
+
+            {/* Owner */}
+            <div className="border-t border-slate-100 pt-5 space-y-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Supplier Owner Assignment
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  The Avocarbon buyer or commodity leader responsible for this
+                  relation.
                 </p>
               </div>
 
@@ -622,40 +765,68 @@ export const FlowB: React.FC<FlowBProps> = ({
                 />
               </FieldWrap>
 
-              {supplierScope === "global" && groupOwner && supplierOwner === groupOwner && (
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                  <svg className="h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Using the global owner configured on the supplier group. Edit to override for this relation only.
-                </div>
-              )}
-
-              {supplierScope === "global" && groupOwner && supplierOwner !== groupOwner && supplierOwner.trim() !== "" && (
-                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  <div className="flex items-center gap-2">
-                    <svg className="h-3.5 w-3.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              {supplierScope === "global" &&
+                groupOwner &&
+                supplierOwner === groupOwner && (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    <svg
+                      className="h-3.5 w-3.5 shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
                     </svg>
-                    Overriding group default for this relation.
+                    Using the global owner configured on the supplier group.
+                    Edit to override for this relation only.
                   </div>
-                  <button
-                    type="button"
-                    className="ml-3 font-semibold text-amber-700 underline hover:text-amber-900"
-                    onClick={() => setSupplierOwner(groupOwner)}
-                  >
-                    Reset
-                  </button>
-                </div>
-              )}
+                )}
+
+              {supplierScope === "global" &&
+                groupOwner &&
+                supplierOwner !== groupOwner &&
+                supplierOwner.trim() !== "" && (
+                  <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className="h-3.5 w-3.5 shrink-0 text-amber-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Overriding group default for this relation.
+                    </div>
+                    <button
+                      type="button"
+                      className="ml-3 font-semibold text-amber-700 underline hover:text-amber-900"
+                      onClick={() => setSupplierOwner(groupOwner)}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                )}
             </div>
 
             {/* Annual spend */}
             <div className="border-t border-slate-100 pt-5 space-y-3">
               <div>
-                <h4 className="text-sm font-bold text-slate-900">Annual Spend <span className="text-slate-400 font-normal">(optional)</span></h4>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Annual Spend{" "}
+                  <span className="text-slate-400 font-normal">(optional)</span>
+                </h4>
                 <p className="mt-1 text-xs text-slate-500">
-                  Estimated purchasing volume for this unit–plant relation. Can be updated later from the relation details.
+                  Estimated purchasing volume for this unit–plant relation. Can
+                  be updated later from the relation details.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -687,7 +858,9 @@ export const FlowB: React.FC<FlowBProps> = ({
                     onChange={(e) => setSpendCurrency(e.target.value)}
                   >
                     {["EUR", "USD", "GBP", "JPY", "CNY", "MAD"].map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </FieldWrap>
@@ -703,45 +876,69 @@ export const FlowB: React.FC<FlowBProps> = ({
               <SummaryTile
                 label="Supplier Unit"
                 primary={resolvedUnit?.supplier_code ?? "—"}
-                secondary={[resolvedUnit?.city, resolvedUnit?.country].filter(Boolean).join(", ")}
+                secondary={[resolvedUnit?.city, resolvedUnit?.country]
+                  .filter(Boolean)
+                  .join(", ")}
               />
               <SummaryTile
                 label="Plant"
                 primary={resolvedSite?.site_name ?? "—"}
-                secondary={[resolvedSite?.city, resolvedSite?.country].filter(Boolean).join(", ")}
+                secondary={[resolvedSite?.city, resolvedSite?.country]
+                  .filter(Boolean)
+                  .join(", ")}
               />
             </div>
 
             {/* Contact summary */}
-            {(selectedContactId !== null || (addNew && newContact.full_name)) && (() => {
-              const c = addNew ? null : allContacts.find((x) => x.id_contact === selectedContactId);
-              const name = addNew ? newContact.full_name : c?.full_name ?? "";
-              const role = addNew ? newContact.role_label : c?.role_label ?? "";
-              const email = addNew ? newContact.email : c?.email ?? "";
-              const tag = addNew ? "New contact" : c?.source === "group" ? "Group" : c?.source_label ?? "";
-              return (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-                  <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                    External Contact — {groupName}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0f2744] text-sm font-bold text-white">
-                      {name?.[0]?.toUpperCase() ?? "?"}
+            {(selectedContactId !== null || (addNew && newContact.full_name)) &&
+              (() => {
+                const c = addNew
+                  ? null
+                  : allContacts.find((x) => x.id_contact === selectedContactId);
+                const name = addNew
+                  ? newContact.full_name
+                  : (c?.full_name ?? "");
+                const role = addNew
+                  ? newContact.role_label
+                  : (c?.role_label ?? "");
+                const email = addNew ? newContact.email : (c?.email ?? "");
+                const tag = addNew
+                  ? "New contact"
+                  : c?.source === "group"
+                    ? "Group"
+                    : (c?.source_label ?? "");
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                      External Contact — {groupName}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0f2744] text-sm font-bold text-white">
+                        {name?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {name}
+                        </div>
+                        {role && (
+                          <div className="text-xs text-slate-500">{role}</div>
+                        )}
+                        {email && (
+                          <div className="text-xs text-slate-400">{email}</div>
+                        )}
+                      </div>
+                      <span className="ml-auto rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                        {tag}
+                      </span>
                     </div>
-                    <div>
-                      <div className="font-semibold text-slate-900">{name}</div>
-                      {role && <div className="text-xs text-slate-500">{role}</div>}
-                      {email && <div className="text-xs text-slate-400">{email}</div>}
-                    </div>
-                    <span className="ml-auto rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                      {tag}
-                    </span>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
 
             <div className="overflow-hidden rounded-xl border border-slate-200">
+              {alias.trim() && (
+                <ReviewRow label="Plant alias" value={alias.trim()} />
+              )}
               <ReviewRow label="Owner" value={supplierOwner || "—"} />
               <ReviewRow label="Scope" value={supplierScope || "—"} />
               <ReviewRow
@@ -765,8 +962,18 @@ export const FlowB: React.FC<FlowBProps> = ({
                 onClick={() => setStep((s) => s - 1)}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
                 Back
               </button>
@@ -785,8 +992,18 @@ export const FlowB: React.FC<FlowBProps> = ({
                 }`}
               >
                 Continue
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             ) : (
@@ -821,7 +1038,12 @@ const SearchInput: React.FC<{
       stroke="currentColor"
       viewBox="0 0 24 24"
     >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+      />
     </svg>
     <input
       type="text"

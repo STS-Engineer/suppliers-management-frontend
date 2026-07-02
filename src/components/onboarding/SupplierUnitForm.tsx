@@ -5,7 +5,9 @@ import {
   ALL_COMMODITIES,
   getSubFamiliesForFamilies,
   getFamiliesForCommodities,
+  toDisplayLabel,
 } from "../../data/familySubfamilyData";
+import { COUNTRIES, DEFAULT_PRODUCT_LINES } from "../../data/onboardingConstants";
 import {
   UnitFormData,
   ContactFormData,
@@ -26,19 +28,6 @@ interface SupplierUnitFormProps {
   groupContacts?: ContactFormData[];
 }
 
-const COUNTRIES = [
-  "China", "India", "Vietnam", "Thailand", "Indonesia",
-  "Germany", "France", "Italy", "Poland", "Netherlands",
-  "United States", "Canada", "Mexico", "Brazil", "Japan",
-  "South Korea", "Taiwan", "Malaysia", "United Kingdom", "Spain",
-  "Australia", "Other",
-];
-
-const DEFAULT_PRODUCT_LINES = [
-  "Power Electronics", "Signal Processing", "Thermal Management",
-  "EMC Solutions", "Energy Storage", "Drive Systems",
-  "Automation & Control", "Lighting", "Wireless & RF",
-];
 
 const EMPTY_CONTACT: ContactFormData = {
   full_name: "", email: "", phone: "",
@@ -225,7 +214,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
           {/* ── Product Classification ──────────────────────────────────── */}
           <SectionDivider label="Product Classification" />
 
-          <div>
+          <div className="md:col-span-2">
             <CreatableMultiSelect
               label="Family"
               name="family"
@@ -234,6 +223,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
               storageKey="unit_family"
               defaultOptions={ALL_FAMILIES}
               availableOptions={(data.commodity ?? []).length > 0 ? availableFamilies : undefined}
+              displayLabel={toDisplayLabel}
               placeholder="Select or type a family…"
               helperText={
                 (data.commodity ?? []).length > 0
@@ -243,7 +233,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
             />
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <CreatableMultiSelect
               label="Sub Family"
               name="sub_family"
@@ -251,6 +241,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
               onChange={(v) => onChange("sub_family", v)}
               storageKey="unit_sub_family"
               availableOptions={availableSubFamilies}
+              displayLabel={toDisplayLabel}
               placeholder={data.family.length === 0 ? "Select a family first…" : "Select sub-families…"}
               helperText={
                 data.family.length === 0
@@ -268,7 +259,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
               onChange={(v) => onChange("product_line", v)}
               storageKey="unit_product_line"
               defaultOptions={DEFAULT_PRODUCT_LINES}
-              placeholder="e.g., Power Electronics, EMC Solutions…"
+              placeholder="e.g., Assembly, Brush, Seals…"
               helperText="Specific product lines or application areas"
             />
           </div>

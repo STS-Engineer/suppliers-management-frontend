@@ -394,6 +394,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                   <DetailGrid
                     items={[
                       { label: "Relation Code", value: relation?.relation_code || "—" },
+                      { label: "Plant Alias", value: relation?.alias_1 || "—" },
                       { label: "SB1 Item", value: relation?.sb1_item_name || "—" },
                       { label: "Group", value: groupName || "—" },
                       { label: "Site", value: site?.site_name || "—" },
