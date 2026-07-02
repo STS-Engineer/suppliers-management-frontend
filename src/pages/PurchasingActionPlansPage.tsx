@@ -380,7 +380,7 @@ function StatusCell({
         </button>
       )}
       {pendingClose && (
-        <div className="w-56 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+        <div className="w-full space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
           <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">
             Implementation date
           </p>
@@ -391,12 +391,12 @@ function StatusCell({
             className="w-full rounded-lg border border-emerald-300 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-emerald-500"
           />
           <p
-            className={`flex items-center gap-1 text-[9px] font-semibold ${hasAttachment ? "text-emerald-600" : "text-rose-500"}`}
+            className={`flex items-start gap-1 text-[9px] font-semibold leading-snug ${hasAttachment ? "text-emerald-600" : "text-rose-500"}`}
           >
-            <Paperclip size={9} />
+            <Paperclip size={9} className="mt-0.5 shrink-0" />
             {hasAttachment
               ? `${item.attachments.length} file${item.attachments.length !== 1 ? "s" : ""} attached`
-              : 'A file attachment is required — use "Add file" above first'}
+              : "File attachment required (see Add file)"}
           </p>
           <div className="flex gap-1.5">
             <button
@@ -542,7 +542,7 @@ function ActionCard({
       </div>
 
       {/* Right: status */}
-      <div className="w-44 shrink-0 border-l border-slate-100 pl-4">
+      <div className="w-60 shrink-0 border-l border-slate-100 pl-4">
         <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
           Status
         </p>
