@@ -14,7 +14,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
-  Truck,
   Users,
   X,
 } from "lucide-react";
@@ -497,12 +496,6 @@ function RelationDetailModal({
     .map((s) => s.trim())
     .filter((s) => s && s !== "none");
 
-  const hasLogistics =
-    record.relation.transport_mode ||
-    record.relation.transit_days != null ||
-    record.relation.incoterm_place ||
-    record.relation.delivery_status ||
-    record.relation.data_validity;
 
   const committeeStatus = record.committee_review_status;
   const hasCommittee =
@@ -887,10 +880,6 @@ function RelationDetailModal({
                 <ScoreBar score={Number(record.relation.last_eval_score)} />
               </div>
             )}
-            <InfoRow
-              label="Quality cert req."
-              value={record.relation.quality_cert_required}
-            />
           </DrawerSection>
 
           {/* ── Development Plan ── */}
@@ -947,47 +936,6 @@ function RelationDetailModal({
             </div>
           </DrawerSection>
 
-          {/* ── Logistics ── */}
-          {hasLogistics && (
-            <DrawerSection
-              icon={<Truck className="h-3.5 w-3.5" />}
-              title="Logistics"
-              accentCls="bg-sky-50 text-sky-500 dark:bg-sky-500/10 dark:text-sky-400"
-            >
-              <InfoRow
-                label="Transport"
-                value={record.relation.transport_mode}
-              />
-              <InfoRow
-                label="Transit days"
-                value={
-                  record.relation.transit_days != null
-                    ? String(record.relation.transit_days)
-                    : null
-                }
-              />
-              <InfoRow
-                label="Incoterm / Place"
-                value={record.relation.incoterm_place}
-              />
-              <InfoRow
-                label="Real AP days"
-                value={
-                  record.relation.real_ap_days != null
-                    ? String(record.relation.real_ap_days)
-                    : null
-                }
-              />
-              <InfoRow
-                label="Delivery status"
-                value={record.relation.delivery_status}
-              />
-              <InfoRow
-                label="Data validity"
-                value={record.relation.data_validity}
-              />
-            </DrawerSection>
-          )}
 
           {/* ── Committee ── */}
           {hasCommittee && committeeStatus && (
@@ -2263,3 +2211,4 @@ export default function ActiveSitesPage() {
     </div>
   );
 }
+

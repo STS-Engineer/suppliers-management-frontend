@@ -489,17 +489,7 @@ export interface SupplierSiteRelation {
   evaluation_comments?: string;
   // Supplier Panel (SB1) fields
   last_eval_score?: number | null;
-  transport_mode?: string | null;
-  transit_days?: number | null;
-  incoterm_place?: string | null;
-  real_ap_days?: number | null;
-  real_ap_days_validated?: number | null;
-  consignment?: boolean | null;
   preferred_dev_supplier?: boolean | null;
-  data_validity?: string | null;
-  quality_cert_required?: string | null;
-  delivery_status?: string | null;
-  req_ap_date?: string | null;
   is_active?: boolean;
 }
 
@@ -607,3 +597,4 @@ export interface UnitManagementState {
   isLoading: boolean;
   error: string | null;
 }
+

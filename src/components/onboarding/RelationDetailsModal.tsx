@@ -435,23 +435,13 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               <section className={panelCls}>
                 <div className="border-b border-slate-100 px-5 py-4">
                   <h3 className="text-sm font-bold text-slate-900">
-                    Logistics &amp; SB1 Data
+                    SB1 Data
                   </h3>
                 </div>
                 <div className="px-5 py-5">
                   <DetailGrid
                     items={[
-                      { label: "Transport Mode", value: relation?.transport_mode || "—" },
-                      { label: "Transit Days", value: relation?.transit_days != null ? String(relation.transit_days) : "—" },
-                      { label: "Incoterm / Place", value: relation?.incoterm_place || "—" },
-                      { label: "Real AP Days", value: relation?.real_ap_days != null ? String(relation.real_ap_days) : "—" },
-                      { label: "Validated AP Days", value: relation?.real_ap_days_validated != null ? String(relation.real_ap_days_validated) : "—" },
-                      { label: "Req. AP Date", value: formatDate(relation?.req_ap_date) },
-                      { label: "Consignment", value: relation?.consignment === true ? "Yes" : relation?.consignment === false ? "No" : "—" },
                       { label: "Preferred Dev Supplier", value: relation?.preferred_dev_supplier === true ? "Yes" : relation?.preferred_dev_supplier === false ? "No" : "—" },
-                      { label: "Delivery Status", value: relation?.delivery_status || "—" },
-                      { label: "Data Validity", value: relation?.data_validity || "—" },
-                      { label: "Quality Cert Required", value: relation?.quality_cert_required || "—" },
                       { label: "Last Eval Score", value: relation?.last_eval_score != null ? String(relation.last_eval_score) : "—" },
                     ]}
                   />
@@ -933,3 +923,4 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
     </div>
   );
 };
+
