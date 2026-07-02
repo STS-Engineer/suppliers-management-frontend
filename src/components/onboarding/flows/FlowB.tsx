@@ -11,6 +11,7 @@ import {
   ContactResponse,
 } from "../../../types/onboarding";
 import { supplierAPI } from "../../../services/supplierOnboardingAPI";
+import { PurchaserOwnerField } from "../PurchaserOwnerField";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,6 +125,7 @@ export const FlowB: React.FC<FlowBProps> = ({
   const [selectedContactId, setSelectedContactId] = useState<number | null>(
     null,
   );
+
   const [addNew, setAddNew] = useState(false);
   const [newContact, setNewContact] = useState<NewContact>({
     full_name: "",
@@ -190,6 +192,7 @@ export const FlowB: React.FC<FlowBProps> = ({
   useEffect(() => {
     if (supplierScope === "global" && groupOwner) setSupplierOwner(groupOwner);
   }, [supplierScope, groupOwner]);
+
 
   const resolvedUnit =
     units.find((u) => u.id_supplier_unit === unitId) ?? selectedUnit;
@@ -755,15 +758,24 @@ export const FlowB: React.FC<FlowBProps> = ({
                 </p>
               </div>
 
-              <FieldWrap label="Owner email *">
-                <input
-                  type="email"
-                  className={inputCls}
-                  placeholder="name@avocarbon.com"
+              {siteId !== null ? (
+                <PurchaserOwnerField
+                  siteId={siteId}
                   value={supplierOwner}
-                  onChange={(e) => setSupplierOwner(e.target.value)}
+                  onChange={setSupplierOwner}
+                  siteName={resolvedSite?.site_name}
                 />
-              </FieldWrap>
+              ) : (
+                <FieldWrap label="Owner email *">
+                  <input
+                    type="email"
+                    className={inputCls}
+                    placeholder="name@avocarbon.com"
+                    value={supplierOwner}
+                    onChange={(e) => setSupplierOwner(e.target.value)}
+                  />
+                </FieldWrap>
+              )}
 
               {supplierScope === "global" &&
                 groupOwner &&
@@ -1110,6 +1122,7 @@ const ReviewRow: React.FC<{
     <span className="font-semibold text-slate-900">{value}</span>
   </div>
 );
+
 
 const FieldWrap: React.FC<{
   label: string;

@@ -7,6 +7,7 @@ import { supplierAPI } from "../../../services/supplierOnboardingAPI";
 import { AvocarbonSite, SupplierUnitResponse } from "../../../types/onboarding";
 import { StepIndicator } from "../Stepindicator";
 import { FormField, ScopeSelect } from "../ScopeSelect";
+import { PurchaserOwnerField } from "../PurchaserOwnerField";
 
 interface FlowAProps {
   groupId: number;
@@ -237,15 +238,22 @@ export const FlowA: React.FC<FlowAProps> = ({
         {step === 2 && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label="Supplier owner *" span={2}>
-              <input
-                type="text"
-                placeholder="name@avocarbon.com"
-                value={form.supplierOwner}
-                onChange={(event) =>
-                  setField("supplierOwner", event.target.value)
-                }
-                className={inputClass}
-              />
+              {form.siteId !== null ? (
+                <PurchaserOwnerField
+                  siteId={form.siteId}
+                  value={form.supplierOwner}
+                  onChange={(email) => setField("supplierOwner", email)}
+                  siteName={selectedSite?.site_name}
+                />
+              ) : (
+                <input
+                  type="text"
+                  placeholder="name@avocarbon.com"
+                  value={form.supplierOwner}
+                  onChange={(event) => setField("supplierOwner", event.target.value)}
+                  className={inputClass}
+                />
+              )}
             </FormField>
 
             <FormField label="Relation scope *">

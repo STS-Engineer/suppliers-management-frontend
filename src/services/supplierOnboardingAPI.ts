@@ -1147,6 +1147,17 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async getSitePurchasers(siteId: number) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/purchasers?site_id=${siteId}`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load purchasers for this site.",
+    );
+  }
+
   async addCertificationToUnit(unitId: number, data: any) {
     return this.request(
       `${this.baseUrl}/suppliers/units/${unitId}/certifications`,
@@ -2247,6 +2258,18 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/action-plans/${planId}/item-status?${q}`,
       { method: "PATCH", headers: this.getAuthHeaders() },
       "Failed to update action status.",
+    );
+  }
+
+  async remindActionItem(planId: number, sujetIdx: number, actionIdx: number) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+    });
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/${planId}/items/remind?${q}`,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to send reminder.",
     );
   }
 

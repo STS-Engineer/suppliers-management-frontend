@@ -26,6 +26,18 @@ interface VoteForm {
   idea_owner: string | null;
   project_owner: string | null;
   change_mode: string | null;
+  // Scope
+  scope_in: string | null;
+  scope_out: string | null;
+  customers: string | null;
+  // Supplier before/after
+  proposed_supplier_name: string | null;
+  country_after: string | null;
+  supplier_asked: boolean | null;
+  supplier_asked_result: string | null;
+  // Risks & benefits
+  stp_risks: Record<string, string> | null;
+  stp_benefits: { if_we_do?: string; if_not?: string } | null;
   // Pricing
   current_price: number | null;
   proposed_price: number | null;
@@ -72,6 +84,11 @@ const NEXT_PHASE: Record<string, string> = {
 
 const eur = (v: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
+
+// Unit prices (e.g. 2.50 €/pc) need decimal precision — eur() rounds to whole
+// euros, which silently collapses distinct before/after prices to the same value.
+const eurPrice = (v: number | null) =>
+  v == null ? "—" : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
 
 const num = (v: number | null, decimals = 0) =>
   v == null ? "—" : new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimals }).format(v);
@@ -120,8 +137,8 @@ function YearTable({
           {rows.map((r) => (
             <tr key={r.year} className="border-b border-slate-50">
               <td className="py-1 pr-3 font-semibold text-slate-600">{r.year}</td>
-              <td className="py-1 pr-3 text-right text-slate-700">{eur(r.current)}</td>
-              <td className="py-1 pr-3 text-right font-semibold text-blue-700">{eur(r.proposed)}</td>
+              <td className="py-1 pr-3 text-right text-slate-700">{eurPrice(r.current)}</td>
+              <td className="py-1 pr-3 text-right font-semibold text-blue-700">{eurPrice(r.proposed)}</td>
               {r.qty !== undefined && <td className="py-1 pr-3 text-right text-slate-600">{num(r.qty)}</td>}
               {r.saving !== undefined && (
                 <td className={`py-1 text-right font-semibold ${r.saving != null && r.saving > 0 ? "text-emerald-700" : "text-slate-600"}`}>
@@ -297,6 +314,28 @@ export default function GateApprovalPage() {
   const hasLogistics =
     hasIncoterms(form.incoterms_before) || hasIncoterms(form.incoterms_after) ||
     hasTopDays(form.top_days_before) || hasTopDays(form.top_days_after);
+  const hasScope = !!(form.scope_in || form.scope_out || form.customers);
+  const hasSupplier = !!(
+    form.proposed_supplier_name ||
+    form.country_after ||
+    form.supplier_asked_result
+  );
+  const risks = form.stp_risks ?? {};
+  const riskRows = [
+    { label: "Material Indexation", before: risks.material_indexation_before, after: risks.material_indexation_after, desc: risks.material_indexation_desc },
+    { label: "Exchange Rate", before: risks.exchange_rate_before, after: risks.exchange_rate_after, desc: risks.exchange_rate_desc },
+    { label: "Local Content", before: risks.local_content_before, after: risks.local_content_after, desc: risks.local_content_desc },
+    { label: "Quality", before: risks.quality_before, after: risks.quality_after, desc: risks.quality_desc },
+    { label: "Other", before: risks.other_before, after: risks.other_after, desc: risks.other_desc },
+  ].filter((r) => r.before || r.after || r.desc);
+  const specRows = [
+    { label: "Same Spec", value: risks.material_same_spec },
+    { label: "Same Tooling", value: risks.same_tooling },
+    { label: "Same Dimension", value: risks.same_dimension },
+    { label: "Same Process", value: risks.same_process },
+  ].filter((r) => r.value);
+  const hasRisks = riskRows.length > 0 || specRows.length > 0;
+  const hasBenefits = !!(form.stp_benefits?.if_we_do || form.stp_benefits?.if_not);
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
@@ -390,6 +429,33 @@ export default function GateApprovalPage() {
             <Row label="Opportunity Type" value={val(form.opportunity_type)} />
           </Section>
 
+          {/* Scope */}
+          {hasScope && (
+            <>
+              <hr className="border-slate-100" />
+              <Section title="Scope">
+                {form.scope_in && <Row label="Scope IN" value={val(form.scope_in)} />}
+                {form.scope_out && <Row label="Scope OUT" value={val(form.scope_out)} />}
+                {form.customers && <Row label="Customers" value={val(form.customers)} />}
+              </Section>
+            </>
+          )}
+
+          {/* Supplier before/after */}
+          {hasSupplier && (
+            <>
+              <hr className="border-slate-100" />
+              <Section title="Supplier (After)">
+                {form.proposed_supplier_name && <Row label="Proposed Supplier" value={val(form.proposed_supplier_name)} />}
+                {form.country_after && <Row label="Country After" value={val(form.country_after)} />}
+                {form.supplier_asked != null && (
+                  <Row label="Current Supplier Asked" value={form.supplier_asked ? "Yes" : "No"} />
+                )}
+                {form.supplier_asked_result && <Row label="Result" value={val(form.supplier_asked_result)} />}
+              </Section>
+            </>
+          )}
+
           <hr className="border-slate-100" />
 
           {/* STP pricing table */}
@@ -442,6 +508,67 @@ export default function GateApprovalPage() {
                 {hasTopDays(form.top_days_before) && <Row label="TOP Before" value={`${form.top_days_before} days`} />}
                 {hasTopDays(form.top_days_after) && <Row label="TOP After" value={`${form.top_days_after} days`} />}
               </Section>
+            </>
+          )}
+
+          {/* Risks */}
+          {hasRisks && (
+            <>
+              <hr className="border-slate-100" />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Risks</p>
+                {riskRows.length > 0 && (
+                  <table className="w-full text-[11px] mb-2">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left text-slate-400 font-medium pb-1 pr-3">Category</th>
+                        <th className="text-left text-slate-400 font-medium pb-1 pr-3">Before</th>
+                        <th className="text-left text-slate-400 font-medium pb-1 pr-3">After</th>
+                        <th className="text-left text-slate-400 font-medium pb-1">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {riskRows.map((r) => (
+                        <tr key={r.label} className="border-b border-slate-50">
+                          <td className="py-1 pr-3 font-semibold text-slate-600">{r.label}</td>
+                          <td className="py-1 pr-3 text-slate-700">{val(r.before ?? null)}</td>
+                          <td className="py-1 pr-3 text-slate-700">{val(r.after ?? null)}</td>
+                          <td className="py-1 text-slate-500">{r.desc || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {specRows.length > 0 && (
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {specRows.map((r) => (
+                      <Row key={r.label} label={r.label} value={val(r.value ?? null)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Benefits */}
+          {hasBenefits && (
+            <>
+              <hr className="border-slate-100" />
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Benefits</p>
+                {form.stp_benefits?.if_we_do && (
+                  <p className="text-xs text-slate-700">
+                    <span className="font-semibold text-emerald-700">If we do: </span>
+                    {form.stp_benefits.if_we_do}
+                  </p>
+                )}
+                {form.stp_benefits?.if_not && (
+                  <p className="text-xs text-slate-700">
+                    <span className="font-semibold text-red-700">If not: </span>
+                    {form.stp_benefits.if_not}
+                  </p>
+                )}
+              </div>
             </>
           )}
 

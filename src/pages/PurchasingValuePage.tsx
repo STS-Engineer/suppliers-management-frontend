@@ -4145,21 +4145,27 @@ function GateTab({
   const isAssigned = opp.status === "Assigned";
   const isWorkingOn =
     opp.status === "Working on it" || opp.status === "Needs Rework";
-  const isAwaitingP0 =
-    opp.status === "Awaiting Validation" && opp.phase_status === "Phase 0";
+  const isAwaitingGate =
+    opp.status === "Awaiting Validation" &&
+    ["Phase 0", "Phase 1", "Phase 2", "Phase 3"].includes(
+      opp.phase_status ?? "",
+    );
   const isPhase1Working =
     opp.phase_status === "Phase 1" &&
     (opp.status === "Working on it" || opp.status === "Needs Rework");
   const isUnderCommittee = opp.status === "Under Committee Review";
   const canApplyGate =
-    isAwaitingP0 ||
+    isAwaitingGate ||
     isUnderCommittee ||
     ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "");
   const isClosed = opp.phase_status === "Closed";
-  const activePhase0Requests = approvalRequests.filter(
-    (r) => r.phase_from === "Phase 0" && r.status !== "Superseded",
+  // Gate-approval requests for whichever phase the opportunity is currently
+  // in (Phase 0-3 are all gate-eligible on the backend — see
+  // GateApprovalService._GATE_ELIGIBLE_PHASES).
+  const activeGateRequests = approvalRequests.filter(
+    (r) => r.phase_from === opp.phase_status && r.status !== "Superseded",
   );
-  const allPhase0Approved = activePhase0Requests.some(
+  const allGateApproved = activeGateRequests.some(
     (r) => r.status === "Completed" && r.consensus_result === "Go",
   );
   const needsPm =
@@ -4169,6 +4175,13 @@ function GateTab({
     opp.phase_status === "Phase 0";
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
+  const GATE_ELIGIBLE_PHASES = ["Phase 0", "Phase 1", "Phase 2", "Phase 3"];
+  const NEXT_GATE_PHASE: Record<string, string> = {
+    "Phase 0": "Phase 1",
+    "Phase 1": "Phase 2",
+    "Phase 2": "Phase 3",
+    "Phase 3": "Phase 4",
+  };
 
   // ── STP section completeness (saved values on opp) ─────────────────
   const isStpType = !["Negotiation", "Cash"].includes(
@@ -4382,42 +4395,57 @@ function GateTab({
         </div>
       )}
 
-      {/* STEP 2 — Phase 0: Submit & Request Gate Approval (merged) */}
-      {isWorkingOn && opp.phase_status === "Phase 0" && (
+      {/* STEP 2 — Submit & Request Gate Approval (merged).
+          Gate approval is required by the backend for Phase 0-3 (see
+          GateApprovalService._GATE_ELIGIBLE_PHASES / apply_gate_decision's
+          GATE_APPROVAL_REQUIRED guard) — this block used to only render for
+          Phase 0, leaving Phase 1-3 with no way to actually request the
+          quorum vote the "Apply decision" button demands. */}
+      {isWorkingOn && GATE_ELIGIBLE_PHASES.includes(opp.phase_status ?? "") && (
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-3">
           {/* Context badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
-              Phase 0
+              {opp.phase_status}
             </span>
-            <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
-              STP Opportunity Study
-            </span>
+            {opp.phase_status === "Phase 0" && (
+              <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                STP Opportunity Study
+              </span>
+            )}
             <span className="text-[10px] text-amber-500">
-              Gate: Phase 0 → Phase 1
+              Gate: {opp.phase_status} → {NEXT_GATE_PHASE[opp.phase_status ?? ""] ?? "next phase"}
             </span>
           </div>
 
-          {/* Pre-submission checklist — Phase 0 */}
-          {phase0Missing.length > 0 ? (
-            <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-1.5">
-              <p className="text-[10.5px] font-bold text-amber-700 flex items-center gap-1.5">
-                <AlertTriangle size={11} /> {phase0Missing.length} item
-                {phase0Missing.length > 1 ? "s" : ""} missing before submission:
-              </p>
-              {phase0Missing.map((c, i) => (
-                <p
-                  key={i}
-                  className="flex items-start gap-1.5 text-[11px] text-amber-600"
-                >
-                  <span className="shrink-0 text-amber-400">✗</span> {c.label}
+          {/* Pre-submission checklist — Phase 0 only; Phase 1-3 have no
+              equivalent backend pre-checks before a gate approval request. */}
+          {opp.phase_status === "Phase 0" ? (
+            phase0Missing.length > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-1.5">
+                <p className="text-[10.5px] font-bold text-amber-700 flex items-center gap-1.5">
+                  <AlertTriangle size={11} /> {phase0Missing.length} item
+                  {phase0Missing.length > 1 ? "s" : ""} missing before submission:
                 </p>
-              ))}
-            </div>
+                {phase0Missing.map((c, i) => (
+                  <p
+                    key={i}
+                    className="flex items-start gap-1.5 text-[11px] text-amber-600"
+                  >
+                    <span className="shrink-0 text-amber-400">✗</span> {c.label}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700 flex items-center gap-1.5">
+                <CheckCircle2 size={11} /> All checks passed — ready to submit to
+                PM
+              </div>
+            )
           ) : (
             <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700 flex items-center gap-1.5">
-              <CheckCircle2 size={11} /> All checks passed — ready to submit to
-              PM
+              <CheckCircle2 size={11} /> Ready to request the {opp.phase_status}
+              {" "}gate approval.
             </div>
           )}
 
@@ -4524,8 +4552,8 @@ function GateTab({
               </div>
             )}
 
-            {/* Existing approval requests for Phase 0 (exclude superseded) */}
-            {activePhase0Requests.map((req) => (
+            {/* Existing approval requests for the current gate (exclude superseded) */}
+            {activeGateRequests.map((req) => (
               <div
                 key={req.request_id}
                 className="rounded-xl border border-amber-200 bg-white p-3 space-y-2"
@@ -4642,7 +4670,7 @@ function GateTab({
                 )}
               </div>
             ))}
-            {activePhase0Requests.length === 0 && !showApproval && (
+            {activeGateRequests.length === 0 && !showApproval && (
               <p className="text-[11px] text-amber-500/70">
                 No formal approval requests yet for this gate.
               </p>
@@ -4786,7 +4814,7 @@ function GateTab({
       )}
 
       {/* Awaiting review banners */}
-      {isAwaitingP0 && !allPhase0Approved && (
+      {isAwaitingGate && !allGateApproved && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <p className="font-bold flex items-center gap-1.5">
             <Clock size={12} /> Awaiting Validation
@@ -4800,7 +4828,7 @@ function GateTab({
           </p>
         </div>
       )}
-      {isAwaitingP0 && allPhase0Approved && (
+      {isAwaitingGate && allGateApproved && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs">
           <p className="font-bold flex items-center gap-1.5 text-emerald-700">
             <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply Gate
@@ -4808,7 +4836,8 @@ function GateTab({
           <p className="mt-0.5 text-emerald-600">
             All reviewers have given their Go. Click{" "}
             <strong>"Apply decision"</strong> below, select <strong>Go</strong>,
-            and confirm to advance to Phase 1.
+            and confirm to advance to{" "}
+            {NEXT_GATE_PHASE[opp.phase_status ?? ""] ?? "the next phase"}.
           </p>
         </div>
       )}
@@ -5247,6 +5276,12 @@ function FinancialTab({
   const [revisedSaving, setRevisedSaving] = useState("");
   const [reviseNote, setReviseNote] = useState("");
 
+  // FinancialLine/MonthlyFinancial amounts are stored in the opportunity's
+  // native currency (no FX conversion applied at this level — see
+  // _create_financial_line / _ensure_monthly_rows on the backend), so this
+  // tab must format with opp.currency, not fmt()'s "EUR" default.
+  const fmtC = (n?: number | null) => fmt(n, opp.currency || "EUR");
+
   const phaseCtx =
     FINANCIAL_PHASE_CONTEXT[opp.phase_status ?? ""] ??
     FINANCIAL_PHASE_CONTEXT["Phase 3"];
@@ -5535,8 +5570,8 @@ function FinancialTab({
                 </p>
                 <p className="text-[11px] text-blue-500 mt-0.5">
                   Current baseline:{" "}
-                  <strong>{fmt(line.expected_annual_saving)}/year</strong> ·
-                  Budget: <strong>{fmt(line.budget_value)}/year</strong>{" "}
+                  <strong>{fmtC(line.expected_annual_saving)}/year</strong> ·
+                  Budget: <strong>{fmtC(line.budget_value)}/year</strong>{" "}
                   (locked)
                 </p>
                 <p className="text-[10px] text-blue-400 mt-0.5">
@@ -5653,7 +5688,7 @@ function FinancialTab({
             <div className="flex items-center gap-3 text-[11px] text-amber-600">
               {line.recovery_amount != null && (
                 <span>
-                  Target: <strong>{fmt(line.recovery_amount)}</strong>
+                  Target: <strong>{fmtC(line.recovery_amount)}</strong>
                 </span>
               )}
               {line.recovery_target_date && (
@@ -5733,7 +5768,7 @@ function FinancialTab({
               : "Expected Annual"}
           </span>
           <p className="font-bold text-slate-800">
-            {fmt(line.expected_annual_saving)}
+            {fmtC(line.expected_annual_saving)}
           </p>
         </div>
         <div>
@@ -5743,7 +5778,7 @@ function FinancialTab({
           <p
             className={`font-bold ${(line.cumulated_real_saving ?? 0) >= (line.expected_annual_saving ?? Infinity) ? "text-emerald-700" : "text-slate-800"}`}
           >
-            {fmt(line.cumulated_real_saving)}
+            {fmtC(line.cumulated_real_saving)}
           </p>
         </div>
         <div>
@@ -5751,7 +5786,7 @@ function FinancialTab({
             EOY Forecast
           </span>
           <p className="font-bold text-blue-700">
-            {fmt(line.forecast_eoy_current)}
+            {fmtC(line.forecast_eoy_current)}
           </p>
         </div>
         <div>
@@ -5759,7 +5794,7 @@ function FinancialTab({
           <p
             className={`font-bold ${(line.delta_vs_expected_ytd ?? 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}
           >
-            {fmt(line.delta_vs_expected_ytd)}
+            {fmtC(line.delta_vs_expected_ytd)}
           </p>
         </div>
         <div>
@@ -5912,7 +5947,7 @@ function FinancialTab({
                 <span
                   className={`font-bold ${(line.delta_vs_expected_ytd ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}`}
                 >
-                  {fmt(line.delta_vs_expected_ytd)}
+                  {fmtC(line.delta_vs_expected_ytd)}
                 </span>
               </div>
               {(line.delta_vs_expected_ytd ?? 0) < 0 && (
@@ -6093,7 +6128,7 @@ function FinancialTab({
                       : "?"}
                   </p>
                   <p className="text-[11px] font-bold text-slate-600">
-                    {fmt(row.expected_saving)}
+                    {fmtC(row.expected_saving)}
                   </p>
                 </div>
               );
@@ -6184,7 +6219,7 @@ function FinancialTab({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right text-slate-500">
-                      {fmt(row.expected_saving)}
+                      {fmtC(row.expected_saving)}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-slate-800">
                       {isEdit ? (
@@ -6202,7 +6237,7 @@ function FinancialTab({
                           placeholder="0"
                         />
                       ) : row.actual_saving != null ? (
-                        fmt(row.actual_saving)
+                        fmtC(row.actual_saving)
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}
@@ -6210,11 +6245,11 @@ function FinancialTab({
                     <td
                       className={`px-3 py-2 text-right font-semibold ${delta == null ? "text-slate-300" : delta >= 0 ? "text-emerald-600" : "text-red-500"}`}
                     >
-                      {delta == null ? "—" : fmt(delta)}
+                      {delta == null ? "—" : fmtC(delta)}
                     </td>
                     <td className="px-3 py-2 text-right text-slate-600">
                       {row.cumulated_actual != null
-                        ? fmt(row.cumulated_actual)
+                        ? fmtC(row.cumulated_actual)
                         : "—"}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-blue-700">
@@ -6246,12 +6281,12 @@ function FinancialTab({
                             parseFloat(rowForm.forecast_eoy_saving) <
                               row.cumulated_actual && (
                               <p className="text-[9px] text-red-500 mt-0.5 w-24">
-                                Must be ≥ {fmt(row.cumulated_actual)}
+                                Must be ≥ {fmtC(row.cumulated_actual)}
                               </p>
                             )}
                         </div>
                       ) : row.forecast_eoy_saving != null ? (
-                        fmt(row.forecast_eoy_saving)
+                        fmtC(row.forecast_eoy_saving)
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}
@@ -6260,7 +6295,7 @@ function FinancialTab({
                     {showCash && (
                       <td className="px-3 py-2 text-right text-amber-600 text-[11px]">
                         {row.cash_expected != null
-                          ? fmt(row.cash_expected)
+                          ? fmtC(row.cash_expected)
                           : "—"}
                       </td>
                     )}
@@ -6281,7 +6316,7 @@ function FinancialTab({
                             placeholder="0"
                           />
                         ) : row.cash_actual != null ? (
-                          fmt(row.cash_actual)
+                          fmtC(row.cash_actual)
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}
@@ -7017,10 +7052,14 @@ function ActionPlanTab({
           editingId,
           payload,
         );
-        setSuccess("Action plan updated and pushed to enterprise system.");
+        // The enterprise-system push is currently disabled server-side
+        // (external_push_status is always "pending" — see
+        // purchasing_value/service.py create/update_action_plan), so don't
+        // claim a sync happened that didn't.
+        setSuccess("Action plan updated.");
       } else {
         await supplierAPI.createActionPlan(opp.opportunity_id, payload);
-        setSuccess("Action plan created and pushed to enterprise system.");
+        setSuccess("Action plan created.");
       }
       await loadPlans();
       setShowForm(false);
@@ -8147,7 +8186,7 @@ function OppCard({
         </p>
         {opp.expected_annual_saving && (
           <span className="shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-            {fmt(opp.expected_annual_saving)}
+            {fmt(opp.expected_annual_saving, opp.currency || "EUR")}
           </span>
         )}
         <span
@@ -8207,7 +8246,7 @@ function OppCard({
             <div className="flex items-center gap-1">
               <TrendingUp size={10} className="text-emerald-500" />
               <span className="text-[10.5px] font-semibold text-emerald-700">
-                {fmt(opp.expected_annual_saving)}
+                {fmt(opp.expected_annual_saving, opp.currency || "EUR")}
               </span>
             </div>
           )}
@@ -8222,7 +8261,7 @@ function OppCard({
             <div className="flex items-center gap-1 ml-auto">
               <BadgeCheck size={10} className="text-blue-400" />
               <span className="text-[10.5px] text-blue-600 font-semibold">
-                {fmt(line.cumulated_real_saving)}
+                {fmt(line.cumulated_real_saving, opp.currency || "EUR")}
               </span>
             </div>
           )}

@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
-  AlertTriangle, CalendarCheck, CheckCircle2, ChevronDown, Clock,
-  FolderOpen, Paperclip, RefreshCw, Upload, User, XCircle,
+  AlertTriangle,
+  CalendarCheck,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  FolderOpen,
+  Paperclip,
+  RefreshCw,
+  Upload,
+  User,
+  XCircle,
 } from "lucide-react";
 import supplierAPI from "../services/supplierOnboardingAPI";
 
@@ -44,20 +53,72 @@ interface Attachment {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; icon: React.ReactNode }> = {
-  open:    { label: "Open",    bg: "bg-amber-50",   text: "text-amber-700",   dot: "bg-amber-400",   icon: <Clock size={10} /> },
-  closed:  { label: "Closed",  bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-400", icon: <CheckCircle2 size={10} /> },
-  blocked: { label: "Blocked", bg: "bg-rose-50",    text: "text-rose-700",    dot: "bg-rose-400",    icon: <XCircle size={10} /> },
+const STATUS_CONFIG: Record<
+  string,
+  {
+    label: string;
+    bg: string;
+    text: string;
+    dot: string;
+    icon: React.ReactNode;
+  }
+> = {
+  open: {
+    label: "Open",
+    bg: "bg-amber-50",
+    text: "text-amber-700",
+    dot: "bg-amber-400",
+    icon: <Clock size={10} />,
+  },
+  closed: {
+    label: "Closed",
+    bg: "bg-emerald-50",
+    text: "text-emerald-700",
+    dot: "bg-emerald-400",
+    icon: <CheckCircle2 size={10} />,
+  },
+  blocked: {
+    label: "Blocked",
+    bg: "bg-rose-50",
+    text: "text-rose-700",
+    dot: "bg-rose-400",
+    icon: <XCircle size={10} />,
+  },
 };
 
-const PHASE_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
-  "Phase 0": { bg: "bg-slate-100",   text: "text-slate-600",   ring: "ring-slate-200" },
-  "Phase 1": { bg: "bg-indigo-100",  text: "text-indigo-700",  ring: "ring-indigo-200" },
-  "Phase 2": { bg: "bg-violet-100",  text: "text-violet-700",  ring: "ring-violet-200" },
-  "Phase 3": { bg: "bg-amber-100",   text: "text-amber-700",   ring: "ring-amber-200" },
-  "Phase 4": { bg: "bg-emerald-100", text: "text-emerald-700", ring: "ring-emerald-200" },
-  "Closed":  { bg: "bg-slate-200",   text: "text-slate-500",   ring: "ring-slate-300" },
-};
+const PHASE_COLORS: Record<string, { bg: string; text: string; ring: string }> =
+  {
+    "Phase 0": {
+      bg: "bg-slate-100",
+      text: "text-slate-600",
+      ring: "ring-slate-200",
+    },
+    "Phase 1": {
+      bg: "bg-indigo-100",
+      text: "text-indigo-700",
+      ring: "ring-indigo-200",
+    },
+    "Phase 2": {
+      bg: "bg-violet-100",
+      text: "text-violet-700",
+      ring: "ring-violet-200",
+    },
+    "Phase 3": {
+      bg: "bg-amber-100",
+      text: "text-amber-700",
+      ring: "ring-amber-200",
+    },
+    "Phase 4": {
+      bg: "bg-emerald-100",
+      text: "text-emerald-700",
+      ring: "ring-emerald-200",
+    },
+    Closed: {
+      bg: "bg-slate-200",
+      text: "text-slate-500",
+      ring: "ring-slate-300",
+    },
+  };
 
 function isOverdue(due: string | null, status: string) {
   if (!due || status === "closed") return false;
@@ -66,12 +127,19 @@ function isOverdue(due: string | null, status: string) {
 
 function fmtDate(d: string | null) {
   if (!d) return null;
-  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(d).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function fmtDateShort(d: string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return new Date(d).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 function todayIso() {
@@ -81,18 +149,33 @@ function todayIso() {
 function personLabel(email: string | null, name: string | null) {
   if (name && name !== email) return name;
   if (!email) return "Unassigned";
-  return email.split("@")[0].split(".").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+  return email
+    .split("@")[0]
+    .split(".")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
 }
 
 function initials(email: string | null, name: string | null) {
   const label = personLabel(email, name);
-  return label.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase();
+  return label
+    .split(" ")
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
 // Evidence button
 // ---------------------------------------------------------------------------
-function EvidenceButton({ item, onUploaded }: { item: ActionItem; onUploaded: (item: ActionItem, att: Attachment) => void }) {
+function EvidenceButton({
+  item,
+  onUploaded,
+}: {
+  item: ActionItem;
+  onUploaded: (item: ActionItem, att: Attachment) => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +186,13 @@ function EvidenceButton({ item, onUploaded }: { item: ActionItem; onUploaded: (i
     setUploading(true);
     setError(null);
     try {
-      const res = await supplierAPI.uploadActionEvidence(item.opportunity_id, item.plan_id, item.sujet_idx, item.action_idx, file);
+      const res = await supplierAPI.uploadActionEvidence(
+        item.opportunity_id,
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        file,
+      );
       onUploaded(item, (res as { data: Attachment }).data);
     } catch {
       setError("Upload failed");
@@ -115,21 +204,36 @@ function EvidenceButton({ item, onUploaded }: { item: ActionItem; onUploaded: (i
 
   return (
     <div>
-      <input ref={fileRef} type="file" className="hidden" onChange={handleFile} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" />
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        onChange={handleFile}
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+      />
       <button
         onClick={() => fileRef.current?.click()}
         disabled={uploading}
         className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50"
       >
-        {uploading ? <RefreshCw size={10} className="animate-spin" /> : <Upload size={10} />}
+        {uploading ? (
+          <RefreshCw size={10} className="animate-spin" />
+        ) : (
+          <Upload size={10} />
+        )}
         {uploading ? "Uploading…" : "Add file"}
       </button>
       {error && <p className="mt-0.5 text-[9px] text-rose-500">{error}</p>}
       {item.attachments.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {item.attachments.slice(0, 3).map((a, ai) => (
-            <a key={ai} href={a.file_url} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors">
+            <a
+              key={ai}
+              href={a.file_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+            >
               <Paperclip size={8} />
               <span className="max-w-[90px] truncate">{a.filename}</span>
             </a>
@@ -148,21 +252,41 @@ function EvidenceButton({ item, onUploaded }: { item: ActionItem; onUploaded: (i
 // ---------------------------------------------------------------------------
 // Inline status changer
 // ---------------------------------------------------------------------------
-function StatusCell({ item, onStatusChanged }: { item: ActionItem; onStatusChanged: (item: ActionItem, status: string, closedDate?: string) => void }) {
+function StatusCell({
+  item,
+  onStatusChanged,
+}: {
+  item: ActionItem;
+  onStatusChanged: (
+    item: ActionItem,
+    status: string,
+    closedDate?: string,
+  ) => void;
+}) {
   const [saving, setSaving] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [implDate, setImplDate] = useState(item.closed_date ?? todayIso());
   const [error, setError] = useState<string | null>(null);
+  const [reminding, setReminding] = useState(false);
+  const [reminded, setReminded] = useState(false);
+
+  const hasAttachment = item.attachments.length > 0;
 
   const changeStatus = async (newStatus: string) => {
     if (newStatus === "closed" && item.action_status !== "closed") {
+      setError(null);
       setPendingClose(true);
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      await supplierAPI.updateActionItemStatus(item.plan_id, item.sujet_idx, item.action_idx, newStatus);
+      await supplierAPI.updateActionItemStatus(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        newStatus,
+      );
       onStatusChanged(item, newStatus);
     } catch {
       setError("Save failed");
@@ -172,24 +296,59 @@ function StatusCell({ item, onStatusChanged }: { item: ActionItem; onStatusChang
   };
 
   const confirmClose = async () => {
+    if (!implDate) {
+      setError("Implementation date is required.");
+      return;
+    }
+    if (!hasAttachment) {
+      setError("Attach at least one file before closing (see \"Add file\" above).");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await supplierAPI.updateActionItemStatus(item.plan_id, item.sujet_idx, item.action_idx, "closed", implDate);
+      await supplierAPI.updateActionItemStatus(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        "closed",
+        implDate,
+      );
       onStatusChanged(item, "closed", implDate);
       setPendingClose(false);
-    } catch {
-      setError("Save failed");
+    } catch (e: any) {
+      setError(e?.message ?? "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
+  const remind = async () => {
+    setReminding(true);
+    setError(null);
+    try {
+      await supplierAPI.remindActionItem(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+      );
+      setReminded(true);
+      setTimeout(() => setReminded(false), 4000);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to send reminder.");
+    } finally {
+      setReminding(false);
+    }
+  };
+
   const cfg = STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
+  const canConfirmClose = !!implDate && hasAttachment;
 
   return (
-    <div className="space-y-1.5 min-w-[120px]">
-      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>
+    <div className="space-y-1.5 w-full min-w-[160px]">
+      <div
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}
+      >
         {cfg.icon}
         {cfg.label}
         {saving && <RefreshCw size={9} className="animate-spin ml-0.5" />}
@@ -204,22 +363,61 @@ function StatusCell({ item, onStatusChanged }: { item: ActionItem; onStatusChang
         <option value="closed">→ Closed</option>
         <option value="blocked">→ Blocked</option>
       </select>
+      {item.action_status !== "closed" && item.responsible_email && (
+        <button
+          onClick={remind}
+          disabled={reminding}
+          className="flex w-full items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+        >
+          {reminding ? (
+            <RefreshCw size={9} className="animate-spin" />
+          ) : reminded ? (
+            <CheckCircle2 size={9} />
+          ) : (
+            <AlertTriangle size={9} />
+          )}
+          {reminded ? "Reminder sent" : "Remind"}
+        </button>
+      )}
       {pendingClose && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 space-y-1.5">
-          <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">Implementation date</p>
+        <div className="w-56 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+          <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">
+            Implementation date
+          </p>
           <input
             type="date"
             value={implDate}
             onChange={(e) => setImplDate(e.target.value)}
-            className="w-full rounded-lg border border-emerald-300 px-2 py-1 text-[10px] text-slate-700 outline-none focus:border-emerald-500"
+            className="w-full rounded-lg border border-emerald-300 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-emerald-500"
           />
-          <div className="flex gap-1">
-            <button onClick={confirmClose} disabled={saving}
-              className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-emerald-500 px-2 py-1 text-[9px] font-bold text-white hover:bg-emerald-600 disabled:opacity-50">
+          <p
+            className={`flex items-center gap-1 text-[9px] font-semibold ${hasAttachment ? "text-emerald-600" : "text-rose-500"}`}
+          >
+            <Paperclip size={9} />
+            {hasAttachment
+              ? `${item.attachments.length} file${item.attachments.length !== 1 ? "s" : ""} attached`
+              : 'A file attachment is required — use "Add file" above first'}
+          </p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={confirmClose}
+              disabled={saving || !canConfirmClose}
+              title={
+                !canConfirmClose
+                  ? "Requires an implementation date and at least one attachment"
+                  : undefined
+              }
+              className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-emerald-500 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <CalendarCheck size={9} /> Confirm
             </button>
-            <button onClick={() => setPendingClose(false)}
-              className="rounded-lg border border-slate-200 px-2 py-1 text-[9px] font-semibold text-slate-400 hover:text-rose-500 hover:border-rose-200">
+            <button
+              onClick={() => {
+                setPendingClose(false);
+                setError(null);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-400 hover:text-rose-500 hover:border-rose-200"
+            >
               Cancel
             </button>
           </div>
@@ -246,7 +444,11 @@ function ActionCard({
 }: {
   item: ActionItem;
   onUploaded: (item: ActionItem, att: Attachment) => void;
-  onStatusChanged: (item: ActionItem, status: string, closedDate?: string) => void;
+  onStatusChanged: (
+    item: ActionItem,
+    status: string,
+    closedDate?: string,
+  ) => void;
   isViewer?: boolean;
 }) {
   const overdue = isOverdue(item.due_date, item.action_status);
@@ -254,7 +456,9 @@ function ActionCard({
   const dueFmt = fmtDate(item.due_date);
 
   return (
-    <div className={`group relative flex gap-4 rounded-2xl border bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)] ${overdue ? "border-rose-200" : "border-slate-200/70"}`}>
+    <div
+      className={`group relative flex gap-4 rounded-2xl border bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)] ${overdue ? "border-rose-200" : "border-slate-200/70"}`}
+    >
       {overdue && (
         <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-black text-white">
           <AlertTriangle size={8} /> OVERDUE
@@ -264,16 +468,24 @@ function ActionCard({
       {/* Left: opp + subject */}
       <div className="w-52 shrink-0 space-y-2 border-r border-slate-100 pr-4">
         <div>
-          <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">{item.opportunity_name}</p>
+          <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
+            {item.opportunity_name}
+          </p>
           {item.opp_phase && (
-            <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}>
+            <span
+              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
+            >
               {item.opp_phase}
             </span>
           )}
         </div>
         <div className="space-y-0.5">
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Subject</p>
-          <p className="text-[10px] text-slate-600 font-medium line-clamp-2">{item.sujet_titre ?? "—"}</p>
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+            Subject
+          </p>
+          <p className="text-[10px] text-slate-600 font-medium line-clamp-2">
+            {item.sujet_titre ?? "—"}
+          </p>
         </div>
         <div className="text-[9px] text-slate-400">
           Created {fmtDateShort(item.plan_created_at)}
@@ -283,29 +495,44 @@ function ActionCard({
       {/* Middle: action title + description */}
       <div className="flex-1 space-y-2 min-w-0">
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-0.5">Action</p>
-          <p className="text-[12px] font-bold text-slate-800 leading-snug">{item.action_titre ?? "—"}</p>
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-0.5">
+            Action
+          </p>
+          <p className="text-[12px] font-bold text-slate-800 leading-snug">
+            {item.action_titre ?? "—"}
+          </p>
         </div>
         {item.description && (
           <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
-            <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-3">{item.description}</p>
+            <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-3">
+              {item.description}
+            </p>
           </div>
         )}
         <div className="flex items-center gap-3 flex-wrap">
           {dueFmt && (
-            <span className={`flex items-center gap-1 text-[10px] font-semibold ${overdue ? "text-rose-600" : "text-slate-500"}`}>
+            <span
+              className={`flex items-center gap-1 text-[10px] font-semibold ${overdue ? "text-rose-600" : "text-slate-500"}`}
+            >
               <Clock size={10} />
               {dueFmt}
             </span>
           )}
-          {!dueFmt && <span className="text-[10px] text-slate-300">No due date</span>}
+          {!dueFmt && (
+            <span className="text-[10px] text-slate-300">No due date</span>
+          )}
         </div>
         {!isViewer && <EvidenceButton item={item} onUploaded={onUploaded} />}
         {isViewer && item.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {item.attachments.slice(0, 3).map((a, ai) => (
-              <a key={ai} href={a.file_url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors">
+              <a
+                key={ai}
+                href={a.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+              >
                 <Paperclip size={8} />
                 <span className="max-w-[90px] truncate">{a.filename}</span>
               </a>
@@ -315,13 +542,17 @@ function ActionCard({
       </div>
 
       {/* Right: status */}
-      <div className="w-36 shrink-0 border-l border-slate-100 pl-4">
-        <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">Status</p>
+      <div className="w-44 shrink-0 border-l border-slate-100 pl-4">
+        <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
+          Status
+        </p>
         {isViewer ? (
           (() => {
             const cfg = STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
             return (
-              <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}
+              >
                 {cfg.icon}
                 {cfg.label}
               </div>
@@ -350,14 +581,22 @@ function PersonGroup({
   name: string | null;
   items: ActionItem[];
   onUploaded: (item: ActionItem, att: Attachment) => void;
-  onStatusChanged: (item: ActionItem, status: string, closedDate?: string) => void;
+  onStatusChanged: (
+    item: ActionItem,
+    status: string,
+    closedDate?: string,
+  ) => void;
   isViewer?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const openCount = items.filter((i) => i.action_status === "open").length;
   const closedCount = items.filter((i) => i.action_status === "closed").length;
-  const blockedCount = items.filter((i) => i.action_status === "blocked").length;
-  const overdueCount = items.filter((i) => isOverdue(i.due_date, i.action_status)).length;
+  const blockedCount = items.filter(
+    (i) => i.action_status === "blocked",
+  ).length;
+  const overdueCount = items.filter((i) =>
+    isOverdue(i.due_date, i.action_status),
+  ).length;
   const label = personLabel(email, name);
   const ini = initials(email, name);
 
@@ -373,15 +612,26 @@ function PersonGroup({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-800 truncate">{label}</p>
-          {email && <p className="text-[10px] text-slate-400 truncate">{email}</p>}
+          {email && (
+            <p className="text-[10px] text-slate-400 truncate">{email}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] font-semibold text-slate-400">{items.length} action{items.length !== 1 ? "s" : ""}</span>
+          <span className="text-[10px] font-semibold text-slate-400">
+            {items.length} action{items.length !== 1 ? "s" : ""}
+          </span>
           {openCount > 0 && <Chip color="amber">{openCount} open</Chip>}
           {blockedCount > 0 && <Chip color="rose">{blockedCount} blocked</Chip>}
           {closedCount > 0 && <Chip color="emerald">{closedCount} closed</Chip>}
-          {overdueCount > 0 && <span className="rounded-full bg-rose-600 text-white text-[9px] font-black px-2 py-0.5">{overdueCount} overdue</span>}
-          <ChevronDown size={15} className={`text-slate-300 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+          {overdueCount > 0 && (
+            <span className="rounded-full bg-rose-600 text-white text-[9px] font-black px-2 py-0.5">
+              {overdueCount} overdue
+            </span>
+          )}
+          <ChevronDown
+            size={15}
+            className={`text-slate-300 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
         </div>
       </button>
 
@@ -389,7 +639,13 @@ function PersonGroup({
       {open && (
         <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-4 space-y-3">
           {items.map((item, i) => (
-            <ActionCard key={i} item={item} onUploaded={onUploaded} onStatusChanged={onStatusChanged} isViewer={isViewer} />
+            <ActionCard
+              key={i}
+              item={item}
+              onUploaded={onUploaded}
+              onStatusChanged={onStatusChanged}
+              isViewer={isViewer}
+            />
           ))}
         </div>
       )}
@@ -397,14 +653,24 @@ function PersonGroup({
   );
 }
 
-function Chip({ color, children }: { color: "amber" | "rose" | "emerald" | "slate"; children: React.ReactNode }) {
+function Chip({
+  color,
+  children,
+}: {
+  color: "amber" | "rose" | "emerald" | "slate";
+  children: React.ReactNode;
+}) {
   const cls = {
-    amber:   "bg-amber-100 text-amber-700",
-    rose:    "bg-rose-100 text-rose-700",
+    amber: "bg-amber-100 text-amber-700",
+    rose: "bg-rose-100 text-rose-700",
     emerald: "bg-emerald-100 text-emerald-700",
-    slate:   "bg-slate-100 text-slate-500",
+    slate: "bg-slate-100 text-slate-500",
   }[color];
-  return <span className={`rounded-full text-[9px] font-bold px-2 py-0.5 ${cls}`}>{children}</span>;
+  return (
+    <span className={`rounded-full text-[9px] font-bold px-2 py-0.5 ${cls}`}>
+      {children}
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -433,69 +699,114 @@ export default function PurchasingActionPlansPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleUploaded = (item: ActionItem, att: Attachment) => {
     setItems((prev) =>
       prev.map((i) =>
-        i.plan_id === item.plan_id && i.sujet_idx === item.sujet_idx && i.action_idx === item.action_idx
-          ? { ...i, attachments: [...i.attachments, att], attachment_count: i.attachment_count + 1 }
+        i.plan_id === item.plan_id &&
+        i.sujet_idx === item.sujet_idx &&
+        i.action_idx === item.action_idx
+          ? {
+              ...i,
+              attachments: [...i.attachments, att],
+              attachment_count: i.attachment_count + 1,
+            }
           : i,
       ),
     );
   };
 
-  const handleStatusChanged = (item: ActionItem, status: string, closedDate?: string) => {
+  const handleStatusChanged = (
+    item: ActionItem,
+    status: string,
+    closedDate?: string,
+  ) => {
     setItems((prev) =>
       prev.map((i) =>
-        i.plan_id === item.plan_id && i.sujet_idx === item.sujet_idx && i.action_idx === item.action_idx
-          ? { ...i, action_status: status, closed_date: status === "closed" ? (closedDate ?? i.closed_date) : null }
+        i.plan_id === item.plan_id &&
+        i.sujet_idx === item.sujet_idx &&
+        i.action_idx === item.action_idx
+          ? {
+              ...i,
+              action_status: status,
+              closed_date:
+                status === "closed" ? (closedDate ?? i.closed_date) : null,
+            }
           : i,
       ),
     );
   };
 
-  const allPersons = Array.from(new Set(items.map((i) => i.responsible_email).filter(Boolean))) as string[];
-  const allOpps = Array.from(new Set(items.map((i) => i.opportunity_name))).sort();
+  const allPersons = Array.from(
+    new Set(items.map((i) => i.responsible_email).filter(Boolean)),
+  ) as string[];
+  const allOpps = Array.from(
+    new Set(items.map((i) => i.opportunity_name)),
+  ).sort();
 
   const filtered = items.filter((i) => {
-    if (filterStatus && i.action_status !== filterStatus) return false;
+    if (filterStatus === "overdue") {
+      if (!isOverdue(i.due_date, i.action_status)) return false;
+    } else if (filterStatus && i.action_status !== filterStatus) {
+      return false;
+    }
     if (filterPerson && i.responsible_email !== filterPerson) return false;
     if (filterOpp && i.opportunity_name !== filterOpp) return false;
     return true;
   });
 
-  const groups = filtered.reduce<Record<string, { email: string | null; name: string | null; items: ActionItem[] }>>(
-    (acc, item) => {
-      const key = item.responsible_email ?? "__unassigned__";
-      if (!acc[key]) acc[key] = { email: item.responsible_email, name: item.responsible_name, items: [] };
-      acc[key].items.push(item);
-      return acc;
-    },
-    {},
-  );
+  const groups = filtered.reduce<
+    Record<
+      string,
+      { email: string | null; name: string | null; items: ActionItem[] }
+    >
+  >((acc, item) => {
+    const key = item.responsible_email ?? "__unassigned__";
+    if (!acc[key])
+      acc[key] = {
+        email: item.responsible_email,
+        name: item.responsible_name,
+        items: [],
+      };
+    acc[key].items.push(item);
+    return acc;
+  }, {});
 
-  const totalOpen    = filtered.filter((i) => i.action_status === "open").length;
-  const totalClosed  = filtered.filter((i) => i.action_status === "closed").length;
-  const totalBlocked = filtered.filter((i) => i.action_status === "blocked").length;
-  const totalOverdue = filtered.filter((i) => isOverdue(i.due_date, i.action_status)).length;
+  const totalOpen = filtered.filter((i) => i.action_status === "open").length;
+  const totalClosed = filtered.filter(
+    (i) => i.action_status === "closed",
+  ).length;
+  const totalBlocked = filtered.filter(
+    (i) => i.action_status === "blocked",
+  ).length;
+  const totalOverdue = filtered.filter((i) =>
+    isOverdue(i.due_date, i.action_status),
+  ).length;
 
-  if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F4F6FB]">
-      <div className="flex flex-col items-center gap-3">
-        <RefreshCw size={20} className="animate-spin text-indigo-500" />
-        <p className="text-sm font-medium text-slate-400">Loading action items…</p>
+  if (loading)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F6FB]">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw size={20} className="animate-spin text-indigo-500" />
+          <p className="text-sm font-medium text-slate-400">
+            Loading action items…
+          </p>
+        </div>
       </div>
-    </div>
-  );
+    );
 
-  if (error) return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F4F6FB]">
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-5 text-rose-700 text-sm max-w-sm text-center">
-        <AlertTriangle size={20} className="mx-auto mb-2 text-rose-400" /> {error}
+  if (error)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F6FB]">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-5 text-rose-700 text-sm max-w-sm text-center">
+          <AlertTriangle size={20} className="mx-auto mb-2 text-rose-400" />{" "}
+          {error}
+        </div>
       </div>
-    </div>
-  );
+    );
 
   return (
     <div className="min-h-screen bg-[#F1F4FA]">
@@ -507,12 +818,18 @@ export default function PurchasingActionPlansPage() {
               <FolderOpen size={18} className="text-white" />
             </div>
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.4em] text-indigo-400">Purchasing · Action Plans</p>
-              <h1 className="text-xl font-black text-slate-900 leading-tight">Action Management</h1>
+              <p className="text-[9px] font-black uppercase tracking-[0.4em] text-indigo-400">
+                Purchasing · Action Plans
+              </p>
+              <h1 className="text-xl font-black text-slate-900 leading-tight">
+                Action Management
+              </h1>
             </div>
           </div>
-          <button onClick={load}
-            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-700 transition-colors">
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-700 transition-colors"
+          >
             <RefreshCw size={12} /> Refresh
           </button>
         </div>
@@ -522,16 +839,46 @@ export default function PurchasingActionPlansPage() {
         {/* KPI strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Total", value: filtered.length, color: "text-slate-900", subColor: "bg-slate-100" },
-            { label: "Open", value: totalOpen, color: "text-amber-600", subColor: "bg-amber-50 border-amber-100" },
-            { label: "Blocked", value: totalBlocked, color: "text-rose-600", subColor: "bg-rose-50 border-rose-100" },
-            { label: "Overdue", value: totalOverdue, color: totalOverdue > 0 ? "text-rose-700" : "text-emerald-600", subColor: totalOverdue > 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100" },
+            {
+              label: "Total",
+              value: filtered.length,
+              color: "text-slate-900",
+              subColor: "bg-slate-100",
+            },
+            {
+              label: "Open",
+              value: totalOpen,
+              color: "text-amber-600",
+              subColor: "bg-amber-50 border-amber-100",
+            },
+            {
+              label: "Blocked",
+              value: totalBlocked,
+              color: "text-rose-600",
+              subColor: "bg-rose-50 border-rose-100",
+            },
+            {
+              label: "Overdue",
+              value: totalOverdue,
+              color: totalOverdue > 0 ? "text-rose-700" : "text-emerald-600",
+              subColor:
+                totalOverdue > 0
+                  ? "bg-rose-50 border-rose-100"
+                  : "bg-emerald-50 border-emerald-100",
+            },
           ].map((s) => (
-            <div key={s.label} className={`rounded-2xl border px-5 py-4 ${s.subColor}`}>
-              <p className="text-[9.5px] font-black uppercase tracking-[0.2em] text-slate-400">{s.label}</p>
+            <div
+              key={s.label}
+              className={`rounded-2xl border px-5 py-4 ${s.subColor}`}
+            >
+              <p className="text-[9.5px] font-black uppercase tracking-[0.2em] text-slate-400">
+                {s.label}
+              </p>
               <p className={`text-3xl font-black mt-1 ${s.color}`}>{s.value}</p>
               {s.label === "Blocked" || s.label === "Open" ? (
-                <p className="text-[9px] text-slate-400 mt-0.5">{totalClosed} closed</p>
+                <p className="text-[9px] text-slate-400 mt-0.5">
+                  {totalClosed} closed
+                </p>
               ) : null}
             </div>
           ))}
@@ -539,30 +886,60 @@ export default function PurchasingActionPlansPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Filter</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            Filter
+          </span>
           {[
             {
-              value: filterStatus, onChange: setFilterStatus, label: "Status",
-              options: [["open", "Open"], ["closed", "Closed"], ["blocked", "Blocked"]],
+              value: filterStatus,
+              onChange: setFilterStatus,
+              label: "Status",
+              allLabel: "All Statuses",
+              options: [
+                ["open", "Open"],
+                ["closed", "Closed"],
+                ["blocked", "Blocked"],
+                ["overdue", "Overdue"],
+              ],
             },
             {
-              value: filterPerson, onChange: setFilterPerson, label: "Person",
+              value: filterPerson,
+              onChange: setFilterPerson,
+              label: "Person",
+              allLabel: "All Persons",
               options: allPersons.map((p) => [p, personLabel(p, null)]),
             },
             {
-              value: filterOpp, onChange: setFilterOpp, label: "Opportunity",
+              value: filterOpp,
+              onChange: setFilterOpp,
+              label: "Opportunity",
+              allLabel: "All Opportunities",
               options: allOpps.map((o) => [o, o]),
             },
           ].map((f) => (
-            <select key={f.label} value={f.value} onChange={(e) => f.onChange(e.target.value)}
-              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer transition-colors max-w-[220px] ${f.value ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600"}`}>
-              <option value="">All {f.label}s</option>
-              {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select
+              key={f.label}
+              value={f.value}
+              onChange={(e) => f.onChange(e.target.value)}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer transition-colors max-w-[220px] ${f.value ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600"}`}
+            >
+              <option value="">{f.allLabel}</option>
+              {f.options.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
             </select>
           ))}
           {(filterStatus || filterPerson || filterOpp) && (
-            <button onClick={() => { setFilterStatus(""); setFilterPerson(""); setFilterOpp(""); }}
-              className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors">
+            <button
+              onClick={() => {
+                setFilterStatus("");
+                setFilterPerson("");
+                setFilterOpp("");
+              }}
+              className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors"
+            >
               <XCircle size={12} /> Clear
             </button>
           )}
@@ -574,8 +951,12 @@ export default function PurchasingActionPlansPage() {
             <div className="mx-auto h-16 w-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               <User size={24} className="text-slate-300" />
             </div>
-            <p className="text-sm font-bold text-slate-400">No action items found</p>
-            <p className="text-xs text-slate-300 mt-1">Create action plans inside opportunities to see them here.</p>
+            <p className="text-sm font-bold text-slate-400">
+              No action items found
+            </p>
+            <p className="text-xs text-slate-300 mt-1">
+              Create action plans inside opportunities to see them here.
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
