@@ -57,9 +57,7 @@ const formatMoney = (value?: number | null) => {
 };
 
 const labelize = (value: string) =>
-  value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
 const panelCls = "rounded-2xl border border-slate-200 bg-white shadow-sm";
 const tableHeaderCls =
@@ -133,7 +131,11 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
   const [spendLoading, setSpendLoading] = useState(false);
   const [spendError, setSpendError] = useState<string | null>(null);
-  const [spendForm, setSpendForm] = useState({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
+  const [spendForm, setSpendForm] = useState({
+    fiscal_year: "",
+    spend_value: "",
+    spend_currency: "EUR",
+  });
   const [spendAmountDisplay, setSpendAmountDisplay] = useState("");
   const [spendSaving, setSpendSaving] = useState(false);
 
@@ -169,10 +171,14 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
     if (!relationId || !spendForm.fiscal_year || !spendForm.spend_value) return;
     setSpendSaving(true);
     try {
-      await supplierAPI.upsertRelationSpend(relationId, Number(spendForm.fiscal_year), {
-        spend_value: Number(spendForm.spend_value),
-        spend_currency: spendForm.spend_currency,
-      });
+      await supplierAPI.upsertRelationSpend(
+        relationId,
+        Number(spendForm.fiscal_year),
+        {
+          spend_value: Number(spendForm.spend_value),
+          spend_currency: spendForm.spend_currency,
+        },
+      );
       setSpendForm({ fiscal_year: "", spend_value: "", spend_currency: "EUR" });
       setSpendAmountDisplay("");
       await loadSpend();
@@ -288,7 +294,10 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   );
 
   const activePlans = (workspace?.development_plans || []).filter(
-    (plan) => !["approved", "closed", "cancelled"].includes((plan.plan_status || "").toLowerCase()),
+    (plan) =>
+      !["approved", "closed", "cancelled"].includes(
+        (plan.plan_status || "").toLowerCase(),
+      ),
   );
 
   const relation = workspace?.relation;
@@ -312,7 +321,9 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               <p className="mt-1 text-sm text-slate-500">
                 {(site?.site_name || "Unknown site") +
                   " · " +
-                  (unit?.supplier_name || relation?.unit_code || "Unknown unit")}
+                  (unit?.supplier_name ||
+                    relation?.unit_code ||
+                    "Unknown unit")}
               </p>
             </div>
             <button
@@ -363,7 +374,11 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 />
                 <MetricCard
                   label="Operational Grade"
-                  value={workspace.operational_grade || relation?.operational_grade || "—"}
+                  value={
+                    workspace.operational_grade ||
+                    relation?.operational_grade ||
+                    "—"
+                  }
                   tone="emerald"
                 />
                 <MetricCard
@@ -393,16 +408,31 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 <div className="px-5 py-5">
                   <DetailGrid
                     items={[
-                      { label: "Relation Code", value: relation?.relation_code || "—" },
+                      {
+                        label: "Relation Code",
+                        value: relation?.relation_code || "—",
+                      },
                       { label: "Plant Alias", value: relation?.alias_1 || "—" },
                       { label: "Group", value: groupName || "—" },
                       { label: "Site", value: site?.site_name || "—" },
-                      { label: "Unit", value: unit?.supplier_name || relation?.unit_code || "—" },
-                      { label: "Scope", value: relation?.supplier_scope || "—" },
-                      { label: "Owner", value: relation?.supplier_owner || "—" },
+                      {
+                        label: "Unit",
+                        value:
+                          unit?.supplier_name || relation?.unit_code || "—",
+                      },
+                      {
+                        label: "Scope",
+                        value: relation?.supplier_scope || "—",
+                      },
+                      {
+                        label: "Owner",
+                        value: relation?.supplier_owner || "—",
+                      },
                       {
                         label: "Annual Spend",
-                        value: formatMoney(relation?.annual_spend_value ?? null),
+                        value: formatMoney(
+                          relation?.annual_spend_value ?? null,
+                        ),
                       },
                       {
                         label: "Frequency",
@@ -424,21 +454,6 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                         label: "Last Status Change",
                         value: formatDate(relation?.last_status_change),
                       },
-                    ]}
-                  />
-                </div>
-              </section>
-
-              <section className={panelCls}>
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h3 className="text-sm font-bold text-slate-900">
-                    SB1 Data
-                  </h3>
-                </div>
-                <div className="px-5 py-5">
-                  <DetailGrid
-                    items={[
-                      { label: "Last Eval Score", value: relation?.last_eval_score != null ? String(relation.last_eval_score) : "—" },
                     ]}
                   />
                 </div>
@@ -497,7 +512,9 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       },
                       {
                         label: "Override Date",
-                        value: formatDate(workspace.status_override?.changed_at),
+                        value: formatDate(
+                          workspace.status_override?.changed_at,
+                        ),
                       },
                     ]}
                   />
@@ -507,16 +524,22 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               <div className="grid gap-6 xl:grid-cols-2">
                 <section className={panelCls}>
                   <div className="border-b border-slate-100 px-5 py-4">
-                    <h3 className="text-sm font-bold text-slate-900">Comments</h3>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Comments
+                    </h3>
                   </div>
                   <div className="space-y-4 px-5 py-5">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                      {workspace.comments || relation?.evaluation_comments || "No evaluation comments yet."}
+                      {workspace.comments ||
+                        relation?.evaluation_comments ||
+                        "No evaluation comments yet."}
                     </div>
                     {workspace.status_override?.reason && (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                         <p className="font-semibold">Override reason</p>
-                        <p className="mt-1">{workspace.status_override.reason}</p>
+                        <p className="mt-1">
+                          {workspace.status_override.reason}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -537,14 +560,16 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="font-semibold text-slate-800">
-                              {plan.plan_title || `Plan #${plan.id_development_plan}`}
+                              {plan.plan_title ||
+                                `Plan #${plan.id_development_plan}`}
                             </p>
                             <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">
                               {plan.plan_status || "—"}
                             </span>
                           </div>
                           <p className="mt-2 text-xs text-slate-500">
-                            Due {formatDate(plan.due_date)} · Submitted {formatDate(plan.submission_date)}
+                            Due {formatDate(plan.due_date)} · Submitted{" "}
+                            {formatDate(plan.submission_date)}
                           </p>
                         </div>
                       ))
@@ -575,7 +600,9 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {criteriaDecisionRows.map(([label, value]) => (
                           <tr key={label}>
-                            <td className={`${tableCellCls} font-semibold`}>{label}</td>
+                            <td className={`${tableCellCls} font-semibold`}>
+                              {label}
+                            </td>
                             <td className={tableCellCls}>{value || "—"}</td>
                           </tr>
                         ))}
@@ -607,8 +634,12 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {criteriaScoreRows.map(([label, value]) => (
                           <tr key={label}>
-                            <td className={`${tableCellCls} font-semibold`}>{label}</td>
-                            <td className={tableCellCls}>{formatNumber(value as number)}</td>
+                            <td className={`${tableCellCls} font-semibold`}>
+                              {label}
+                            </td>
+                            <td className={tableCellCls}>
+                              {formatNumber(value as number)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -642,8 +673,12 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {criteriaEvidenceRows.map((row) => (
                           <tr key={row.key}>
-                            <td className={`${tableCellCls} font-semibold`}>{row.label}</td>
-                            <td className={tableCellCls}>{formatNumber(row.score ?? null)}</td>
+                            <td className={`${tableCellCls} font-semibold`}>
+                              {row.label}
+                            </td>
+                            <td className={tableCellCls}>
+                              {formatNumber(row.score ?? null)}
+                            </td>
                             <td className={tableCellCls}>
                               {row.documentUrl ? (
                                 <a
@@ -699,22 +734,32 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                           <td className={tableCellCls}>
                             {formatDate(entry.changed_at || entry.created_at)}
                           </td>
-                          <td className={tableCellCls}>{entry.changed_by || "—"}</td>
                           <td className={tableCellCls}>
-                            {(entry.old_status || "—") + " → " + (entry.new_status || "—")}
+                            {entry.changed_by || "—"}
                           </td>
                           <td className={tableCellCls}>
-                            {(entry.old_class ?? "—") + " → " + (entry.new_class ?? "—")}
+                            {(entry.old_status || "—") +
+                              " → " +
+                              (entry.new_status || "—")}
                           </td>
                           <td className={tableCellCls}>
-                            {(entry.old_grade || "—") + " → " + (entry.new_grade || "—")}
+                            {(entry.old_class ?? "—") +
+                              " → " +
+                              (entry.new_class ?? "—")}
+                          </td>
+                          <td className={tableCellCls}>
+                            {(entry.old_grade || "—") +
+                              " → " +
+                              (entry.new_grade || "—")}
                           </td>
                           <td className={tableCellCls}>
                             {(entry.old_panel_decision || "—") +
                               " → " +
                               (entry.new_panel_decision || "—")}
                           </td>
-                          <td className={tableCellCls}>{entry.change_reason || "—"}</td>
+                          <td className={tableCellCls}>
+                            {entry.change_reason || "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -751,10 +796,15 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       {workspace.development_plans.map((plan) => (
                         <tr key={plan.id_development_plan}>
                           <td className={`${tableCellCls} font-semibold`}>
-                            {plan.plan_title || `Plan #${plan.id_development_plan}`}
+                            {plan.plan_title ||
+                              `Plan #${plan.id_development_plan}`}
                           </td>
-                          <td className={tableCellCls}>{plan.plan_status || "—"}</td>
-                          <td className={tableCellCls}>{formatDate(plan.issue_date)}</td>
+                          <td className={tableCellCls}>
+                            {plan.plan_status || "—"}
+                          </td>
+                          <td className={tableCellCls}>
+                            {formatDate(plan.issue_date)}
+                          </td>
                           <td className={tableCellCls}>
                             <div className="space-y-1">
                               <div>{formatDate(plan.due_date)}</div>
@@ -767,9 +817,15 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                               )}
                             </div>
                           </td>
-                          <td className={tableCellCls}>{formatDate(plan.submission_date)}</td>
-                          <td className={tableCellCls}>{formatDate(plan.decision_date)}</td>
-                          <td className={tableCellCls}>{plan.internal_comments || "—"}</td>
+                          <td className={tableCellCls}>
+                            {formatDate(plan.submission_date)}
+                          </td>
+                          <td className={tableCellCls}>
+                            {formatDate(plan.decision_date)}
+                          </td>
+                          <td className={tableCellCls}>
+                            {plan.internal_comments || "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -793,7 +849,9 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               {/* Add / edit form */}
               <section className={panelCls}>
                 <div className="border-b border-slate-100 px-5 py-4">
-                  <h3 className="text-sm font-bold text-slate-900">Add / Update Entry</h3>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Add / Update Entry
+                  </h3>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Saving an existing year overwrites it (upsert).
                   </p>
@@ -810,7 +868,10 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       placeholder={String(new Date().getFullYear())}
                       value={spendForm.fiscal_year}
                       onChange={(e) =>
-                        setSpendForm((f) => ({ ...f, fiscal_year: e.target.value }))
+                        setSpendForm((f) => ({
+                          ...f,
+                          fiscal_year: e.target.value,
+                        }))
                       }
                       className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
                     />
@@ -835,18 +896,27 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                     <select
                       value={spendForm.spend_currency}
                       onChange={(e) =>
-                        setSpendForm((f) => ({ ...f, spend_currency: e.target.value }))
+                        setSpendForm((f) => ({
+                          ...f,
+                          spend_currency: e.target.value,
+                        }))
                       }
                       className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
                     >
                       {CURRENCIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <button
                     type="button"
-                    disabled={spendSaving || !spendForm.fiscal_year || !spendForm.spend_value}
+                    disabled={
+                      spendSaving ||
+                      !spendForm.fiscal_year ||
+                      !spendForm.spend_value
+                    }
                     onClick={handleSpendUpsert}
                     className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -858,7 +928,9 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               {/* History table */}
               <section className={panelCls}>
                 <div className="border-b border-slate-100 px-5 py-4">
-                  <h3 className="text-sm font-bold text-slate-900">Spend History</h3>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Spend History
+                  </h3>
                 </div>
                 {spendLoading ? (
                   <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400">
@@ -885,24 +957,39 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {spendEntries.map((entry) => (
                           <tr key={entry.fiscal_year}>
-                            <td className={`${tableCellCls} font-semibold`}>{entry.fiscal_year}</td>
-                            <td className={tableCellCls}>
-                              {Number(entry.spend_value).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
+                            <td className={`${tableCellCls} font-semibold`}>
+                              {entry.fiscal_year}
                             </td>
-                            <td className={tableCellCls}>{entry.spend_currency}</td>
-                            <td className={tableCellCls}>{formatDate(entry.updated_at)}</td>
-                            <td className={tableCellCls}>{entry.updated_by || "—"}</td>
+                            <td className={tableCellCls}>
+                              {Number(entry.spend_value).toLocaleString(
+                                undefined,
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                },
+                              )}
+                            </td>
+                            <td className={tableCellCls}>
+                              {entry.spend_currency}
+                            </td>
+                            <td className={tableCellCls}>
+                              {formatDate(entry.updated_at)}
+                            </td>
+                            <td className={tableCellCls}>
+                              {entry.updated_by || "—"}
+                            </td>
                             <td className={tableCellCls}>
                               <button
                                 type="button"
                                 disabled={deletingYear === entry.fiscal_year}
-                                onClick={() => handleSpendDelete(entry.fiscal_year)}
+                                onClick={() =>
+                                  handleSpendDelete(entry.fiscal_year)
+                                }
                                 className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {deletingYear === entry.fiscal_year ? "Deleting…" : "Delete"}
+                                {deletingYear === entry.fiscal_year
+                                  ? "Deleting…"
+                                  : "Delete"}
                               </button>
                             </td>
                           </tr>
@@ -919,4 +1006,3 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
     </div>
   );
 };
-

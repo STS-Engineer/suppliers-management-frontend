@@ -828,6 +828,9 @@ class SupplierOnboardingAPI {
     sub_family?: string;
     product_line?: string;
     supplier_name?: string;
+    alias?: string;
+    group_name?: string;
+    unit_name?: string;
     include_inactive?: boolean;
   }): Promise<{
     status: string;
@@ -861,6 +864,9 @@ class SupplierOnboardingAPI {
     if (params.sub_family) query.set("sub_family", params.sub_family);
     if (params.product_line) query.set("product_line", params.product_line);
     if (params.supplier_name) query.set("supplier_name", params.supplier_name);
+    if (params.alias) query.set("alias", params.alias);
+    if (params.group_name) query.set("group_name", params.group_name);
+    if (params.unit_name) query.set("unit_name", params.unit_name);
     if (params.include_inactive) query.set("include_inactive", "true");
 
     return this.request(

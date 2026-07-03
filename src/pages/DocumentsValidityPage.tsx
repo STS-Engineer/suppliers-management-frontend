@@ -788,7 +788,11 @@ export default function DocumentsValidityPage() {
     for (const item of relations) {
       const relId = item.relation.id_relation;
       map[relId] = {
-        supplierName: item.unit?.supplier_name ?? item.group?.nom ?? `Supplier #${relId}`,
+        supplierName:
+          item.relation?.alias_1 ||
+          item.unit?.supplier_name ||
+          item.group?.nom ||
+          `Supplier #${relId}`,
         siteName:
           sites[item.relation.id_site!] ?? `Site #${item.relation.id_site}`,
       };
@@ -878,7 +882,10 @@ export default function DocumentsValidityPage() {
       await Promise.allSettled(
         batch.map(async (relId) => {
           const entries = byRelation.get(relId)!;
-          const payload: Record<string, null> = {};
+          const payload: Record<string, unknown> = {
+            cycle_type: "Expired Criteria Reset",
+            comments: "Auto-cleared by the Criteria Validity Tracker's bulk reset — validity expired.",
+          };
           for (const e of entries) payload[e.criterionKey] = null;
           try {
             await supplierAPI.updateRelationClassEvaluation(relId, payload);

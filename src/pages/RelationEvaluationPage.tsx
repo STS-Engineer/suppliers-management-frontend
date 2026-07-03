@@ -719,38 +719,29 @@ export default function RelationEvaluationPage() {
         seededDetails[k] = v as CriterionDetail;
       }
 
-      // Auto-populate quality_certification details from the best-scoring non-expired unit cert
-      const CERT_SCORE_ORDER = [
-        "IATF / ISO9001 (cat BCD)",
-        "IATF 16949:2016",
-        "ISO 9001 (cat BCD)",
-        "ISO9001 (cat BCD)",
-        "ISO9001",
-        "ISO 9001",
-      ];
-      const today = new Date().toISOString().slice(0, 10);
-      const qualCertsAll = (ws.unit_certifications ?? []).filter(
-        (c: any) => c.certification_type,
-      );
-      // Prefer non-expired; fall back to expired if all are expired
-      const qualCertsValid = qualCertsAll.filter(
-        (c: any) => !c.end_date || c.end_date >= today,
-      );
-      const qualCertPool = qualCertsValid.length > 0 ? qualCertsValid : qualCertsAll;
-      const qualCert = [...qualCertPool].sort((a: any, b: any) => {
-        const ra = CERT_SCORE_ORDER.indexOf(a.certification_type);
-        const rb = CERT_SCORE_ORDER.indexOf(b.certification_type);
-        return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
-      })[0];
-      if (
-        qualCert &&
-        !seededDetails["quality_certification"]?.validity_start_date
-      ) {
-        seededDetails["quality_certification"] = {
-          ...seededDetails["quality_certification"],
-          validity_start_date: qualCert.start_date ?? undefined,
-          validity_end_date: qualCert.end_date ?? undefined,
-        };
+      // quality_certification's value/score always comes from the backend (server-
+      // derived, live from the unit's certifications -- see get_relation_evaluation_
+      // workspace). The only thing left to do client-side is a display-only fallback:
+      // if the validity dates haven't been synced onto class_criteria_details yet
+      // (e.g. no cert CRUD event has touched this relation since it was created),
+      // show the current best cert's dates so the locked "Validity" fields aren't
+      // blank on first view.
+      if (!seededDetails["quality_certification"]?.validity_start_date) {
+        const today = new Date().toISOString().slice(0, 10);
+        const qualCertsAll = (ws.unit_certifications ?? []).filter(
+          (c: any) => c.certification_type,
+        );
+        const qualCertsValid = qualCertsAll.filter(
+          (c: any) => !c.end_date || c.end_date >= today,
+        );
+        const fallbackCert = (qualCertsValid.length > 0 ? qualCertsValid : qualCertsAll)[0];
+        if (fallbackCert) {
+          seededDetails["quality_certification"] = {
+            ...seededDetails["quality_certification"],
+            validity_start_date: fallbackCert.start_date ?? undefined,
+            validity_end_date: fallbackCert.end_date ?? undefined,
+          };
+        }
       }
       setCriteriaDetails(seededDetails);
 
@@ -796,7 +787,7 @@ export default function RelationEvaluationPage() {
         sqma: normalizeUiCriteriaValue("sqma", src.sqma),
         quality_certification: normalizeUiCriteriaValue(
           "quality_certification",
-          src.quality_certification || qualCert?.certification_type,
+          src.quality_certification,
         ),
         family_coverage: normalizeUiCriteriaValue(
           "family_coverage",
@@ -925,7 +916,6 @@ export default function RelationEvaluationPage() {
         top: form.top,
         lta: form.lta,
         productivity: form.prod,
-        quality_certification: form.quality_certification,
         prod_lia_ins: form.prod_lia_ins,
         competitiveness: form.competitiveness,
         sqma: form.sqma,
@@ -962,7 +952,6 @@ export default function RelationEvaluationPage() {
         top: form.top,
         lta: form.lta,
         prod: form.prod,
-        quality_certification: form.quality_certification,
         prod_lia_ins: form.prod_lia_ins,
         competitiveness: form.competitiveness,
         sqma: form.sqma,
@@ -1068,7 +1057,6 @@ export default function RelationEvaluationPage() {
         top: form.top,
         lta: form.lta,
         productivity: form.prod,
-        quality_certification: form.quality_certification,
         prod_lia_ins: form.prod_lia_ins,
         competitiveness: form.competitiveness,
         sqma: form.sqma,
@@ -1112,10 +1100,13 @@ export default function RelationEvaluationPage() {
       setHasDraft(false);
 
       // 4. For vp_conversion: approve the relation directly. Others: submit for review.
+      // Not caught here on purpose -- a failure must surface as a real error instead
+      // of silently leaving the relation stuck in its previous status while the UI
+      // claims success.
       if (isVpConversion) {
-        await supplierAPI.approveRelationReview(relId).catch(() => undefined);
+        await supplierAPI.approveRelationReview(relId);
       } else {
-        await supplierAPI.submitRelationForReview(relId).catch(() => undefined);
+        await supplierAPI.submitRelationForReview(relId);
       }
 
       const successMsg = isVpConversion
@@ -3304,6 +3295,16 @@ const CYCLE_TYPE_STYLE: Record<
     bg: "bg-sky-50 border-sky-200",
     text: "text-sky-800",
     dot: "bg-sky-400",
+  },
+  "Certification Update": {
+    bg: "bg-teal-50 border-teal-200",
+    text: "text-teal-800",
+    dot: "bg-teal-400",
+  },
+  "Expired Criteria Reset": {
+    bg: "bg-rose-50 border-rose-200",
+    text: "text-rose-800",
+    dot: "bg-rose-400",
   },
 };
 

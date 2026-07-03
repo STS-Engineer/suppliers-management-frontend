@@ -1079,6 +1079,9 @@ export default function ActiveSitesPage() {
   const [filterFamily, setFilterFamily] = useState("");
   const [filterSubFamily, setFilterSubFamily] = useState("");
   const [filterProductLine, setFilterProductLine] = useState("");
+  const [filterAlias, setFilterAlias] = useState("");
+  const [filterGroupName, setFilterGroupName] = useState("");
+  const [filterUnitName, setFilterUnitName] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -1106,6 +1109,9 @@ export default function ActiveSitesPage() {
           family: filterFamily || undefined,
           sub_family: filterSubFamily || undefined,
           product_line: filterProductLine || undefined,
+          alias: filterAlias || undefined,
+          group_name: filterGroupName || undefined,
+          unit_name: filterUnitName || undefined,
         });
 
         if (cancelled) return;
@@ -1139,6 +1145,9 @@ export default function ActiveSitesPage() {
     filterFamily,
     filterSubFamily,
     filterProductLine,
+    filterAlias,
+    filterGroupName,
+    filterUnitName,
     activeTab,
     reloadTick,
   ]);
@@ -1197,16 +1206,29 @@ export default function ActiveSitesPage() {
           normalizeText(row.site.site_name).includes(keyword) ||
           normalizeText(row.group.nom).includes(keyword) ||
           normalizeText(row.unit.supplier_name).includes(keyword) ||
+          normalizeText(row.relation.alias_1 ?? "").includes(keyword) ||
           normalizeText(row.unit.family ?? "").includes(keyword) ||
           normalizeText(row.unit.product_line ?? "").includes(keyword),
       );
+    }
+    if (filterAlias) {
+      const kw = normalizeText(filterAlias);
+      rows = rows.filter((row) => normalizeText(row.relation.alias_1 ?? "").includes(kw));
+    }
+    if (filterGroupName) {
+      const kw = normalizeText(filterGroupName);
+      rows = rows.filter((row) => normalizeText(row.group.nom).includes(kw));
+    }
+    if (filterUnitName) {
+      const kw = normalizeText(filterUnitName);
+      rows = rows.filter((row) => normalizeText(row.unit.supplier_name).includes(kw));
     }
     if (filterPlant) {
       const kw = normalizeText(filterPlant);
       rows = rows.filter((row) => normalizeText(row.site.site_name).includes(kw));
     }
     return rows;
-  }, [relationRows, activeTab, search, filterPlant]);
+  }, [relationRows, activeTab, search, filterPlant, filterAlias, filterGroupName, filterUnitName]);
 
   const counts = useMemo(() => {
     let onPanel = 0;
@@ -1242,7 +1264,10 @@ export default function ActiveSitesPage() {
     filterPlant ||
     filterFamily ||
     filterSubFamily ||
-    filterProductLine;
+    filterProductLine ||
+    filterAlias ||
+    filterGroupName ||
+    filterUnitName;
 
   const clearFilters = () => {
     setSearch("");
@@ -1253,6 +1278,9 @@ export default function ActiveSitesPage() {
     setFilterFamily("");
     setFilterSubFamily("");
     setFilterProductLine("");
+    setFilterAlias("");
+    setFilterGroupName("");
+    setFilterUnitName("");
   };
 
   const toggleRelationActive = async (relationId: number, currentActive: boolean) => {
@@ -1350,6 +1378,9 @@ export default function ActiveSitesPage() {
                     filterFamily,
                     filterSubFamily,
                     filterProductLine,
+                    filterAlias,
+                    filterGroupName,
+                    filterUnitName,
                   ].filter(Boolean).length
                 }
               </span>
@@ -1438,6 +1469,28 @@ export default function ActiveSitesPage() {
           />
         </div>
 
+        {/* Row 3 — identity filters (alias, group, unit name) */}
+        <div className="grid grid-cols-2 gap-3 border-t border-slate-100 px-5 py-4 sm:grid-cols-3 dark:border-white/[0.06]">
+          <FilterSearch
+            label="Alias"
+            value={filterAlias}
+            onChange={setFilterAlias}
+            placeholder="Filter by alias…"
+          />
+          <FilterSearch
+            label="Group Name"
+            value={filterGroupName}
+            onChange={setFilterGroupName}
+            placeholder="Filter by group name…"
+          />
+          <FilterSearch
+            label="Unit Name"
+            value={filterUnitName}
+            onChange={setFilterUnitName}
+            placeholder="Filter by unit name…"
+          />
+        </div>
+
         {/* Active filter chips */}
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-3 dark:border-white/[0.06]">
@@ -1477,6 +1530,21 @@ export default function ActiveSitesPage() {
                 label: "Product Line",
                 value: filterProductLine,
                 clear: () => setFilterProductLine(""),
+              },
+              {
+                label: "Alias",
+                value: filterAlias,
+                clear: () => setFilterAlias(""),
+              },
+              {
+                label: "Group Name",
+                value: filterGroupName,
+                clear: () => setFilterGroupName(""),
+              },
+              {
+                label: "Unit Name",
+                value: filterUnitName,
+                clear: () => setFilterUnitName(""),
               },
             ]
               .filter((f) => f.value)
@@ -1718,7 +1786,10 @@ export default function ActiveSitesPage() {
               <tbody>
                 {pagedRows.map((row) => {
                   const gradeTone = getGradeTone(row.relation.final_grade);
-                  const name = row.group.nom || "?";
+                  const unitDisplayName =
+                    row.unit.supplier_name ||
+                    `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`;
+                  const primaryName = row.relation.alias_1 || unitDisplayName;
                   const accentClass =
                     GRADE_ACCENT[gradeTone] ?? GRADE_ACCENT.slate;
                   const gradeTileClass =
@@ -1734,17 +1805,19 @@ export default function ActiveSitesPage() {
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div
-                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-extrabold text-white shadow-sm ${supplierPalette(name)}`}
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-extrabold text-white shadow-sm ${supplierPalette(primaryName)}`}
                           >
-                            {supplierInitials(name)}
+                            {supplierInitials(primaryName)}
                           </div>
                           <div className="min-w-0">
                             <div className="truncate text-[12.5px] font-semibold text-slate-800 dark:text-slate-100">
-                              {name}
+                              {primaryName}
                             </div>
-                            <div className="font-mono text-[10.5px] text-slate-400 dark:text-slate-500">
-                              {row.unit.supplier_name ||
-                                `UNT-${String(row.unit.id_supplier_unit).padStart(6, "0")}`}
+                            <div className="truncate font-mono text-[10.5px] text-slate-400 dark:text-slate-500">
+                              {unitDisplayName}
+                            </div>
+                            <div className="truncate text-[10px] text-slate-400 dark:text-slate-500">
+                              {row.group.nom || "—"}
                             </div>
                           </div>
                         </div>
