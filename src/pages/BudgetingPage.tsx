@@ -40,6 +40,7 @@ interface BudgetYearItem {
   delta_ytd_eur?: number | null;
   delta_eoy_budget?: number | null;
   real_start_date?: string | null;
+  execution_start_date?: string | null;
   duration_months?: number | null;
 }
 
@@ -300,7 +301,23 @@ export default function BudgetingPage() {
           )}
         </td>
         <td className="px-3 py-2.5 text-slate-600">{item.phase_status || "—"}</td>
-        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{fmtDate(item.real_start_date)}</td>
+        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
+          {item.real_start_date ? (
+            fmtDate(item.real_start_date)
+          ) : item.execution_start_date ? (
+            <span className="inline-flex items-center gap-1">
+              {fmtDate(item.execution_start_date)}
+              <span
+                title="Execution started (Phase 2) — real start date not confirmed yet"
+                className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-700"
+              >
+                exec.
+              </span>
+            </span>
+          ) : (
+            "—"
+          )}
+        </td>
         <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDuration(item.duration_months)}</td>
         <td className="px-3 py-2.5">
           {item.portion_kind && (
@@ -342,7 +359,7 @@ export default function BudgetingPage() {
           <th className={COL_HEADER}>Plant</th>
           <th className={COL_HEADER}>Type</th>
           <th className={COL_HEADER}>Phase</th>
-          <th className={COL_HEADER}>Deployment Start</th>
+          <th className={COL_HEADER} title="Confirmed real start date, or execution start date for Phase 2 opportunities not yet confirmed">Deployment Start</th>
           <th className={COL_HEADER}>Savings Duration</th>
           <th className={COL_HEADER}>Portion</th>
           <th className={`${COL_HEADER} text-right`}>Saving FY {fiscalYear}</th>
@@ -364,7 +381,7 @@ export default function BudgetingPage() {
           <p className="mt-0.5 text-sm text-slate-500">
             {selectMode
               ? `Create Budget ${fiscalYear} — set Budgeted / Excluded / Opportunity for each baseline opportunity.`
-              : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ confirmed opps only`}
+              : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ confirmed opps, or Phase 2 with execution started`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -447,7 +464,7 @@ export default function BudgetingPage() {
             <h3 className="mb-2 text-base font-bold text-slate-800">Close Budget {fiscalYear}?</h3>
             <ul className="mb-4 space-y-1.5 text-xs text-slate-600 list-disc list-inside">
               <li>All <strong>Budgeted</strong> baseline rows are <strong>locked</strong> — the baseline cannot change.</li>
-              <li>Any new Phase 3+ opp with real_start_date in {fiscalYear} will appear as <strong className="text-violet-700">Additional</strong>.</li>
+              <li>Any new Phase 3+ opp with real_start_date in {fiscalYear} (or Phase 2 opp with execution started) will appear as <strong className="text-violet-700">Additional</strong>.</li>
               <li>This action is <strong>irreversible</strong>.</li>
             </ul>
             <div className="flex justify-end gap-2">
@@ -538,7 +555,7 @@ export default function BudgetingPage() {
 
       {!loading && items.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          No Phase 3+ opportunities with confirmed real start date in FY {fiscalYear}.
+          No Phase 3+ opportunities with confirmed real start date (or Phase 2 with execution started) in FY {fiscalYear}.
         </div>
       )}
 
@@ -629,8 +646,8 @@ export default function BudgetingPage() {
             <div className="rounded-xl border-2 border-dashed border-violet-100 py-8 text-center">
               <p className="text-sm font-semibold text-violet-400">No additional opportunities yet</p>
               <p className="mt-1 text-[11px] text-slate-400">
-                When a Phase 3+ opportunity with a {fiscalYear} real start date is confirmed after budget closure,
-                it will appear here automatically.
+                When a Phase 3+ opportunity with a {fiscalYear} real start date (or a Phase 2 opportunity with
+                execution started) becomes eligible after budget closure, it will appear here automatically.
               </p>
             </div>
           ) : (
@@ -671,7 +688,8 @@ export default function BudgetingPage() {
       )}
 
       <p className="text-[11px] text-slate-400">
-        Only <strong>Phase 3 / Phase 4 / Completed</strong> opportunities with a confirmed real start date appear here.
+        Only <strong>Phase 3 / Phase 4 / Completed</strong> opportunities with a confirmed real start date, or{" "}
+        <strong>Phase 2</strong> opportunities with execution already started, appear here.
         Savings are split pro-rata by actual days across calendar years (01 Jan – 31 Dec).
         Amounts in transaction currency; KPI totals consolidated in <strong>EUR</strong>.
       </p>

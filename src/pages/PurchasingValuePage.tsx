@@ -4142,7 +4142,16 @@ function GateTab({
   }
 
   async function submitCommitteeApprovalRequest() {
-    const tier = opp.committee_level || committeeLevel;
+    if (committeeMissing.length > 0) {
+      setApprovalError(
+        `Complete all required fields before sending: ${committeeMissing.map((c) => c.label).join(", ")}`,
+      );
+      return;
+    }
+    const tier =
+      opp.committee_level ||
+      committeeLevel ||
+      (opp.phase_status !== "Phase 1" ? "Light" : "");
     if (!tier) {
       setApprovalError("Select a committee level (Light, Intermediate or Full).");
       return;
@@ -4315,6 +4324,10 @@ function GateTab({
         ]),
   ];
   const phase0Missing = phase0Checks.filter((c) => !c.ok);
+  // Same completeness checklist (STP fields, duration, planned start date,
+  // FX rate, etc.) reused for the Phase 1-4 sourcing committee request — the
+  // underlying data these gates decide on shouldn't be incomplete either.
+  const committeeMissing = phase0Missing;
 
   const act = async (fn: () => Promise<void>) => {
     setLoading(true);
@@ -4562,43 +4575,72 @@ function GateTab({
 
             {showApproval && opp.phase_status !== "Phase 0" && (
               <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-3">
+                {committeeMissing.length > 0 && (
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                    <p className="text-[10.5px] font-bold text-orange-700 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle size={12} /> Complete before sending
+                    </p>
+                    <ul className="space-y-1">
+                      {committeeMissing.map((c, idx) => (
+                        <li key={idx} className="flex items-center gap-1.5 text-[10px] text-orange-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
+                          {c.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {approvalError && (
                   <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
                     {approvalError}
                   </p>
                 )}
-                {opp.committee_level ? (
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
-                    Committee level locked at{" "}
-                    <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
-                    (chosen at Phase 1).
-                  </div>
-                ) : (
-                  <div>
-                    <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                      Committee level <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex gap-2">
-                      {COMMITTEE_LEVELS.map((lvl) => (
-                        <button
-                          key={lvl}
-                          type="button"
-                          onClick={() => setCommitteeLevel(lvl)}
-                          className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
-                            committeeLevel === lvl
-                              ? "border-amber-400 bg-amber-100 text-amber-800"
-                              : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
-                          }`}
-                        >
-                          {lvl}
-                        </button>
-                      ))}
+                {/* Committee level is only chosen/shown at Phase 1 — Phase 2/3/4
+                    reuse the locked tier silently (it no longer affects which
+                    roles are mandatory there, see mandatoryRolesForPhase), so
+                    we skip straight to Required approvers / Add optional
+                    reviewers instead of showing the tier picker or badge again. */}
+                {opp.phase_status === "Phase 1" && (
+                  opp.committee_level ? (
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                      Committee level locked at{" "}
+                      <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
+                      (chosen at Phase 1).
                     </div>
-                  </div>
+                  ) : (
+                    <div>
+                      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                        Committee level <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-2">
+                        {COMMITTEE_LEVELS.map((lvl) => (
+                          <button
+                            key={lvl}
+                            type="button"
+                            onClick={() => setCommitteeLevel(lvl)}
+                            className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+                              committeeLevel === lvl
+                                ? "border-amber-400 bg-amber-100 text-amber-800"
+                                : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
+                            }`}
+                          >
+                            {lvl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
                 )}
 
                 {(() => {
-                  const tier = (opp.committee_level || committeeLevel) as
+                  // Phase 2-4 don't need a tier to determine mandatory roles
+                  // (see mandatoryRolesForPhase) — default to "Light" so the
+                  // required-approvers section still renders even for legacy
+                  // opportunities that never had a committee_level recorded
+                  // (e.g. their Phase 1 gate predates this feature).
+                  const tier = (opp.committee_level ||
+                    committeeLevel ||
+                    (opp.phase_status !== "Phase 1" ? "Light" : "")) as
                     | CommitteeLevel
                     | "";
                   if (!tier) return null;
@@ -4612,7 +4654,7 @@ function GateTab({
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                           {opp.phase_status === "Phase 1"
                             ? `Required approvers — ${tier} Committee`
-                            : `Required approvers — ${opp.phase_status} (${tier} Committee)`}
+                            : `Required approvers — ${opp.phase_status}`}
                         </p>
                         {mandatoryRoles.map((role) => (
                           <div key={role} className="flex items-center gap-2">
@@ -4677,9 +4719,22 @@ function GateTab({
                   />
                 </div>
                 <button
-                  disabled={approvalSubmitting || !(opp.committee_level || committeeLevel)}
+                  disabled={
+                    approvalSubmitting ||
+                    committeeMissing.length > 0 ||
+                    !(
+                      opp.committee_level ||
+                      committeeLevel ||
+                      (opp.phase_status !== "Phase 1" ? "Light" : "")
+                    )
+                  }
                   onClick={submitCommitteeApprovalRequest}
                   className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                  title={
+                    committeeMissing.length > 0
+                      ? `Complete required fields first: ${committeeMissing.map((c) => c.label).join(", ")}`
+                      : undefined
+                  }
                 >
                   {approvalSubmitting ? "Sending…" : "Send Approval Links"}
                 </button>
