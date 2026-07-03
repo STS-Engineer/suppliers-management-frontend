@@ -41,6 +41,8 @@ interface BudgetYearItem {
   delta_eoy_budget?: number | null;
   real_start_date?: string | null;
   execution_start_date?: string | null;
+  planned_start_date?: string | null;
+  created_at?: string | null;
   duration_months?: number | null;
 }
 
@@ -301,23 +303,10 @@ export default function BudgetingPage() {
           )}
         </td>
         <td className="px-3 py-2.5 text-slate-600">{item.phase_status || "—"}</td>
-        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-          {item.real_start_date ? (
-            fmtDate(item.real_start_date)
-          ) : item.execution_start_date ? (
-            <span className="inline-flex items-center gap-1">
-              {fmtDate(item.execution_start_date)}
-              <span
-                title="Execution started (Phase 2) — real start date not confirmed yet"
-                className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-700"
-              >
-                exec.
-              </span>
-            </span>
-          ) : (
-            "—"
-          )}
-        </td>
+        <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(item.created_at)}</td>
+        <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(item.planned_start_date)}</td>
+        <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(item.execution_start_date)}</td>
+        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{fmtDate(item.real_start_date)}</td>
         <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDuration(item.duration_months)}</td>
         <td className="px-3 py-2.5">
           {item.portion_kind && (
@@ -359,7 +348,10 @@ export default function BudgetingPage() {
           <th className={COL_HEADER}>Plant</th>
           <th className={COL_HEADER}>Type</th>
           <th className={COL_HEADER}>Phase</th>
-          <th className={COL_HEADER} title="Confirmed real start date, or execution start date for Phase 2 opportunities not yet confirmed">Deployment Start</th>
+          <th className={COL_HEADER} title="Study start date (Phase 0 kickoff) — the opportunity has no separate creation timestamp">Created</th>
+          <th className={COL_HEADER} title="Anticipated savings start date, entered on the opportunity">Planned Start</th>
+          <th className={COL_HEADER} title="Phase 2 — when execution work began (tooling ordered, supplier contacted)">Execution Start</th>
+          <th className={COL_HEADER} title="Confirmed real start date — when savings actually started flowing">Deployment Start</th>
           <th className={COL_HEADER}>Savings Duration</th>
           <th className={COL_HEADER}>Portion</th>
           <th className={`${COL_HEADER} text-right`}>Saving FY {fiscalYear}</th>
