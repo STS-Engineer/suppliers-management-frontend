@@ -5,6 +5,7 @@ import supplierAPI from "../services/supplierOnboardingAPI";
 interface PeerVote {
   approver_email: string | null;
   is_plant_manager: boolean | null;
+  approver_role: string | null;
   decision: string | null;
   decided_at: string | null;
 }
@@ -12,6 +13,8 @@ interface PeerVote {
 interface VoteForm {
   vote_id: number;
   approver_email: string | null;
+  approver_role: string | null;
+  committee_level: string | null;
   already_decided: boolean;
   decision: string | null;
   token_expires_at: string | null;
@@ -51,6 +54,7 @@ interface VoteForm {
   annual_quantity_n1: number | null;
   annual_quantity_n2: number | null;
   annual_quantity_n3: number | null;
+  annual_quantity_n4: number | null;
   // Savings
   saving_year_n: number | null;
   saving_year_n1: number | null;
@@ -271,10 +275,16 @@ export default function GateApprovalPage() {
                           {v.approver_email}
                           {isSelf && " (you)"}
                         </span>
-                        {v.is_plant_manager && (
-                          <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
-                            Plant Mgr
+                        {v.approver_role ? (
+                          <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700">
+                            {v.approver_role}
                           </span>
+                        ) : (
+                          v.is_plant_manager && (
+                            <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                              Plant Mgr
+                            </span>
+                          )
                         )}
                       </div>
                       <span
@@ -360,6 +370,12 @@ export default function GateApprovalPage() {
               Requested by <span className="font-semibold text-slate-700">{form.requested_by}</span>
             </p>
           )}
+          {(form.approver_role || form.committee_level) && (
+            <p className="text-xs text-slate-500 mt-1">
+              Your role: <span className="font-semibold text-slate-700">{form.approver_role ?? "—"}</span>
+              {form.committee_level && ` · ${form.committee_level} Committee`}
+            </p>
+          )}
           {form.message && (
             <div className="mt-3 bg-blue-50 rounded-xl px-4 py-3 text-xs text-blue-800 border border-blue-100">
               {form.message}
@@ -383,10 +399,16 @@ export default function GateApprovalPage() {
                         {v.approver_email}
                         {isSelf && " (you)"}
                       </span>
-                      {v.is_plant_manager && (
-                        <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
-                          Plant Mgr
+                      {v.approver_role ? (
+                        <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700">
+                          {v.approver_role}
                         </span>
+                      ) : (
+                        v.is_plant_manager && (
+                          <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                            Plant Mgr
+                          </span>
+                        )
                       )}
                     </div>
                     <span
@@ -464,10 +486,13 @@ export default function GateApprovalPage() {
               <YearTable
                 label="Price Comparison & Savings by Year"
                 rows={[
-                  { year: "N",   current: form.current_price,   proposed: form.proposed_price,   qty: null,                    saving: form.saving_year_n  },
-                  { year: "N+1", current: form.current_price_n1, proposed: form.proposed_price_n1, qty: form.annual_quantity_n1, saving: form.saving_year_n1 },
-                  { year: "N+2", current: form.current_price_n2, proposed: form.proposed_price_n2, qty: form.annual_quantity_n2, saving: form.saving_year_n2 },
-                  { year: "N+3", current: form.current_price_n3, proposed: form.proposed_price_n3, qty: form.annual_quantity_n3, saving: form.saving_year_n3 },
+                  // annual_quantity_n1 pairs with the un-suffixed price/saving fields
+                  // (Year N), n2 with the "_n1" fields (Year N+1), etc. — the "n" index
+                  // is one year ahead of the row label (see compute_stp_financials).
+                  { year: "N",   current: form.current_price,   proposed: form.proposed_price,   qty: form.annual_quantity_n1, saving: form.saving_year_n  },
+                  { year: "N+1", current: form.current_price_n1, proposed: form.proposed_price_n1, qty: form.annual_quantity_n2, saving: form.saving_year_n1 },
+                  { year: "N+2", current: form.current_price_n2, proposed: form.proposed_price_n2, qty: form.annual_quantity_n3, saving: form.saving_year_n2 },
+                  { year: "N+3", current: form.current_price_n3, proposed: form.proposed_price_n3, qty: form.annual_quantity_n4, saving: form.saving_year_n3 },
                 ].filter((r) => r.current != null || r.proposed != null)}
               />
               <hr className="border-slate-100" />

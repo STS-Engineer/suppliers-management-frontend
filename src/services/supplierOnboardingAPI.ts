@@ -1995,14 +1995,6 @@ class SupplierOnboardingAPI {
     );
   }
 
-  async submitToCommittee(opportunityId: number, data: { to_emails?: string[]; cc_emails?: string[]; committee_type?: string; message?: string; submitted_by?: string }) {
-    return this.request(
-      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/submit-to-committee`,
-      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
-      "Failed to submit to committee.",
-    );
-  }
-
   async updateProject(
     projectId: number,
     data: {
@@ -2131,6 +2123,17 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/request`,
       { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
       "Failed to submit gate approval request.",
+    );
+  }
+
+  async requestCommitteeGateApproval(
+    opportunityId: number,
+    data: { committee_level?: string; approvers: { role: string; email: string }[]; message?: string },
+  ) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/committee-request`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },
+      "Failed to submit committee gate approval request.",
     );
   }
 
@@ -2377,6 +2380,29 @@ class SupplierOnboardingAPI {
     a.href = url;
     const safe = (oppName ?? `opp_${opportunityId}`).replace(/\s+/g, "_").slice(0, 50);
     a.download = `STP_Phase${phase}_${safe}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Download the Full Opportunity Report as a PDF — a live cross-phase snapshot,
+   * available for any opportunity type/phase. Uses fetch + blob for the auth header.
+   */
+  async downloadFullReportPdf(opportunityId: number, oppName?: string): Promise<void> {
+    const token = localStorage.getItem("auth_token");
+    const response = await fetch(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/export-full-report`,
+      { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safe = (oppName ?? `opp_${opportunityId}`).replace(/\s+/g, "_").slice(0, 50);
+    a.download = `FullReport_${safe}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();

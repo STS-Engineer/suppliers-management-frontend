@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, CheckCircle, ClipboardList, Inbox, ShieldAlert, Users, XCircle } from "lucide-react";
+import { Bell, CheckCheck, CheckCircle, ClipboardList, Gavel, Inbox, ShieldAlert, Users, XCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNotifications } from "../../context/NotificationContext";
 import type { NotificationRecord } from "../../services/supplierOnboardingAPI";
@@ -35,6 +35,17 @@ function NotifIcon({ type }: { type: string }) {
     return (
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
         <Users size={15} />
+      </span>
+    );
+  if (
+    type === "gate_approval_requested" ||
+    type === "gate_approval_vote_cast" ||
+    type === "gate_approval_outcome" ||
+    type === "gate_approval_pm_assigned"
+  )
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300">
+        <Gavel size={15} />
       </span>
     );
   return (

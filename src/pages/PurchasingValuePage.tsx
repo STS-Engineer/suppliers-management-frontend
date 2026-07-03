@@ -17,7 +17,6 @@ import {
   LayoutList,
   Layers,
   Lock,
-  Mail,
   Paperclip,
   PlusCircle,
   RefreshCw,
@@ -34,6 +33,12 @@ import supplierAPI, {
 } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
+import {
+  ALL_ROLES,
+  COMMITTEE_LEVELS,
+  mandatoryRolesForPhase,
+  type CommitteeLevel,
+} from "../data/gateApprovalConstants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,6 +146,7 @@ interface Opp {
   plant_name?: string;
   plant_city?: string;
   conversion_owner?: string;
+  committee_level?: string;
   plant_id?: number;
   supplier_id?: number;
   expected_annual_saving?: number;
@@ -4014,28 +4020,22 @@ function GateTab({
   const [error, setError] = useState<string | null>(null);
   // Start study
   const [showStart, setShowStart] = useState(false);
-  // Submit to committee (Phase 1)
-  const [showSubmitP1, setShowSubmitP1] = useState(false);
-  const [submitP1Form, setSubmitP1Form] = useState({
-    email_ceo: "",
-    email_coo: "",
-    email_plant_manager: "",
-    email_cdp: "",
-    email_purchasing: "",
-    message: "",
-  });
   // Gate decision
   const [decision, setDecision] = useState<"Go" | "No Go" | "Review">("Go");
   const [pm, setPm] = useState(opp.project_owner ?? "");
   const [comments, setComments] = useState("");
   const [showGate, setShowGate] = useState(false);
-  // Gate approval request
+  // Gate approval request (Phase 0)
   const [showApproval, setShowApproval] = useState(false);
   const [plantManagerEmail, setPlantManagerEmail] = useState("");
   const [purchasingManagerEmails, setPurchasingManagerEmails] = useState("");
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  // Sourcing committee approval request (Phase 1-4)
+  const [committeeLevel, setCommitteeLevel] = useState<CommitteeLevel | "">("");
+  const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
+  const [showOptionalApprovers, setShowOptionalApprovers] = useState(false);
   const [approvalRequests, setApprovalRequests] = useState<
     {
       request_id: number;
@@ -4044,11 +4044,13 @@ function GateTab({
       requested_at: string | null;
       status: string | null;
       consensus_result: string | null;
+      committee_level: string | null;
       votes: {
         vote_id: number;
         approver_email: string | null;
         access_token: string | null;
         is_plant_manager: boolean | null;
+        approver_role: string | null;
         decision: string | null;
         decided_at: string | null;
         comment: string | null;
@@ -4139,22 +4141,58 @@ function GateTab({
     }
   }
 
+  async function submitCommitteeApprovalRequest() {
+    const tier = opp.committee_level || committeeLevel;
+    if (!tier) {
+      setApprovalError("Select a committee level (Light, Intermediate or Full).");
+      return;
+    }
+    const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier as CommitteeLevel);
+    const missing = mandatoryRoles.filter((r) => !(approverEmails[r] ?? "").trim());
+    if (missing.length) {
+      setApprovalError(`Missing required approver(s): ${missing.join(", ")}`);
+      return;
+    }
+    const approvers = Object.entries(approverEmails)
+      .filter(([, email]) => email.trim())
+      .map(([role, email]) => ({ role, email: email.trim() }));
+    setApprovalSubmitting(true);
+    setApprovalError(null);
+    try {
+      await supplierAPI.requestCommitteeGateApproval(opp.opportunity_id, {
+        committee_level: opp.committee_level ? undefined : tier,
+        approvers,
+        message: approvalMessage || undefined,
+      });
+      const res = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
+      setApprovalRequests(res.data ?? []);
+      setShowApproval(false);
+      setApproverEmails({});
+      setApprovalMessage("");
+    } catch (e: unknown) {
+      setApprovalError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setApprovalSubmitting(false);
+    }
+  }
+
   const isAssigned = opp.status === "Assigned";
   const isWorkingOn =
     opp.status === "Working on it" || opp.status === "Needs Rework";
+  // Phase 0 uses "Awaiting Validation"; Phase 1-4 committee gates use
+  // "Under Committee Review" (see GateApprovalService.create_committee_approval_request) —
+  // the opportunity is locked in whichever status until quorum is reached.
   const isAwaitingGate =
-    opp.status === "Awaiting Validation" &&
-    ["Phase 0", "Phase 1", "Phase 2", "Phase 3"].includes(
-      opp.phase_status ?? "",
-    );
+    opp.status === "Awaiting Validation" && opp.phase_status === "Phase 0";
   const isPhase1Working =
     opp.phase_status === "Phase 1" &&
     (opp.status === "Working on it" || opp.status === "Needs Rework");
-  const isUnderCommittee = opp.status === "Under Committee Review";
-  const canApplyGate =
-    isAwaitingGate ||
-    isUnderCommittee ||
-    ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "");
+  const isUnderCommittee =
+    opp.status === "Under Committee Review" &&
+    ["Phase 1", "Phase 2", "Phase 3", "Phase 4"].includes(
+      opp.phase_status ?? "",
+    );
+  const isPendingGateDecision = isAwaitingGate || isUnderCommittee;
   const isClosed = opp.phase_status === "Closed";
   // Gate-approval requests for whichever phase the opportunity is currently
   // in (Phase 0-3 are all gate-eligible on the backend — see
@@ -4172,12 +4210,13 @@ function GateTab({
     opp.phase_status === "Phase 0";
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
-  const GATE_ELIGIBLE_PHASES = ["Phase 0", "Phase 1", "Phase 2", "Phase 3"];
+  const GATE_ELIGIBLE_PHASES = ["Phase 0", "Phase 1", "Phase 2", "Phase 3", "Phase 4"];
   const NEXT_GATE_PHASE: Record<string, string> = {
     "Phase 0": "Phase 1",
     "Phase 1": "Phase 2",
     "Phase 2": "Phase 3",
     "Phase 3": "Phase 4",
+    "Phase 4": "Closed",
   };
 
   // ── STP section completeness (saved values on opp) ─────────────────
@@ -4276,30 +4315,6 @@ function GateTab({
         ]),
   ];
   const phase0Missing = phase0Checks.filter((c) => !c.ok);
-
-  // Phase 1 → Committee: what must be filled
-  // Negotiation / Cash have no STP format — skip all committee pre-checks
-  const proj0 = opp.projects[0];
-  const isNegotiationOrCash = ["Negotiation", "Cash"].includes(
-    opp.opportunity_type ?? "",
-  );
-  const phase1Checks = isNegotiationOrCash
-    ? []
-    : [
-        {
-          ok: opp.opp_documents.some(
-            (d) =>
-              d.phase_label?.includes("STP") ||
-              d.phase_label?.includes("Phase 1"),
-          ),
-          label: "STP or Phase 1 document uploaded (Files tab)",
-        },
-        {
-          ok: !!opp.change_mode,
-          label: "Change Mode confirmed (Standard or Silent)",
-        },
-      ];
-  const phase1Missing = phase1Checks.filter((c) => !c.ok);
 
   const act = async (fn: () => Promise<void>) => {
     setLoading(true);
@@ -4466,9 +4481,9 @@ function GateTab({
               dossier and vote Approved / Rejected / Needs Review.
             </p>
 
-            {showApproval && (
+            {showApproval && opp.phase_status === "Phase 0" && (
               <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-3">
-                {opp.phase_status === "Phase 0" && phase0Missing.length > 0 && (
+                {phase0Missing.length > 0 && (
                   <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
                     <p className="text-[10.5px] font-bold text-orange-700 mb-2 flex items-center gap-1.5">
                       <AlertTriangle size={12} /> Complete before sending
@@ -4531,11 +4546,7 @@ function GateTab({
                   />
                 </div>
                 <button
-                  disabled={
-                    approvalSubmitting ||
-                    (opp.phase_status === "Phase 0" &&
-                      phase0Missing.length > 0)
-                  }
+                  disabled={approvalSubmitting || phase0Missing.length > 0}
                   onClick={submitApprovalRequest}
                   className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
                   title={
@@ -4543,6 +4554,132 @@ function GateTab({
                       ? `Complete required fields first: ${phase0Missing.map((c) => c.label).join(", ")}`
                       : undefined
                   }
+                >
+                  {approvalSubmitting ? "Sending…" : "Send Approval Links"}
+                </button>
+              </div>
+            )}
+
+            {showApproval && opp.phase_status !== "Phase 0" && (
+              <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-3">
+                {approvalError && (
+                  <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                    {approvalError}
+                  </p>
+                )}
+                {opp.committee_level ? (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                    Committee level locked at{" "}
+                    <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
+                    (chosen at Phase 1).
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                      Committee level <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex gap-2">
+                      {COMMITTEE_LEVELS.map((lvl) => (
+                        <button
+                          key={lvl}
+                          type="button"
+                          onClick={() => setCommitteeLevel(lvl)}
+                          className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+                            committeeLevel === lvl
+                              ? "border-amber-400 bg-amber-100 text-amber-800"
+                              : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
+                          }`}
+                        >
+                          {lvl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(() => {
+                  const tier = (opp.committee_level || committeeLevel) as
+                    | CommitteeLevel
+                    | "";
+                  if (!tier) return null;
+                  const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier);
+                  const optionalRoles = ALL_ROLES.filter(
+                    (r) => !mandatoryRoles.includes(r),
+                  );
+                  return (
+                    <>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                          {opp.phase_status === "Phase 1"
+                            ? `Required approvers — ${tier} Committee`
+                            : `Required approvers — ${opp.phase_status} (${tier} Committee)`}
+                        </p>
+                        {mandatoryRoles.map((role) => (
+                          <div key={role} className="flex items-center gap-2">
+                            <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
+                              {role} <span className="text-red-500">*</span>
+                            </span>
+                            <input
+                              type="email"
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                              placeholder="name@avocarbon.com"
+                              value={approverEmails[role] ?? ""}
+                              onChange={(e) =>
+                                setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setShowOptionalApprovers((s) => !s)}
+                          className="text-[11px] font-semibold text-amber-600 hover:underline"
+                        >
+                          {showOptionalApprovers ? "Hide" : "+ Add"} optional reviewers
+                        </button>
+                        {showOptionalApprovers && (
+                          <div className="mt-2 space-y-2">
+                            {optionalRoles.map((role) => (
+                              <div key={role} className="flex items-center gap-2">
+                                <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
+                                  {role}
+                                </span>
+                                <input
+                                  type="email"
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                  placeholder="name@avocarbon.com (optional)"
+                                  value={approverEmails[role] ?? ""}
+                                  onChange={(e) =>
+                                    setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                  }
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                    Message (optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Context or specific points for the reviewers…"
+                    value={approvalMessage}
+                    onChange={(e) => setApprovalMessage(e.target.value)}
+                  />
+                </div>
+                <button
+                  disabled={approvalSubmitting || !(opp.committee_level || committeeLevel)}
+                  onClick={submitCommitteeApprovalRequest}
+                  className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
                 >
                   {approvalSubmitting ? "Sending…" : "Send Approval Links"}
                 </button>
@@ -4559,6 +4696,11 @@ function GateTab({
                   <p className="text-[11px] font-semibold text-slate-700">
                     by {req.requested_by ?? "—"}
                     {req.requested_at ? ` · ${fmtDate(req.requested_at)}` : ""}
+                    {req.committee_level && (
+                      <span className="ml-1.5 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700">
+                        {req.committee_level}
+                      </span>
+                    )}
                   </p>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
@@ -4586,10 +4728,16 @@ function GateTab({
                           <span className="text-slate-600">
                             {v.approver_email}
                           </span>
-                          {v.is_plant_manager && (
-                            <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
-                              Plant Mgr
+                          {v.approver_role ? (
+                            <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700">
+                              {v.approver_role}
                             </span>
+                          ) : (
+                            v.is_plant_manager && (
+                              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                                Plant Mgr
+                              </span>
+                            )
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -4676,140 +4824,6 @@ function GateTab({
         </div>
       )}
 
-      {/* STEP 3 — Phase 1: Submit to Sourcing Committee */}
-      {isPhase1Working && (
-        <div className="rounded-xl border border-purple-100 bg-purple-50 p-4 space-y-3">
-          {/* Pre-submission checklist — Phase 1 */}
-          {phase1Missing.length > 0 ? (
-            <div className="rounded-xl border border-purple-200 bg-white p-3 space-y-1.5">
-              <p className="text-[10.5px] font-bold text-purple-700 flex items-center gap-1.5">
-                <AlertTriangle size={11} /> {phase1Missing.length} item
-                {phase1Missing.length > 1 ? "s" : ""} missing before committee
-                submission:
-              </p>
-              {phase1Missing.map((c, i) => (
-                <p
-                  key={i}
-                  className="flex items-start gap-1.5 text-[11px] text-purple-600"
-                >
-                  <span className="shrink-0 text-purple-400">✗</span> {c.label}
-                </p>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700 flex items-center gap-1.5">
-              <CheckCircle2 size={11} /> All checks passed — ready to submit to
-              committee
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-purple-700">
-              Submit Phase 1 to Sourcing Committee
-            </p>
-            <button
-              onClick={() => setShowSubmitP1((s) => !s)}
-              className="text-[11px] font-semibold text-purple-600 hover:underline"
-            >
-              {showSubmitP1 ? "Hide" : "Open →"}
-            </button>
-          </div>
-          <p className="text-[11px] text-purple-600">
-            Sends the Feasibility Dossier to the committee (CEO · COO · Plant
-            Manager · CDP · Purchasing).
-          </p>
-          {showSubmitP1 && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                act(async () => {
-                  const emails = [
-                    submitP1Form.email_ceo,
-                    submitP1Form.email_coo,
-                    submitP1Form.email_plant_manager,
-                    submitP1Form.email_cdp,
-                    submitP1Form.email_purchasing,
-                  ]
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                  const res = await supplierAPI.submitToCommittee(
-                    opp.opportunity_id,
-                    {
-                      to_emails: emails.length ? emails : undefined,
-                      message: submitP1Form.message || undefined,
-                      submitted_by: userEmail,
-                    },
-                  );
-                  onRefresh(res.data as Opp);
-                  setShowSubmitP1(false);
-                });
-              }}
-              className="space-y-3"
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                Committee emails{" "}
-                <span className="normal-case font-normal text-slate-400">
-                  (optional — PM organises meeting)
-                </span>
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                {(
-                  [
-                    ["email_ceo", "CEO"],
-                    ["email_coo", "COO"],
-                    ["email_plant_manager", "Plant Manager"],
-                    ["email_cdp", "CDP"],
-                    ["email_purchasing", "Purchasing"],
-                  ] as [keyof typeof submitP1Form, string][]
-                ).map(([field, role]) => (
-                  <div key={field} className="flex items-center gap-2">
-                    <span className="w-28 shrink-0 text-[10.5px] font-semibold text-slate-500">
-                      {role}
-                    </span>
-                    <input
-                      type="email"
-                      className={inp}
-                      placeholder={`${role.toLowerCase().replace(" ", ".")}@avocarbon.com`}
-                      value={submitP1Form[field] as string}
-                      onChange={(e) =>
-                        setSubmitP1Form((f) => ({
-                          ...f,
-                          [field]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-              <div>
-                <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                  Message (optional)
-                </label>
-                <textarea
-                  rows={2}
-                  className={`${inp} resize-none`}
-                  value={submitP1Form.message}
-                  onChange={(e) =>
-                    setSubmitP1Form((f) => ({ ...f, message: e.target.value }))
-                  }
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
-              >
-                {loading ? (
-                  <RefreshCw size={12} className="animate-spin" />
-                ) : (
-                  <Mail size={13} />
-                )}{" "}
-                Submit to Committee
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-
       {/* Awaiting review banners */}
       {isAwaitingGate && !allGateApproved && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
@@ -4838,14 +4852,31 @@ function GateTab({
           </p>
         </div>
       )}
-      {isUnderCommittee && (
+      {isUnderCommittee && !allGateApproved && (
         <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-xs text-purple-700">
           <p className="font-bold flex items-center gap-1.5">
             <Users size={12} /> Under Committee Review
           </p>
           <p className="mt-0.5">
-            Feasibility dossier submitted to committee. Apply the committee's
-            gate decision below once received.
+            {opp.committee_level ? `${opp.committee_level} Committee — ` : ""}
+            approval request sent
+            {opp.validation_request_sent_at
+              ? ` on ${fmtDate(opp.validation_request_sent_at)}`
+              : ""}
+            . Waiting for all approvers to vote.
+          </p>
+        </div>
+      )}
+      {isUnderCommittee && allGateApproved && (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs">
+          <p className="font-bold flex items-center gap-1.5 text-emerald-700">
+            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply Gate
+          </p>
+          <p className="mt-0.5 text-emerald-600">
+            All reviewers have given their Go. Click{" "}
+            <strong>"Apply decision"</strong> below, select <strong>Go</strong>,
+            and confirm to advance to{" "}
+            {NEXT_GATE_PHASE[opp.phase_status ?? ""] ?? "the next phase"}.
           </p>
         </div>
       )}
@@ -4857,9 +4888,12 @@ function GateTab({
         </div>
       )}
 
-      {/* GATE DECISION — visible to reviewer/PM after submission */}
-      {(canApplyGate ||
-        ["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "")) && (
+      {/* GATE DECISION — manual apply is only ever accepted by the backend at
+          Phase 0 (see apply_gate_decision's GATE_APPROVAL_REQUIRED guard in
+          purchasing_value/service.py); Phase 1-4 can ONLY advance via the gate
+          approval vote flow above, so this section is hidden for those phases
+          to avoid a button that always fails. */}
+      {isAwaitingGate && (
         <div className="border-t border-slate-100 pt-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-bold text-slate-700">
@@ -7864,6 +7898,50 @@ function StpDownloadButton({
   );
 }
 
+function FullReportDownloadButton({
+  opportunityId,
+  oppName,
+}: {
+  opportunityId: number;
+  oppName?: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function handleClick() {
+    setLoading(true);
+    setError(false);
+    try {
+      await supplierAPI.downloadFullReportPdf(opportunityId, oppName ?? undefined);
+    } catch {
+      setError(true);
+      setTimeout(() => setError(false), 3000);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      title="Download Full Opportunity Report PDF"
+      className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-semibold transition-colors disabled:opacity-60 ${
+        error
+          ? "border-red-300 bg-red-50 text-red-600"
+          : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-300"
+      }`}
+    >
+      {loading ? (
+        <RefreshCw size={11} className="animate-spin" />
+      ) : (
+        <Download size={11} />
+      )}
+      Full Report
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Detail Drawer
 // ---------------------------------------------------------------------------
@@ -8054,6 +8132,13 @@ function DetailDrawer({
                 ))}
               </div>
             )}
+            {/* Full Opportunity Report — any type, any phase */}
+            <div className="mr-2">
+              <FullReportDownloadButton
+                opportunityId={opp.opportunity_id}
+                oppName={opp.opportunity_name}
+              />
+            </div>
             {/* Width presets */}
             <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 mr-1">
               {PRESET_WIDTHS.map((w, i) => (
