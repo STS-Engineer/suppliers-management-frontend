@@ -37,6 +37,7 @@ import {
   ALL_ROLES,
   COMMITTEE_LEVELS,
   mandatoryRolesForPhase,
+  NEGOTIATION_APPROVER_ROLES,
   type CommitteeLevel,
 } from "../data/gateApprovalConstants";
 
@@ -376,6 +377,15 @@ const stripDec = (s: string) => {
   const c = s.replace(/[^\d.]/g, "");
   const p = c.split(".");
   return p.length > 1 ? `${p[0]}.${p.slice(1).join("")}` : c;
+};
+// Space-grouped variant (e.g. Est. Annual Saving): "1000000" → "1 000 000"
+const groupDigitsSpace = (s: string) => s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const fmtDecInputSpace = (s: string) => {
+  if (!s) return "";
+  const cleaned = s.replace(/[^\d.]/g, "");
+  const [intPart, ...rest] = cleaned.split(".");
+  const gi = groupDigitsSpace(intPart);
+  return rest.length ? `${gi}.${rest.join("")}` : gi;
 };
 
 // Per-unit prices need decimals (e.g. €0.20), unlike whole-euro totals.
@@ -960,6 +970,10 @@ function EditTab({
     [],
   );
   const isSourced = ["Sourcing", "Technical Productivity"].includes(
+    opp.opportunity_type ?? "",
+  );
+  // Negotiation/Cash opportunities skip PLD scoring entirely — no fields, no requirement.
+  const isFlatType = ["Negotiation", "Cash"].includes(
     opp.opportunity_type ?? "",
   );
   const { user } = useAuth();
@@ -1639,7 +1653,8 @@ function EditTab({
         if (!form.planned_start_date) {
           missing.push("Planned Start Date");
         }
-        if (!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")) {
+        // Negotiation/Cash skip PLD scoring and the sourcing-specific fields below.
+        if (!isFlatType) {
           if (!form.plant_id) missing.push("Plant");
           if (!form.scope_in) missing.push("Scope IN");
           if (!form.proposed_supplier_name) {
@@ -1657,10 +1672,6 @@ function EditTab({
           if (!form.proposed_price || parseFloat(form.proposed_price) <= 0) {
             missing.push("Proposed Price");
           }
-        } else {
-          if (!livePScore) missing.push("PLD: Payback score");
-          if (!liveLScore) missing.push("PLD: Lead-time score");
-          if (!liveDScore) missing.push("PLD: Difficulty score");
         }
       }
 
@@ -2050,7 +2061,13 @@ function EditTab({
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={label}>
+                <label
+                  className={
+                    !isSourced
+                      ? hiLabel(!(opp.expected_annual_saving && opp.expected_annual_saving > 0))
+                      : label
+                  }
+                >
                   {isSourced ? "EBITDA Period (€)" : "Est. Annual Saving (€)"}
                   <span className="ml-1 font-normal text-slate-400">
                     {isSourced ? "— auto, all years (N…N+3)" : ""}
@@ -2068,14 +2085,13 @@ function EditTab({
                   </div>
                 ) : (
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     disabled={locked}
-                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                    value={form.expected_annual_saving}
+                    className={`${hi(!(opp.expected_annual_saving && opp.expected_annual_saving > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    value={fmtDecInputSpace(form.expected_annual_saving)}
                     onChange={(e) =>
-                      set("expected_annual_saving", e.target.value)
+                      set("expected_annual_saving", stripDec(e.target.value))
                     }
                   />
                 )}
@@ -2430,7 +2446,8 @@ function EditTab({
               </div>
             </div>
           )}
-          {/* PLD scoring — compact */}
+          {/* PLD scoring — compact — hidden for Negotiation/Cash, which skip PLD entirely */}
+          {!isFlatType && (
           <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
@@ -2620,7 +2637,9 @@ function EditTab({
               </div>
             )}
           </div>
-          {/* PLD scores — manual for Negotiation/Cash, auto-calc with override for STP */}
+          )}
+          {/* PLD scores — manual for STP; hidden entirely for Negotiation/Cash */}
+          {!isFlatType && (
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -2758,6 +2777,7 @@ function EditTab({
               )}
             </div>
           </div>
+          )}
           <div>
             <label className={label}>Comments</label>
             <textarea
@@ -4323,6 +4343,14 @@ function GateTab({
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  // Negotiation: single approver (Purchasing Director or VP Conversion) —
+  // used for both the Phase 0 request and every Phase 1-4 committee request,
+  // replacing the Plant Manager/committee-tier flow for this opportunity type.
+  const isNegotiation = opp.opportunity_type === "Negotiation";
+  const [negotiationApproverRole, setNegotiationApproverRole] = useState<
+    (typeof NEGOTIATION_APPROVER_ROLES)[number]
+  >(NEGOTIATION_APPROVER_ROLES[0]);
+  const [negotiationApproverEmail, setNegotiationApproverEmail] = useState("");
   // Sourcing committee approval request (Phase 1-4)
   const [committeeLevel, setCommitteeLevel] = useState<CommitteeLevel | "">("");
   const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
@@ -4378,11 +4406,6 @@ function GateTab({
   }, [opp.opportunity_id, opp.phase_status]);
 
   async function submitApprovalRequest() {
-    const pm = plantManagerEmail.trim();
-    if (!pm) {
-      setApprovalError("Plant Manager email is required.");
-      return;
-    }
     // Block submission if STP format is incomplete for Sourcing/Technical types
     if (opp.phase_status === "Phase 0" && phase0Missing.length > 0) {
       setApprovalError(
@@ -4390,18 +4413,45 @@ function GateTab({
       );
       return;
     }
-    const purchasing = purchasingManagerEmails
-      .split(/[,;\s]+/)
-      .map((e) => e.trim())
-      .filter(Boolean);
-    setApprovalSubmitting(true);
-    setApprovalError(null);
-    try {
-      await supplierAPI.requestGateApproval(opp.opportunity_id, {
+    let requestPayload: {
+      plant_manager_email?: string;
+      purchasing_manager_emails?: string[];
+      approver_role?: string;
+      approver_email?: string;
+      message?: string;
+    };
+    if (isNegotiation) {
+      const approverEmail = negotiationApproverEmail.trim();
+      if (!approverEmail) {
+        setApprovalError("Approver email is required.");
+        return;
+      }
+      requestPayload = {
+        approver_role: negotiationApproverRole,
+        approver_email: approverEmail,
+        plant_manager_email: plantManagerEmail.trim() || undefined,
+        message: approvalMessage || undefined,
+      };
+    } else {
+      const pm = plantManagerEmail.trim();
+      if (!pm) {
+        setApprovalError("Plant Manager email is required.");
+        return;
+      }
+      const purchasing = purchasingManagerEmails
+        .split(/[,;\s]+/)
+        .map((e) => e.trim())
+        .filter(Boolean);
+      requestPayload = {
         plant_manager_email: pm,
         purchasing_manager_emails: purchasing,
         message: approvalMessage || undefined,
-      });
+      };
+    }
+    setApprovalSubmitting(true);
+    setApprovalError(null);
+    try {
+      await supplierAPI.requestGateApproval(opp.opportunity_id, requestPayload);
       const res = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
       const requests = res.data ?? [];
       setApprovalRequests(requests);
@@ -4424,6 +4474,7 @@ function GateTab({
       setShowApproval(false);
       setPlantManagerEmail("");
       setPurchasingManagerEmails("");
+      setNegotiationApproverEmail("");
       setApprovalMessage("");
     } catch (e: unknown) {
       setApprovalError(e instanceof Error ? e.message : "Failed");
@@ -4439,28 +4490,41 @@ function GateTab({
       );
       return;
     }
-    const tier =
-      opp.committee_level ||
-      committeeLevel ||
-      (opp.phase_status !== "Phase 1" ? "Light" : "");
-    if (!tier) {
-      setApprovalError("Select a committee level (Light, Intermediate or Full).");
-      return;
+    let committee_level: string | undefined;
+    let approvers: { role: string; email: string }[];
+    if (isNegotiation) {
+      const approverEmail = negotiationApproverEmail.trim();
+      if (!approverEmail) {
+        setApprovalError("Approver email is required.");
+        return;
+      }
+      committee_level = undefined;
+      approvers = [{ role: negotiationApproverRole, email: approverEmail }];
+    } else {
+      const tier =
+        opp.committee_level ||
+        committeeLevel ||
+        (opp.phase_status !== "Phase 1" ? "Light" : "");
+      if (!tier) {
+        setApprovalError("Select a committee level (Light, Intermediate or Full).");
+        return;
+      }
+      const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier as CommitteeLevel);
+      const missing = mandatoryRoles.filter((r) => !(approverEmails[r] ?? "").trim());
+      if (missing.length) {
+        setApprovalError(`Missing required approver(s): ${missing.join(", ")}`);
+        return;
+      }
+      committee_level = opp.committee_level ? undefined : tier;
+      approvers = Object.entries(approverEmails)
+        .filter(([, email]) => email.trim())
+        .map(([role, email]) => ({ role, email: email.trim() }));
     }
-    const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier as CommitteeLevel);
-    const missing = mandatoryRoles.filter((r) => !(approverEmails[r] ?? "").trim());
-    if (missing.length) {
-      setApprovalError(`Missing required approver(s): ${missing.join(", ")}`);
-      return;
-    }
-    const approvers = Object.entries(approverEmails)
-      .filter(([, email]) => email.trim())
-      .map(([role, email]) => ({ role, email: email.trim() }));
     setApprovalSubmitting(true);
     setApprovalError(null);
     try {
       await supplierAPI.requestCommitteeGateApproval(opp.opportunity_id, {
-        committee_level: opp.committee_level ? undefined : tier,
+        committee_level,
         approvers,
         message: approvalMessage || undefined,
       });
@@ -4468,6 +4532,7 @@ function GateTab({
       setApprovalRequests(res.data ?? []);
       setShowApproval(false);
       setApproverEmails({});
+      setNegotiationApproverEmail("");
       setApprovalMessage("");
     } catch (e: unknown) {
       setApprovalError(e instanceof Error ? e.message : "Failed");
@@ -4511,9 +4576,10 @@ function GateTab({
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
   const GATE_ELIGIBLE_PHASES = ["Phase 0", "Phase 1", "Phase 2", "Phase 3", "Phase 4"];
+  // Negotiation skips Phase 2 entirely — Phase 1 Go lands directly on Phase 3.
   const NEXT_GATE_PHASE: Record<string, string> = {
     "Phase 0": "Phase 1",
-    "Phase 1": "Phase 2",
+    "Phase 1": isNegotiation ? "Phase 3" : "Phase 2",
     "Phase 2": "Phase 3",
     "Phase 3": "Phase 4",
     "Phase 4": "Closed",
@@ -4599,26 +4665,50 @@ function GateTab({
           },
           ...stpGateMissing,
         ]
-      : [
-          {
-            ok: !!opp.payback_score,
-            label: "PLD: Payback score (P) is required",
-          },
-          {
-            ok: !!opp.lead_time_score,
-            label: "PLD: Lead-time score (L) is required",
-          },
-          {
-            ok: !!opp.difficulty_score,
-            label: "PLD: Difficulty score (D) is required",
-          },
-        ]),
+      : []), // Negotiation/Cash skip PLD scoring — nothing extra required here.
   ];
   const phase0Missing = phase0Checks.filter((c) => !c.ok);
   // Same completeness checklist (STP fields, duration, planned start date,
   // FX rate, etc.) reused for the Phase 1-4 sourcing committee request — the
   // underlying data these gates decide on shouldn't be incomplete either.
   const committeeMissing = phase0Missing;
+
+  // Shared "single approver" picker for Negotiation — Purchasing Director or
+  // VP Conversion — reused for both the Phase 0 request and every Phase 1-4
+  // committee request.
+  const negotiationApproverFields = (
+    <div className="space-y-2">
+      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+        Approver <span className="text-red-500">*</span>
+      </label>
+      <p className="text-[10px] text-slate-400 mb-1">
+        Either role can decide this gate alone.
+      </p>
+      <div className="flex gap-2">
+        {NEGOTIATION_APPROVER_ROLES.map((role) => (
+          <button
+            key={role}
+            type="button"
+            onClick={() => setNegotiationApproverRole(role)}
+            className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+              negotiationApproverRole === role
+                ? "border-amber-400 bg-amber-100 text-amber-800"
+                : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
+            }`}
+          >
+            {role}
+          </button>
+        ))}
+      </div>
+      <input
+        type="email"
+        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+        placeholder="name@avocarbon.com"
+        value={negotiationApproverEmail}
+        onChange={(e) => setNegotiationApproverEmail(e.target.value)}
+      />
+    </div>
+  );
 
   const act = async (fn: () => Promise<void>) => {
     setLoading(true);
@@ -4813,36 +4903,59 @@ function GateTab({
                     {approvalError}
                   </p>
                 )}
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Plant Manager email <span className="text-red-500">*</span>
-                  </label>
-                  <p className="text-[10px] text-slate-400 mb-1">
-                    Will vote and designate the Project Manager upon approval.
-                  </p>
-                  <input
-                    type="email"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    placeholder="plant.manager@avocarbon.com"
-                    value={plantManagerEmail}
-                    onChange={(e) => setPlantManagerEmail(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                    Purchasing Manager email(s)
-                  </label>
-                  <p className="text-[10px] text-slate-400 mb-1">
-                    Additional approvers — vote only, no PM designation.
-                  </p>
-                  <input
-                    type="text"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    placeholder="purchasing@avocarbon.com, director@avocarbon.com"
-                    value={purchasingManagerEmails}
-                    onChange={(e) => setPurchasingManagerEmails(e.target.value)}
-                  />
-                </div>
+                {isNegotiation ? (
+                  <>
+                    {negotiationApproverFields}
+                    <div>
+                      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                        Plant Manager email (optional — informational only)
+                      </label>
+                      <p className="text-[10px] text-slate-400 mb-1">
+                        Notified by email only — does not vote.
+                      </p>
+                      <input
+                        type="email"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        placeholder="plant.manager@avocarbon.com"
+                        value={plantManagerEmail}
+                        onChange={(e) => setPlantManagerEmail(e.target.value)}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                        Plant Manager email <span className="text-red-500">*</span>
+                      </label>
+                      <p className="text-[10px] text-slate-400 mb-1">
+                        Will vote and designate the Project Manager upon approval.
+                      </p>
+                      <input
+                        type="email"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        placeholder="plant.manager@avocarbon.com"
+                        value={plantManagerEmail}
+                        onChange={(e) => setPlantManagerEmail(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                        Purchasing Manager email(s)
+                      </label>
+                      <p className="text-[10px] text-slate-400 mb-1">
+                        Additional approvers — vote only, no PM designation.
+                      </p>
+                      <input
+                        type="text"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        placeholder="purchasing@avocarbon.com, director@avocarbon.com"
+                        value={purchasingManagerEmails}
+                        onChange={(e) => setPurchasingManagerEmails(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
                     Message (optional)
@@ -4898,103 +5011,80 @@ function GateTab({
                     {approvalError}
                   </p>
                 )}
-                {/* Committee level is only chosen/shown at Phase 1 — Phase 2/3/4
-                    reuse the locked tier silently (it no longer affects which
-                    roles are mandatory there, see mandatoryRolesForPhase), so
-                    we skip straight to Required approvers / Add optional
-                    reviewers instead of showing the tier picker or badge again. */}
-                {opp.phase_status === "Phase 1" && (
-                  opp.committee_level ? (
-                    <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
-                      Committee level locked at{" "}
-                      <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
-                      (chosen at Phase 1).
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                        Committee level <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex gap-2">
-                        {COMMITTEE_LEVELS.map((lvl) => (
-                          <button
-                            key={lvl}
-                            type="button"
-                            onClick={() => setCommitteeLevel(lvl)}
-                            className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
-                              committeeLevel === lvl
-                                ? "border-amber-400 bg-amber-100 text-amber-800"
-                                : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
-                            }`}
-                          >
-                            {lvl}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                )}
-
-                {(() => {
-                  // Phase 2-4 don't need a tier to determine mandatory roles
-                  // (see mandatoryRolesForPhase) — default to "Light" so the
-                  // required-approvers section still renders even for legacy
-                  // opportunities that never had a committee_level recorded
-                  // (e.g. their Phase 1 gate predates this feature).
-                  const tier = (opp.committee_level ||
-                    committeeLevel ||
-                    (opp.phase_status !== "Phase 1" ? "Light" : "")) as
-                    | CommitteeLevel
-                    | "";
-                  if (!tier) return null;
-                  const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier);
-                  const optionalRoles = ALL_ROLES.filter(
-                    (r) => !mandatoryRoles.includes(r),
-                  );
-                  return (
-                    <>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                          {opp.phase_status === "Phase 1"
-                            ? `Required approvers — ${tier} Committee`
-                            : `Required approvers — ${opp.phase_status}`}
-                        </p>
-                        {mandatoryRoles.map((role) => (
-                          <div key={role} className="flex items-center gap-2">
-                            <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
-                              {role} <span className="text-red-500">*</span>
-                            </span>
-                            <input
-                              type="email"
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                              placeholder="name@avocarbon.com"
-                              value={approverEmails[role] ?? ""}
-                              onChange={(e) =>
-                                setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
-                              }
-                            />
+                {isNegotiation ? (
+                  negotiationApproverFields
+                ) : (
+                  <>
+                    {/* Committee level is only chosen/shown at Phase 1 — Phase 2/3/4
+                        reuse the locked tier silently (it no longer affects which
+                        roles are mandatory there, see mandatoryRolesForPhase), so
+                        we skip straight to Required approvers / Add optional
+                        reviewers instead of showing the tier picker or badge again. */}
+                    {opp.phase_status === "Phase 1" && (
+                      opp.committee_level ? (
+                        <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                          Committee level locked at{" "}
+                          <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
+                          (chosen at Phase 1).
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                            Committee level <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex gap-2">
+                            {COMMITTEE_LEVELS.map((lvl) => (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() => setCommitteeLevel(lvl)}
+                                className={`flex-1 rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+                                  committeeLevel === lvl
+                                    ? "border-amber-400 bg-amber-100 text-amber-800"
+                                    : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
+                                }`}
+                              >
+                                {lvl}
+                              </button>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setShowOptionalApprovers((s) => !s)}
-                          className="text-[11px] font-semibold text-amber-600 hover:underline"
-                        >
-                          {showOptionalApprovers ? "Hide" : "+ Add"} optional reviewers
-                        </button>
-                        {showOptionalApprovers && (
-                          <div className="mt-2 space-y-2">
-                            {optionalRoles.map((role) => (
+                        </div>
+                      )
+                    )}
+
+                    {(() => {
+                      // Phase 2-4 don't need a tier to determine mandatory roles
+                      // (see mandatoryRolesForPhase) — default to "Light" so the
+                      // required-approvers section still renders even for legacy
+                      // opportunities that never had a committee_level recorded
+                      // (e.g. their Phase 1 gate predates this feature).
+                      const tier = (opp.committee_level ||
+                        committeeLevel ||
+                        (opp.phase_status !== "Phase 1" ? "Light" : "")) as
+                        | CommitteeLevel
+                        | "";
+                      if (!tier) return null;
+                      const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier);
+                      const optionalRoles = ALL_ROLES.filter(
+                        (r) => !mandatoryRoles.includes(r),
+                      );
+                      return (
+                        <>
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                              {opp.phase_status === "Phase 1"
+                                ? `Required approvers — ${tier} Committee`
+                                : `Required approvers — ${opp.phase_status}`}
+                            </p>
+                            {mandatoryRoles.map((role) => (
                               <div key={role} className="flex items-center gap-2">
-                                <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
-                                  {role}
+                                <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
+                                  {role} <span className="text-red-500">*</span>
                                 </span>
                                 <input
                                   type="email"
                                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                  placeholder="name@avocarbon.com (optional)"
+                                  placeholder="name@avocarbon.com"
                                   value={approverEmails[role] ?? ""}
                                   onChange={(e) =>
                                     setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
@@ -5003,11 +5093,40 @@ function GateTab({
                               </div>
                             ))}
                           </div>
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setShowOptionalApprovers((s) => !s)}
+                              className="text-[11px] font-semibold text-amber-600 hover:underline"
+                            >
+                              {showOptionalApprovers ? "Hide" : "+ Add"} optional reviewers
+                            </button>
+                            {showOptionalApprovers && (
+                              <div className="mt-2 space-y-2">
+                                {optionalRoles.map((role) => (
+                                  <div key={role} className="flex items-center gap-2">
+                                    <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
+                                      {role}
+                                    </span>
+                                    <input
+                                      type="email"
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                      placeholder="name@avocarbon.com (optional)"
+                                      value={approverEmails[role] ?? ""}
+                                      onChange={(e) =>
+                                        setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                      }
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
 
                 <div>
                   <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
@@ -5025,11 +5144,13 @@ function GateTab({
                   disabled={
                     approvalSubmitting ||
                     committeeMissing.length > 0 ||
-                    !(
-                      opp.committee_level ||
-                      committeeLevel ||
-                      (opp.phase_status !== "Phase 1" ? "Light" : "")
-                    )
+                    (isNegotiation
+                      ? !negotiationApproverEmail.trim()
+                      : !(
+                          opp.committee_level ||
+                          committeeLevel ||
+                          (opp.phase_status !== "Phase 1" ? "Light" : "")
+                        ))
                   }
                   onClick={submitCommitteeApprovalRequest}
                   className="w-full rounded-xl bg-amber-500 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"

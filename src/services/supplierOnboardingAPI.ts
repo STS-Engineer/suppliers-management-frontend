@@ -2139,7 +2139,13 @@ class SupplierOnboardingAPI {
 
   async requestGateApproval(
     opportunityId: number,
-    data: { plant_manager_email: string; purchasing_manager_emails?: string[]; message?: string },
+    data: {
+      plant_manager_email?: string;
+      purchasing_manager_emails?: string[];
+      approver_role?: string;
+      approver_email?: string;
+      message?: string;
+    },
   ) {
     return this.request(
       `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/request`,

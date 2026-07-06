@@ -17,6 +17,15 @@ export const ALL_ROLES = [
   "Finance",
   "Operations",
   "Supply Chain",
+  "VP Conversion",
+] as const;
+
+// Negotiation opportunities skip the Plant Manager / Project Leader / committee
+// tier entirely — a single approver, either Purchasing Director or VP
+// Conversion, decides the gate.
+export const NEGOTIATION_APPROVER_ROLES = [
+  "Purchasing Director",
+  "VP Conversion",
 ] as const;
 
 // Tier-dependent mandatory roles — applies ONLY to the Phase 1 gate, where the
