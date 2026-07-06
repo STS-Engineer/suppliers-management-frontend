@@ -925,14 +925,14 @@ function FormSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={`rounded-xl border bg-white ${highlight ? "border-orange-400" : "border-slate-200"}`}>
+    <div className={`rounded-xl border bg-white ${highlight ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-4 py-2.5 text-left"
       >
         <span
-          className={`text-[10px] font-bold uppercase tracking-widest ${highlight ? "text-orange-500" : (accent ?? "text-slate-400")}`}
+          className={`text-[10px] font-bold uppercase tracking-widest ${highlight ? "text-rose-600" : (accent ?? "text-slate-400")}`}
         >
           {title}
         </span>
@@ -1007,7 +1007,31 @@ function EditTab({
   }, [opp.supplier_id, opp.plant_id, opp.opportunity_id]);
 
   const isPhase0 = opp.phase_status === "Phase 0";
-  const gateHighlight = isPhase0;
+  // Highlight still-missing required fields for any open opportunity — not just
+  // Phase 0 — so a user arriving from the Gate tab's "Complete before sending"
+  // list can immediately spot what to fill in, regardless of current phase.
+  const gateHighlight = opp.phase_status !== "Closed";
+  const missingFlags = {
+    scope: !opp.scope_in || !opp.customers,
+    scopeIn: !opp.scope_in,
+    customers: !opp.customers,
+    quantity: !(opp.annual_quantity_n1 && opp.annual_quantity_n1 > 0),
+    prices: !(opp.current_price && opp.proposed_price),
+    supplierName: !opp.proposed_supplier_name && !opp.proposed_supplier_id,
+    logistics: !(
+      opp.incoterms_before &&
+      opp.incoterms_after &&
+      opp.country_after
+    ),
+    countryAfter: !opp.country_after,
+    incoterms: !(opp.incoterms_before && opp.incoterms_after),
+    risks: !(
+      opp.stp_risks?.material_indexation_before &&
+      opp.stp_risks?.material_indexation_after
+    ),
+    benefits: !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not),
+    planning: !(opp.phase1_weeks && opp.phase1_weeks > 0),
+  };
   const goApplied = opp.validation_decision === "Go";
   const stpEditablePhases = ["Assigned", "Phase 0", "Phase 1"];
   const showStpSection = isSourced;
@@ -1967,6 +1991,20 @@ function EditTab({
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
   const label = "mb-1 block text-xs font-semibold text-slate-600";
+  const inpHi =
+    "w-full rounded-xl border-2 border-rose-500 bg-rose-50 px-3 py-2 text-sm outline-none shadow-[0_0_0_3px_rgba(244,63,94,0.12)] focus:border-rose-600 focus:ring-2 focus:ring-rose-200";
+  const labelHi = "mb-1 block text-xs font-bold text-rose-600";
+  // Small table-style inputs (Logistics / Prices before-after grid) get a
+  // slimmer highlighted variant instead of the full `inp`/`inpHi` treatment.
+  const cellInp =
+    "w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300";
+  const cellInpHi =
+    "w-full rounded border-2 border-rose-500 bg-rose-50 px-2 py-1 text-xs outline-none shadow-[0_0_0_2px_rgba(244,63,94,0.12)] focus:border-rose-600";
+  const hi = (missing: boolean) => (gateHighlight && missing ? inpHi : inp);
+  const hiLabel = (missing: boolean) =>
+    gateHighlight && missing ? labelHi : label;
+  const hiCell = (missing: boolean) =>
+    gateHighlight && missing ? cellInpHi : cellInp;
 
   return (
     <>
@@ -2079,7 +2117,7 @@ function EditTab({
                 )}
               </div>
               <div>
-                <label className={gateHighlight && !(opp.duration_months && opp.duration_months > 0) ? "mb-1 block text-xs font-semibold text-orange-500" : label}>
+                <label className={hiLabel(!(opp.duration_months && opp.duration_months > 0))}>
                   Duration (months){" "}
                   <span className="font-normal text-slate-400">
                     — saving period length
@@ -2091,7 +2129,7 @@ function EditTab({
                   max="120"
                   step="1"
                   disabled={locked}
-                  className={`${gateHighlight && !(opp.duration_months && opp.duration_months > 0) ? "w-full rounded-xl border border-orange-400 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" : inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                  className={`${hi(!(opp.duration_months && opp.duration_months > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
                   value={form.duration_months}
                   onChange={(e) => set("duration_months", e.target.value)}
                 />
@@ -2105,7 +2143,7 @@ function EditTab({
                 )}
               </div>
               <div>
-                <label className={gateHighlight && !opp.planned_start_date ? "mb-1 block text-xs font-semibold text-orange-500" : label}>
+                <label className={hiLabel(!opp.planned_start_date)}>
                   Planned Start (estimated savings start){" "}
                   <span className="font-normal text-slate-400">
                     — when real savings are expected to begin; drives planned
@@ -2114,7 +2152,7 @@ function EditTab({
                 </label>
                 <input
                   type="date"
-                  className={gateHighlight && !opp.planned_start_date ? "w-full rounded-xl border border-orange-400 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" : inp}
+                  className={hi(!opp.planned_start_date)}
                   value={form.planned_start_date}
                   onChange={(e) => set("planned_start_date", e.target.value)}
                 />
@@ -2910,16 +2948,16 @@ function EditTab({
               </div>
 
               {/* Scope, customers, plants & annual quantities */}
-              <div className={`rounded-xl border bg-white p-3 space-y-3 ${gateHighlight && !opp.scope_in ? "border-orange-400" : "border-slate-200"}`}>
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${gateHighlight && !opp.scope_in ? "text-orange-500" : "text-slate-400"}`}>
+              <div className={`rounded-xl border bg-white p-3 space-y-3 ${gateHighlight && missingFlags.scope ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${gateHighlight && missingFlags.scope ? "text-rose-600" : "text-slate-400"}`}>
                   Scope &amp; Customers
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={label}>Scope IN (part numbers)</label>
+                    <label className={hiLabel(missingFlags.scopeIn)}>Scope IN (part numbers)</label>
                     <input
                       disabled={locked}
-                      className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                      className={`${hi(missingFlags.scopeIn)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
                       placeholder="27102500010"
                       value={form.scope_in}
                       onChange={(e) => set("scope_in", e.target.value)}
@@ -2936,9 +2974,9 @@ function EditTab({
                     />
                   </div>
                   <div>
-                    <label className={label}>Customers</label>
+                    <label className={hiLabel(missingFlags.customers)}>Customers</label>
                     <input
-                      className={inp}
+                      className={hi(missingFlags.customers)}
                       placeholder="Valeo, Multipe..."
                       value={form.customers}
                       onChange={(e) => set("customers", e.target.value)}
@@ -2985,21 +3023,24 @@ function EditTab({
                         ["annual_quantity_n3", "N3"],
                         ["annual_quantity_n4", "N4"],
                       ] as [string, string][]
-                    ).map(([k, lbl]) => (
+                    ).map(([k, lbl]) => {
+                      const isMissing = k === "annual_quantity_n1" && missingFlags.quantity;
+                      return (
                       <div key={k}>
-                        <label className={label}>{lbl}</label>
+                        <label className={hiLabel(isMissing)}>{lbl}</label>
                         <input
                           type="text"
                           inputMode="numeric"
                           disabled={locked}
-                          className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                          className={`${hi(isMissing)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
                           value={fmtIntInput(
                             form[k as keyof typeof form] as string,
                           )}
                           onChange={(e) => set(k, stripInt(e.target.value))}
                         />
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -3084,7 +3125,12 @@ function EditTab({
               <FormSection
                 title="Supplier Comparison (Before → After)"
                 defaultOpen={true}
-                highlight={gateHighlight && !(opp.current_price && opp.proposed_price)}
+                highlight={
+                  gateHighlight &&
+                  (missingFlags.prices ||
+                    missingFlags.logistics ||
+                    missingFlags.supplierName)
+                }
               >
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -3141,13 +3187,13 @@ function EditTab({
                     )}
                   </div>
                   <div>
-                    <label className={label}>
+                    <label className={hiLabel(missingFlags.supplierName)}>
                       Proposed New Supplier — After
                     </label>
                     {isPhase0 ? (
                       <>
                         <input
-                          className={inp}
+                          className={hi(missingFlags.supplierName)}
                           placeholder="Longrun, Haihe... (free text in Phase 0)"
                           value={form.proposed_supplier_name}
                           onChange={(e) =>
@@ -3161,7 +3207,7 @@ function EditTab({
                     ) : (
                       <>
                         <select
-                          className={inp}
+                          className={hi(missingFlags.supplierName)}
                           value={form.proposed_supplier_id}
                           onChange={(e) =>
                             set("proposed_supplier_id", e.target.value)
@@ -3243,7 +3289,7 @@ function EditTab({
                             </td>
                             <td className="px-3 py-1.5">
                               <input
-                                className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                                className={hiCell(missingFlags.countryAfter)}
                                 placeholder="China"
                                 value={form.country_after}
                                 onChange={(e) =>
@@ -3285,14 +3331,17 @@ function EditTab({
                             "0",
                           ],
                         ] as [string, string, string, string, string][]
-                      ).map(([kb, ka, lbl, ph1, ph2]) => (
+                      ).map(([kb, ka, lbl, ph1, ph2]) => {
+                        const rowMissing =
+                          kb === "incoterms_before" && missingFlags.incoterms;
+                        return (
                         <tr key={kb} className="border-t border-slate-100">
                           <td className="px-3 py-1.5 font-semibold text-slate-500">
                             {lbl}
                           </td>
                           <td className="px-3 py-1.5">
                             <input
-                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              className={hiCell(rowMissing)}
                               placeholder={ph1}
                               value={form[kb as keyof typeof form] as string}
                               onChange={(e) => set(kb, e.target.value)}
@@ -3300,14 +3349,15 @@ function EditTab({
                           </td>
                           <td className="px-3 py-1.5">
                             <input
-                              className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300"
+                              className={hiCell(rowMissing)}
                               placeholder={ph2}
                               value={form[ka as keyof typeof form] as string}
                               onChange={(e) => set(ka, e.target.value)}
                             />
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
                       <tr className="border-t border-slate-100">
                         <td className="px-3 py-1.5 font-semibold text-slate-500">
@@ -3360,7 +3410,10 @@ function EditTab({
                             "0.1186",
                           ],
                         ] as [string, string, string, string, string][]
-                      ).map(([kb, ka, lbl, ph1, ph2]) => (
+                      ).map(([kb, ka, lbl, ph1, ph2]) => {
+                        const rowMissing =
+                          kb === "current_price" && missingFlags.prices;
+                        return (
                         <tr key={ka} className="border-t border-slate-100">
                           <td className="px-3 py-1.5 font-semibold text-slate-500">
                             {lbl}
@@ -3371,7 +3424,7 @@ function EditTab({
                                 type="number"
                                 step="0.000001"
                                 disabled={locked}
-                                className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
+                                className={`${hiCell(rowMissing)} ${locked ? "bg-slate-100" : ""}`}
                                 placeholder={ph1}
                                 value={form[kb as keyof typeof form] as string}
                                 onChange={(e) => set(kb, e.target.value)}
@@ -3387,14 +3440,15 @@ function EditTab({
                               type="number"
                               step="0.000001"
                               disabled={locked}
-                              className={`w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 ${locked ? "bg-slate-100" : ""}`}
+                              className={`${hiCell(rowMissing)} ${locked ? "bg-slate-100" : ""}`}
                               placeholder={ph2}
                               value={form[ka as keyof typeof form] as string}
                               onChange={(e) => set(ka, e.target.value)}
                             />
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                   {!locked && fullYearSaving != null && (
@@ -4740,9 +4794,15 @@ function GateTab({
                     </p>
                     <ul className="space-y-1">
                       {phase0Missing.map((c, idx) => (
-                        <li key={idx} className="flex items-center gap-1.5 text-[10px] text-orange-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
-                          {c.label}
+                        <li key={idx}>
+                          <button
+                            type="button"
+                            onClick={() => onNavigate("edit")}
+                            className="flex w-full items-center gap-1.5 text-left text-[10px] text-orange-700 hover:text-orange-900 hover:underline"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
+                            {c.label}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -4819,9 +4879,15 @@ function GateTab({
                     </p>
                     <ul className="space-y-1">
                       {committeeMissing.map((c, idx) => (
-                        <li key={idx} className="flex items-center gap-1.5 text-[10px] text-orange-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
-                          {c.label}
+                        <li key={idx}>
+                          <button
+                            type="button"
+                            onClick={() => onNavigate("edit")}
+                            className="flex w-full items-center gap-1.5 text-left text-[10px] text-orange-700 hover:text-orange-900 hover:underline"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
+                            {c.label}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -5211,16 +5277,18 @@ function GateTab({
                 {stpGateMissing.length > 1 ? "s" : ""} missing:
               </p>
               {stpGateMissing.map((s, i) => (
-                <p
+                <button
                   key={i}
-                  className="flex items-start gap-1.5 text-[11px] text-amber-600"
+                  type="button"
+                  onClick={() => onNavigate("edit")}
+                  className="flex w-full items-start gap-1.5 text-left text-[11px] text-amber-600 hover:text-amber-800 hover:underline"
                 >
                   <span className="shrink-0 text-amber-400">✗</span> {s.label}
-                </p>
+                </button>
               ))}
               <p className="text-[10.5px] text-amber-500 pt-0.5">
-                Go back to the STP Study tab, fill these sections and save
-                before applying a Go decision.
+                Click a section above to jump to the STP Study tab, fill it in
+                and save before applying a Go decision.
               </p>
             </div>
           )}
