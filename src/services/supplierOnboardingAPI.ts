@@ -1922,7 +1922,7 @@ class SupplierOnboardingAPI {
 
   async assignBudget(
     fiscalYear: number,
-    decisions: { opportunity_id: number; budget_status: string; /* delta_reason?: string[] */ }[],
+    decisions: { opportunity_id: number; budget_status: string; is_additional?: boolean; /* delta_reason?: string[] */ }[],
     decidedBy?: string,
   ) {
     return this.request(
@@ -2078,7 +2078,6 @@ class SupplierOnboardingAPI {
   async requestSTPRevision(
     opportunityId: number,
     data: {
-      director_email: string;
       note: string;
       requested_by?: string;
       current_price?: number;

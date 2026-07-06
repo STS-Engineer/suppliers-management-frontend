@@ -119,25 +119,29 @@ function budgetYearWindowLabel(year: number) {
   return `01 Jan ${year} – 31 Dec ${year}`;
 }
 
+// "Empty" (explicitly excluded) and "Opportunity" (never decided) are both
+// merged into "Not considered" — the UI only ever writes "Opportunity"/"Budgeted"
+// going forward, but existing rows may still carry the legacy "Empty" value.
+function normalizeBudgetStatus(status?: string | null): "Opportunity" | "Budgeted" {
+  return status === "Budgeted" ? "Budgeted" : "Opportunity";
+}
+
 function BudgetStatusBadge({ status, isAdditional }: { status?: string | null; isAdditional?: boolean }) {
   if (status === "Budgeted") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+        {/* "Budgeted" means part of the year's official budget — an Additional
+            row never is, even before closure, so it's labelled "Accepted" instead. */}
         <CheckCircle2 size={11} /> {isAdditional ? "Accepted" : "Budgeted"}
       </span>
     );
   }
-  if (status === "Empty") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500">
-        {isAdditional ? "Rejected" : "Excluded"}
-      </span>
-    );
-  }
-  // Opportunity = Pending for additional, Opportunity for baseline
+  // "Empty" (explicitly excluded) and "Opportunity" (never decided) are both
+  // shown as one status to the user — Not considered — whether the row is
+  // baseline or additional.
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-      {isAdditional ? "Pending" : "Opportunity"}
+      Not considered
     </span>
   );
 }
@@ -190,8 +194,8 @@ export default function BudgetingPage() {
       const baselineSeed: Record<number, string> = {};
       const additionalSeed: Record<number, string> = {};
       data.items.forEach((i) => {
-        if (i.is_additional) additionalSeed[i.opportunity_id] = i.budget_status || "Opportunity";
-        else baselineSeed[i.opportunity_id] = i.budget_status || "Opportunity";
+        if (i.is_additional) additionalSeed[i.opportunity_id] = normalizeBudgetStatus(i.budget_status);
+        else baselineSeed[i.opportunity_id] = normalizeBudgetStatus(i.budget_status);
       });
       setDecisions(baselineSeed);
       setAdditionalDecisions(additionalSeed);
@@ -231,6 +235,7 @@ export default function BudgetingPage() {
   const baselineBudgetedTotal = baselineItems
     .filter((i) => decisions[i.opportunity_id] === "Budgeted")
     .reduce((s, i) => s + (i.applicable_amount_eur ?? i.applicable_amount ?? 0), 0);
+  const baselineAdditionalCount = baselineItems.filter((i) => decisions[i.opportunity_id] === "Additional").length;
 
   async function saveBudget() {
     setShowConfirm(false);
@@ -240,7 +245,15 @@ export default function BudgetingPage() {
       const seen = new Set<number>();
       const payload = baselineItems
         .filter((i) => { if (seen.has(i.opportunity_id)) return false; seen.add(i.opportunity_id); return true; })
-        .map((i) => ({ opportunity_id: i.opportunity_id, budget_status: decisions[i.opportunity_id] || "Opportunity" }));
+        .map((i) => {
+          const decision = decisions[i.opportunity_id] || "Opportunity";
+          // "Additional" is a manual override, independent of budget_status —
+          // it moves the row into the Additional bucket even though the
+          // fiscal year isn't closed yet.
+          return decision === "Additional"
+            ? { opportunity_id: i.opportunity_id, budget_status: "Budgeted", is_additional: true }
+            : { opportunity_id: i.opportunity_id, budget_status: decision };
+        });
       await supplierAPI.assignBudget(fiscalYear, payload, userEmail);
       await load(fiscalYear);
       setSelectMode(false);
@@ -254,7 +267,7 @@ export default function BudgetingPage() {
   // ── Additional decisions ───────────────────────────────────────────────────
 
   const additionalChanged = additionalItems.some(
-    (i) => additionalDecisions[i.opportunity_id] !== (i.budget_status || "Opportunity"),
+    (i) => additionalDecisions[i.opportunity_id] !== normalizeBudgetStatus(i.budget_status),
   );
 
   async function saveAdditionalDecisions() {
@@ -264,7 +277,14 @@ export default function BudgetingPage() {
       const seen = new Set<number>();
       const payload = additionalItems
         .filter((i) => { if (seen.has(i.opportunity_id)) return false; seen.add(i.opportunity_id); return true; })
-        .map((i) => ({ opportunity_id: i.opportunity_id, budget_status: additionalDecisions[i.opportunity_id] || "Opportunity" }));
+        .map((i) => {
+          const decision = additionalDecisions[i.opportunity_id] || "Opportunity";
+          // "Baseline" reverts a manually-flagged Additional row back to the
+          // normal baseline bucket — only offered while the year isn't closed.
+          return decision === "Baseline"
+            ? { opportunity_id: i.opportunity_id, budget_status: "Opportunity", is_additional: false }
+            : { opportunity_id: i.opportunity_id, budget_status: decision };
+        });
       await supplierAPI.assignBudget(fiscalYear, payload, userEmail);
       await load(fiscalYear);
     } catch (err: unknown) {
@@ -372,7 +392,7 @@ export default function BudgetingPage() {
           <h1 className="text-xl font-bold text-slate-800">Budgeting</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {selectMode
-              ? `Create Budget ${fiscalYear} — set Budgeted / Excluded / Opportunity for each baseline opportunity.`
+              ? `Create Budget ${fiscalYear} — set Budgeted / Not considered for each baseline opportunity.`
               : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ confirmed opps, or Phase 2 with execution started`}
           </p>
         </div>
@@ -512,7 +532,7 @@ export default function BudgetingPage() {
               {fmt(summary.additional_accepted_eur)}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              {summary.additional_accepted} accepted · {summary.additional_pending} pending · {summary.additional_rejected} rejected
+              {summary.additional_accepted} Accepted · {summary.additional_pending + summary.additional_rejected} Not considered
             </p>
           </div>
 
@@ -534,6 +554,13 @@ export default function BudgetingPage() {
         <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm">
           <span className="text-blue-700">
             <strong>{baselineBudgetedCount}</strong> of {baselineItems.length} set to <strong>Budgeted</strong>
+            {baselineAdditionalCount > 0 && (
+              <>
+                {" · "}
+                <strong>{baselineAdditionalCount}</strong> set to{" "}
+                <strong className="text-violet-700">Additional</strong>
+              </>
+            )}
           </span>
           <span className="font-semibold text-blue-800">Total: {fmt(baselineBudgetedTotal)}</span>
         </div>
@@ -571,12 +598,16 @@ export default function BudgetingPage() {
                       <td className="px-3 py-2.5">
                         <select
                           className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none focus:border-blue-400"
-                          value={decisions[item.opportunity_id] || "Opportunity"}
+                          value={
+                            decisions[item.opportunity_id] === "Additional"
+                              ? "Additional"
+                              : normalizeBudgetStatus(decisions[item.opportunity_id])
+                          }
                           onChange={(e) => setDecisions((p) => ({ ...p, [item.opportunity_id]: e.target.value }))}
                         >
-                          <option value="Opportunity">Opportunity</option>
+                          <option value="Opportunity">Not considered</option>
                           <option value="Budgeted">Budgeted</option>
-                          <option value="Empty">Excluded</option>
+                          <option value="Additional">Additional</option>
                         </select>
                       </td>
                     )}
@@ -585,7 +616,7 @@ export default function BudgetingPage() {
                     {!selectMode && (
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
-                          <BudgetStatusBadge status={item.budget_status} isAdditional={false} />
+                          <BudgetStatusBadge status={item.budget_status} />
                           {item.status_locked_at && (
                             <span title="Locked" className="inline-flex">
                               <Lock size={10} className="text-slate-300" aria-hidden="true" />
@@ -603,7 +634,7 @@ export default function BudgetingPage() {
       )}
 
       {/* ══ Section 2 — Additional Opportunities ═════════════════════════════ */}
-      {!loading && closure && (
+      {!loading && (closure || additionalItems.length > 0) && (
         <div className="space-y-1">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
@@ -612,14 +643,15 @@ export default function BudgetingPage() {
               </span>
               {additionalItems.length > 0 ? (
                 <span className="text-[11px] text-slate-400">
-                  — {additionalItems.length} opportunit{additionalItems.length !== 1 ? "ies" : "y"} added after budget closure
+                  — {additionalItems.length} opportunit{additionalItems.length !== 1 ? "ies" : "y"} added after budget
+                  closure or manually marked Additional
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-400">— none yet</span>
               )}
-              {summary && summary.additional_pending > 0 && (
+              {summary && summary.additional_pending + summary.additional_rejected > 0 && (
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                  {summary.additional_pending} pending decision
+                  {summary.additional_pending + summary.additional_rejected} not considered
                 </span>
               )}
             </div>
@@ -640,6 +672,7 @@ export default function BudgetingPage() {
               <p className="mt-1 text-[11px] text-slate-400">
                 When a Phase 3+ opportunity with a {fiscalYear} real start date (or a Phase 2 opportunity with
                 execution started) becomes eligible after budget closure, it will appear here automatically.
+                You can also mark any baseline opportunity as Additional manually from the Create Budget screen.
               </p>
             </div>
           ) : (
@@ -655,15 +688,21 @@ export default function BudgetingPage() {
                         {isPrivileged ? (
                           <select
                             className="rounded-lg border border-violet-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none focus:border-violet-400"
-                            value={additionalDecisions[item.opportunity_id] || "Opportunity"}
+                            value={
+                              additionalDecisions[item.opportunity_id] === "Baseline"
+                                ? "Baseline"
+                                : normalizeBudgetStatus(additionalDecisions[item.opportunity_id])
+                            }
                             onChange={(e) => setAdditionalDecisions((p) => ({ ...p, [item.opportunity_id]: e.target.value }))}
                           >
-                            <option value="Opportunity">Pending</option>
+                            <option value="Opportunity">Not considered</option>
                             <option value="Budgeted">Accepted</option>
-                            <option value="Empty">Rejected</option>
+                            {/* Only reversible while this fiscal year isn't closed — once
+                                closed, an Additional row is a permanent post-closure record. */}
+                            {!closure && <option value="Baseline">Back to Baseline</option>}
                           </select>
                         ) : (
-                          <BudgetStatusBadge status={item.budget_status} isAdditional={true} />
+                          <BudgetStatusBadge status={item.budget_status} isAdditional />
                         )}
                       </td>
                     </tr>
@@ -673,8 +712,9 @@ export default function BudgetingPage() {
             </div>
           )}
           <p className="px-1 text-[10px] text-slate-400">
-            Opportunities that reached Phase 3 after budget {fiscalYear} was closed.
-            Accept to include their savings in the Additional total, Reject to exclude.
+            Opportunities that reached Phase 3 after budget {fiscalYear} was closed, or were
+            manually marked Additional. Set to Accepted to include their savings in the
+            Additional total, or leave as Not considered to exclude.
           </p>
         </div>
       )}

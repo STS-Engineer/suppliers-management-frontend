@@ -961,6 +961,15 @@ function EditTab({
   const isSourced = ["Sourcing", "Technical Productivity"].includes(
     opp.opportunity_type ?? "",
   );
+  const { user } = useAuth();
+  // The only two roles allowed to (a) Approve/Reject a pending STP revision
+  // request, AND (b) edit the Phase 2/3 STP baseline directly without going
+  // through the request/approve workflow at all. Mirrors the backend's
+  // _PRIVILEGED check (router.py) and the actor_role bypass in
+  // update_opportunity (service.py) — keep both in sync if this list changes.
+  const canDecideStpRevision =
+    user?.access_profile === "purchasing_director" ||
+    user?.access_profile === "vp_conversion";
 
   useEffect(() => {
     supplierAPI
@@ -1009,11 +1018,19 @@ function EditTab({
     "Awaiting Validation",
     "Under Committee Review",
   ].includes(opp.status ?? "");
-  const stpReadOnly =
-    !stpEditablePhases.includes(opp.phase_status ?? "") || pendingApproval;
   const isStpPhase23 =
     isSourced && ["Phase 2", "Phase 3"].includes(opp.phase_status ?? "");
   const hasPendingSTPRevision = isStpPhase23 && !!opp.pending_stp_revision;
+  // Purchasing Director / VP Conversion ARE the approvers — they can edit the
+  // committed STP baseline directly in Phase 2/3 instead of going through the
+  // request/approve workflow, as long as there isn't already a pending
+  // revision request awaiting their decision (that must be resolved first).
+  const canEditStpDirectly =
+    canDecideStpRevision && isStpPhase23 && !hasPendingSTPRevision;
+  const stpReadOnly =
+    (!stpEditablePhases.includes(opp.phase_status ?? "") ||
+      pendingApproval) &&
+    !canEditStpDirectly;
   // Budget status is derived from validation (Validate→Budgeted). The financial
   // baseline locks once the opportunity is validated/budgeted.
   const isBudgeted = opp.validation_status === "Budgeted";
@@ -1201,14 +1218,32 @@ function EditTab({
   const [error, setError] = useState<string | null>(null);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
-  // STP revision request modal (Phase 2/3)
+  // STP revision request modal (Phase 2/3) — inputs here are the NEW proposed
+  // values, independent of the (disabled) main STP form. Left blank = unchanged.
   const [stpRevModal, setStpRevModal] = useState(false);
-  const [stpRevForm, setStpRevForm] = useState({
-    director_email: "",
+  const emptyStpRevForm = {
     note: "",
-  });
+    current_price: "",
+    proposed_price: "",
+    current_price_n1: "",
+    current_price_n2: "",
+    current_price_n3: "",
+    proposed_price_n1: "",
+    proposed_price_n2: "",
+    proposed_price_n3: "",
+    annual_quantity_n1: "",
+    annual_quantity_n2: "",
+    annual_quantity_n3: "",
+    annual_quantity_n4: "",
+    bonus_before: "",
+    bonus_after: "",
+  };
+  const [stpRevForm, setStpRevForm] = useState(emptyStpRevForm);
   const [stpRevLoading, setStpRevLoading] = useState(false);
   const [stpRevError, setStpRevError] = useState<string | null>(null);
+  const stpRevHasChange = Object.entries(stpRevForm).some(
+    ([k, v]) => k !== "note" && String(v).trim() !== "",
+  );
 
   // STP revision decision modal (Director)
   const [stpDecModal, setStpDecModal] = useState(false);
@@ -1559,6 +1594,88 @@ function EditTab({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
+    // Required-field guard — from Phase 0 onward, the core baseline (duration,
+    // saving, quantities, prices, etc.) must be filled before it can be saved,
+    // rather than left incomplete until the gate/committee submission check.
+    {
+      const phase = opp.phase_status ?? "";
+      const missing: string[] = [];
+
+      if (["Phase 0", "Phase 1"].includes(phase)) {
+        if (!form.duration_months || parseInt(form.duration_months) <= 0) {
+          missing.push("Duration (months)");
+        }
+        if (
+          !form.expected_annual_saving ||
+          parseFloat(form.expected_annual_saving) <= 0
+        ) {
+          missing.push("Est. Annual Saving");
+        }
+        if (!form.planned_start_date) {
+          missing.push("Planned Start Date");
+        }
+        if (!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")) {
+          if (!form.plant_id) missing.push("Plant");
+          if (!form.scope_in) missing.push("Scope IN");
+          if (!form.proposed_supplier_name) {
+            missing.push("Proposed supplier name");
+          }
+          if (
+            !form.annual_quantity_n1 ||
+            parseInt(form.annual_quantity_n1) <= 0
+          ) {
+            missing.push("Quantity (Year N)");
+          }
+          if (!form.current_price || parseFloat(form.current_price) <= 0) {
+            missing.push("Current Price");
+          }
+          if (!form.proposed_price || parseFloat(form.proposed_price) <= 0) {
+            missing.push("Proposed Price");
+          }
+        } else {
+          if (!livePScore) missing.push("PLD: Payback score");
+          if (!liveLScore) missing.push("PLD: Lead-time score");
+          if (!liveDScore) missing.push("PLD: Difficulty score");
+        }
+      }
+
+      // Phase 1 Starting Date / Execution Start Date — same underlying field.
+      // Sourcing/Technical Productivity opportunities expose it as "Phase 1
+      // Starting Date" already in Phase 1 (STP planning section), so it's
+      // required from there; other types only get the field from Phase 2.
+      const executionDateRequiredPhases = isSourced
+        ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
+        : ["Phase 2", "Phase 3", "Phase 4"];
+      if (
+        executionDateRequiredPhases.includes(phase) &&
+        !form.execution_start_date
+      ) {
+        missing.push(
+          isSourced && phase === "Phase 1"
+            ? "Phase 1 Starting Date"
+            : "Execution Start Date",
+        );
+      }
+
+      // Phase 3 — savings are flowing, so the real deployment start date must be
+      // recorded (unless the budget year is already closed and the field is locked).
+      if (["Phase 3", "Phase 4"].includes(phase)) {
+        const budgetLocked =
+          opp.budget_years?.some((by) => by.status_locked_at != null) ??
+          false;
+        if (!budgetLocked && !form.real_start_date) {
+          missing.push("Deployment Start Date (Real Savings Start)");
+        }
+      }
+
+      if (missing.length) {
+        setError(
+          `Please fill in the following required fields before saving: ${missing.join(", ")}.`,
+        );
+        return;
+      }
+    }
+
     // Client-side FX guard — catch the obvious case before hitting the API.
     if (form.currency && form.currency !== "EUR") {
       const rate = parseFloat(form.fx_rate_to_eur ?? "0");
@@ -1747,14 +1864,10 @@ function EditTab({
         onRefresh(res.data as Opp);
       }
     } catch (err: unknown) {
-      if (
-        err instanceof SupplierApiError &&
-        err.errorCode === "STP_REQUIRES_APPROVAL"
-      ) {
-        setStpRevModal(true);
-      } else {
-        setError(err instanceof Error ? err.message : "Failed");
-      }
+      // Request Revision creation is disabled (see the DISABLED block below) —
+      // a non-privileged user hitting STP_REQUIRES_APPROVAL just gets the plain
+      // error message now instead of a modal that leads nowhere.
+      setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setLoading(false);
     }
@@ -1762,59 +1875,58 @@ function EditTab({
 
   async function submitSTPRevisionRequest(e: React.FormEvent) {
     e.preventDefault();
-    if (!stpRevForm.director_email.trim() || !stpRevForm.note.trim()) return;
+    if (!stpRevForm.note.trim() || !stpRevHasChange) return;
     setStpRevLoading(true);
     setStpRevError(null);
     try {
       await supplierAPI.requestSTPRevision(opp.opportunity_id, {
-        director_email: stpRevForm.director_email.trim(),
         note: stpRevForm.note.trim(),
         requested_by: userEmail,
-        current_price: form.current_price
-          ? parseFloat(form.current_price)
+        current_price: stpRevForm.current_price
+          ? parseFloat(stpRevForm.current_price)
           : undefined,
-        proposed_price: form.proposed_price
-          ? parseFloat(form.proposed_price)
+        proposed_price: stpRevForm.proposed_price
+          ? parseFloat(stpRevForm.proposed_price)
           : undefined,
-        current_price_n1: form.current_price_n1
-          ? parseFloat(form.current_price_n1)
+        current_price_n1: stpRevForm.current_price_n1
+          ? parseFloat(stpRevForm.current_price_n1)
           : undefined,
-        current_price_n2: form.current_price_n2
-          ? parseFloat(form.current_price_n2)
+        current_price_n2: stpRevForm.current_price_n2
+          ? parseFloat(stpRevForm.current_price_n2)
           : undefined,
-        current_price_n3: form.current_price_n3
-          ? parseFloat(form.current_price_n3)
+        current_price_n3: stpRevForm.current_price_n3
+          ? parseFloat(stpRevForm.current_price_n3)
           : undefined,
-        proposed_price_n1: form.proposed_price_n1
-          ? parseFloat(form.proposed_price_n1)
+        proposed_price_n1: stpRevForm.proposed_price_n1
+          ? parseFloat(stpRevForm.proposed_price_n1)
           : undefined,
-        proposed_price_n2: form.proposed_price_n2
-          ? parseFloat(form.proposed_price_n2)
+        proposed_price_n2: stpRevForm.proposed_price_n2
+          ? parseFloat(stpRevForm.proposed_price_n2)
           : undefined,
-        proposed_price_n3: form.proposed_price_n3
-          ? parseFloat(form.proposed_price_n3)
+        proposed_price_n3: stpRevForm.proposed_price_n3
+          ? parseFloat(stpRevForm.proposed_price_n3)
           : undefined,
-        annual_quantity_n1: form.annual_quantity_n1
-          ? parseInt(form.annual_quantity_n1)
+        annual_quantity_n1: stpRevForm.annual_quantity_n1
+          ? parseInt(stpRevForm.annual_quantity_n1)
           : undefined,
-        annual_quantity_n2: form.annual_quantity_n2
-          ? parseInt(form.annual_quantity_n2)
+        annual_quantity_n2: stpRevForm.annual_quantity_n2
+          ? parseInt(stpRevForm.annual_quantity_n2)
           : undefined,
-        annual_quantity_n3: form.annual_quantity_n3
-          ? parseInt(form.annual_quantity_n3)
+        annual_quantity_n3: stpRevForm.annual_quantity_n3
+          ? parseInt(stpRevForm.annual_quantity_n3)
           : undefined,
-        annual_quantity_n4: form.annual_quantity_n4
-          ? parseInt(form.annual_quantity_n4)
+        annual_quantity_n4: stpRevForm.annual_quantity_n4
+          ? parseInt(stpRevForm.annual_quantity_n4)
           : undefined,
-        bonus_before: form.bonus_before
-          ? parseFloat(form.bonus_before)
+        bonus_before: stpRevForm.bonus_before
+          ? parseFloat(stpRevForm.bonus_before)
           : undefined,
-        bonus_after: form.bonus_after
-          ? parseFloat(form.bonus_after)
+        bonus_after: stpRevForm.bonus_after
+          ? parseFloat(stpRevForm.bonus_after)
           : undefined,
       });
       setStpRevModal(false);
-      setStpRevForm({ director_email: "", note: "" });
+      setStpRevForm(emptyStpRevForm);
       const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(fresh.data as Opp);
     } catch (err: unknown) {
@@ -2630,6 +2742,15 @@ function EditTab({
               savings estimate shown in the Financial baseline above.
             </p>
 
+            {canEditStpDirectly && (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <strong>Director / VP override.</strong> The STP baseline is
+                normally locked in execution, but as an approver you can edit
+                prices, quantities and bonuses directly here — changes save
+                immediately, no revision request needed.
+              </div>
+            )}
+
             {stpReadOnly && (
               <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 {pendingApproval ? (
@@ -2643,12 +2764,14 @@ function EditTab({
                   <div className="flex flex-col gap-2">
                     <p>
                       <strong>STP locked in execution.</strong> Prices and
-                      quantities are committed. If renegotiation with the
-                      supplier changes the baseline, submit a revision request —
-                      the Purchasing Director will receive an email and must
-                      approve before values are updated.
+                      quantities are committed. Only the Purchasing Director or
+                      VP Conversion can change them at this stage.
                     </p>
-                    {!hasPendingSTPRevision && (
+                    {/* DISABLED — Request Revision creation turned off; PD/VPC edit
+                        directly instead (see canEditStpDirectly above). Re-enable by
+                        uncommenting this block and the matching backend endpoint in
+                        purchasing_value/router.py. */}
+                    {false && !hasPendingSTPRevision && (
                       <button
                         type="button"
                         onClick={() => setStpRevModal(true)}
@@ -2676,7 +2799,9 @@ function EditTab({
               (() => {
                 const rev = opp.pending_stp_revision as Record<string, unknown>;
                 const requested_at = rev.requested_at as string | undefined;
-                const director_email = rev.director_email as string | undefined;
+                const director_emails = rev.director_emails as
+                  | string[]
+                  | undefined;
                 const note = rev.note as string | undefined;
                 const proposed = rev.proposed_fields as
                   | Record<string, unknown>
@@ -2690,17 +2815,19 @@ function EditTab({
                       <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
                         <Clock size={13} /> Revision pending Director approval
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setStpDecModal(true)}
-                        className="rounded-lg bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
-                      >
-                        Approve / Reject
-                      </button>
+                      {canDecideStpRevision && (
+                        <button
+                          type="button"
+                          onClick={() => setStpDecModal(true)}
+                          className="rounded-lg bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                        >
+                          Approve / Reject
+                        </button>
+                      )}
                     </div>
-                    {director_email && (
+                    {director_emails && director_emails.length > 0 && (
                       <p className="text-xs text-blue-700">
-                        Sent to <strong>{director_email}</strong>
+                        Sent to <strong>{director_emails.join(", ")}</strong>
                         {requested_at &&
                           ` on ${new Date(requested_at).toLocaleDateString("en-GB")}`}
                       </p>
@@ -3791,11 +3918,16 @@ function EditTab({
         </div>
       </form>
 
-      {/* STP Revision Request modal — portal to escape drawer stacking context & outer form */}
-      {stpRevModal &&
+      {/* DISABLED — Request Revision creation turned off (backend endpoint
+          commented out in purchasing_value/router.py). stpRevModal can never be
+          set true from the UI anymore (button above is disabled too), but the
+          `false &&` keeps this unreachable even if some other path still flips
+          the state, and the whole block stays intact to re-enable later. */}
+      {false &&
+        stpRevModal &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
                 <h2 className="text-base font-bold text-slate-800">
                   Request STP Baseline Revision
@@ -3813,32 +3945,130 @@ function EditTab({
               </div>
               <form
                 onSubmit={submitSTPRevisionRequest}
-                className="px-6 py-5 space-y-4"
+                className="space-y-4 overflow-y-auto px-6 py-5"
               >
                 <p className="text-xs text-slate-500">
-                  The proposed values from the form will be sent to the
-                  Purchasing Director for approval. Current figures remain
-                  active until the Director approves.
+                  Enter only the values you want to change — leave the rest
+                  blank. They will be sent to the Purchasing Director and VP
+                  Conversion for approval; current figures remain active until
+                  a Director approves.
                 </p>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">
-                    Purchasing Director email{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    placeholder="director@avocarbon.com"
-                    value={stpRevForm.director_email}
-                    onChange={(e) =>
-                      setStpRevForm((f) => ({
-                        ...f,
-                        director_email: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
+
+                {(() => {
+                  const revInp =
+                    "w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
+                  const revLabel =
+                    "mb-1 block text-[11px] font-semibold text-slate-500";
+                  const setRev = (k: keyof typeof stpRevForm, v: string) =>
+                    setStpRevForm((f) => ({ ...f, [k]: v }));
+                  const priceField = (
+                    key: keyof typeof stpRevForm,
+                    label: string,
+                    current: unknown,
+                  ) => (
+                    <div key={key}>
+                      <label className={revLabel}>{label}</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        className={revInp}
+                        placeholder={
+                          current != null
+                            ? `Current: ${current}`
+                            : "New value"
+                        }
+                        value={stpRevForm[key]}
+                        onChange={(e) => setRev(key, e.target.value)}
+                      />
+                    </div>
+                  );
+                  const qtyField = (
+                    key: keyof typeof stpRevForm,
+                    label: string,
+                    current: unknown,
+                  ) => (
+                    <div key={key}>
+                      <label className={revLabel}>{label}</label>
+                      <input
+                        type="number"
+                        step="1"
+                        className={revInp}
+                        placeholder={
+                          current != null
+                            ? `Current: ${current}`
+                            : "New value"
+                        }
+                        value={stpRevForm[key]}
+                        onChange={(e) => setRev(key, e.target.value)}
+                      />
+                    </div>
+                  );
+                  return (
+                    <div className="space-y-3 rounded-xl border border-amber-100 bg-amber-50/50 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                        Proposed New Values
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {priceField(
+                          "current_price",
+                          "Current Price (Year N)",
+                          opp.current_price,
+                        )}
+                        {priceField(
+                          "proposed_price",
+                          "Proposed Price (Year N)",
+                          opp.proposed_price,
+                        )}
+                        {priceField(
+                          "proposed_price_n1",
+                          "Proposed Price N+1",
+                          opp.proposed_price_n1,
+                        )}
+                        {priceField(
+                          "proposed_price_n2",
+                          "Proposed Price N+2",
+                          opp.proposed_price_n2,
+                        )}
+                        {priceField(
+                          "proposed_price_n3",
+                          "Proposed Price N+3",
+                          opp.proposed_price_n3,
+                        )}
+                        {qtyField(
+                          "annual_quantity_n1",
+                          "Qty Year N",
+                          opp.annual_quantity_n1,
+                        )}
+                        {qtyField(
+                          "annual_quantity_n2",
+                          "Qty Year N+1",
+                          opp.annual_quantity_n2,
+                        )}
+                        {qtyField(
+                          "annual_quantity_n3",
+                          "Qty Year N+2",
+                          opp.annual_quantity_n3,
+                        )}
+                        {qtyField(
+                          "annual_quantity_n4",
+                          "Qty Year N+3",
+                          opp.annual_quantity_n4,
+                        )}
+                        {priceField(
+                          "bonus_before",
+                          "Bonus Before",
+                          opp.bonus_before,
+                        )}
+                        {priceField(
+                          "bonus_after",
+                          "Bonus After",
+                          opp.bonus_after,
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
                     Justification <span className="text-red-500">*</span>
@@ -3874,8 +4104,13 @@ function EditTab({
                     type="submit"
                     disabled={
                       stpRevLoading ||
-                      !stpRevForm.director_email.trim() ||
-                      !stpRevForm.note.trim()
+                      !stpRevForm.note.trim() ||
+                      !stpRevHasChange
+                    }
+                    title={
+                      !stpRevHasChange
+                        ? "Enter at least one new value above"
+                        : undefined
                     }
                     className="flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
                   >
@@ -3893,6 +4128,7 @@ function EditTab({
 
       {/* STP Revision Decision modal — portal to escape drawer stacking context & outer form */}
       {stpDecModal &&
+        canDecideStpRevision &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
