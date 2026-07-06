@@ -2067,7 +2067,30 @@ class SupplierOnboardingAPI {
     );
   }
 
-  async reviseFinancialLineBaseline(lineId: number, data: { revised_saving: number; note?: string; revised_by?: string }) {
+  async reviseFinancialLineBaseline(
+    lineId: number,
+    data: {
+      note: string;
+      revised_by?: string;
+      // Negotiation / Cash types only
+      revised_saving?: number;
+      // Sourcing / Technical Productivity types only (any subset)
+      current_price?: number;
+      proposed_price?: number;
+      current_price_n1?: number;
+      current_price_n2?: number;
+      current_price_n3?: number;
+      proposed_price_n1?: number;
+      proposed_price_n2?: number;
+      proposed_price_n3?: number;
+      annual_quantity_n1?: number;
+      annual_quantity_n2?: number;
+      annual_quantity_n3?: number;
+      annual_quantity_n4?: number;
+      bonus_before?: number;
+      bonus_after?: number;
+    },
+  ) {
     return this.request(
       `${this.baseUrl}/purchasing-value/financial-lines/${lineId}/revise-baseline`,
       { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(data) },

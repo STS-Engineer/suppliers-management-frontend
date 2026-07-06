@@ -276,6 +276,7 @@ interface Opp {
   reason_other?: string;
   secondary_plants?: string;
   pending_stp_revision?: Record<string, unknown> | null;
+  revision_history?: Record<string, unknown>[] | null;
   projects: ProjectRec[];
   financial_lines: FinLine[];
   opp_documents: OppDoc[];
@@ -5500,12 +5501,17 @@ const OUTCOME_CONFIG: Record<string, { label: string; color: string }> = {
   Escalate: { label: "Escalate", color: "bg-red-100 text-red-700" },
 };
 
-// Manual Revise-Baseline tool is hidden for now (client hasn't requested it). The
-// backend capability and this UI are kept intact — flip to `true` to re-enable.
+// Manual Revise-Baseline tool — the ONLY way to correct price/quantity/bonus (or
+// the flat annual saving for Negotiation/Cash) once actuals already exist; direct
+// STP editing is unconditionally blocked past that point (BASELINE_LOCKED_ACTUALS
+// in update_opportunity), even for purchasing_director/vp_conversion. Recomputes
+// through compute_stp_financials (same engine as the rest of the app), preserves
+// every actual already entered, propagates to all fiscal-year budget rows, and
+// keeps a permanent structured history (opp.revision_history).
 // Note: expected-saving changes BEFORE actuals exist are already handled automatically
 // (the monthly grid regenerates on save); this tool is only needed to re-baseline a
 // line that ALREADY has entered actuals while preserving them.
-const REVISE_BASELINE_ENABLED = false;
+const REVISE_BASELINE_ENABLED = true;
 
 // Phase-aware context for the financial tab
 const FINANCIAL_PHASE_CONTEXT: Record<
@@ -5593,10 +5599,37 @@ function FinancialTab({
     recovery_target_date: "",
     recovery_amount: "",
   });
-  // Phase 1: revise baseline saving
+  // Revise committed baseline (Phase 3, actuals already exist) — inputs are the
+  // NEW proposed values; for Sourcing/Technical Productivity this is the real
+  // STP price/quantity/bonus fields (recomputed through the same formula engine
+  // as everywhere else); for Negotiation/Cash (no price/quantity breakdown) it's
+  // the flat revised annual saving.
+  const isStpType = ["Sourcing", "Technical Productivity"].includes(
+    opp.opportunity_type ?? "",
+  );
   const [showRevise, setShowRevise] = useState(false);
-  const [revisedSaving, setRevisedSaving] = useState("");
-  const [reviseNote, setReviseNote] = useState("");
+  const emptyReviseForm = {
+    note: "",
+    revised_saving: "",
+    current_price: "",
+    proposed_price: "",
+    current_price_n1: "",
+    current_price_n2: "",
+    current_price_n3: "",
+    proposed_price_n1: "",
+    proposed_price_n2: "",
+    proposed_price_n3: "",
+    annual_quantity_n1: "",
+    annual_quantity_n2: "",
+    annual_quantity_n3: "",
+    annual_quantity_n4: "",
+    bonus_before: "",
+    bonus_after: "",
+  };
+  const [reviseForm, setReviseForm] = useState(emptyReviseForm);
+  const reviseHasStpChange = Object.entries(reviseForm).some(
+    ([k, v]) => k !== "note" && k !== "revised_saving" && v.trim() !== "",
+  );
 
   // FinancialLine/MonthlyFinancial amounts are stored in the opportunity's
   // native currency (no FX conversion applied at this level — see
@@ -5610,6 +5643,14 @@ function FinancialTab({
   const isOwner =
     (opp.conversion_owner ?? "").trim().toLowerCase() ===
     userEmail.trim().toLowerCase();
+  // Revise Baseline is restricted to purchasing_director/vp_conversion on the
+  // backend (_PRIVILEGED, no ownership check) — mirror that here rather than
+  // gating on isOwner, otherwise a non-owner PD/VP wouldn't see the button at
+  // all, while an owner who isn't PD/VP would see it and get a 403.
+  const { user } = useAuth();
+  const canReviseBaseline =
+    user?.access_profile === "purchasing_director" ||
+    user?.access_profile === "vp_conversion";
   // Mirror the backend rule: actuals are editable while the financial line is Active
   // and the opportunity has reached execution (Phase 3+), including Phase 4 (LLC) and
   // closure-period realization — not only during Phase 3.
@@ -5811,27 +5852,78 @@ function FinancialTab({
 
   async function saveRevision(e: React.FormEvent) {
     e.preventDefault();
-    if (!revisedSaving || parseFloat(revisedSaving) <= 0) {
-      setError("Enter a valid revised saving.");
+    if (!reviseForm.note.trim()) {
+      setError("Reason for revision is required for audit trail.");
       return;
     }
-    if (!reviseNote.trim()) {
-      setError("Reason for revision is required for audit trail.");
+    if (isStpType) {
+      if (!reviseHasStpChange) {
+        setError("Enter at least one new value (price, quantity or bonus).");
+        return;
+      }
+    } else if (
+      !reviseForm.revised_saving ||
+      parseFloat(reviseForm.revised_saving) <= 0
+    ) {
+      setError("Enter a valid revised saving.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
       await supplierAPI.reviseFinancialLineBaseline(line.financial_line_id, {
-        revised_saving: parseFloat(revisedSaving),
-        note: reviseNote,
+        note: reviseForm.note.trim(),
         revised_by: userEmail,
+        revised_saving: reviseForm.revised_saving
+          ? parseFloat(reviseForm.revised_saving)
+          : undefined,
+        current_price: reviseForm.current_price
+          ? parseFloat(reviseForm.current_price)
+          : undefined,
+        proposed_price: reviseForm.proposed_price
+          ? parseFloat(reviseForm.proposed_price)
+          : undefined,
+        current_price_n1: reviseForm.current_price_n1
+          ? parseFloat(reviseForm.current_price_n1)
+          : undefined,
+        current_price_n2: reviseForm.current_price_n2
+          ? parseFloat(reviseForm.current_price_n2)
+          : undefined,
+        current_price_n3: reviseForm.current_price_n3
+          ? parseFloat(reviseForm.current_price_n3)
+          : undefined,
+        proposed_price_n1: reviseForm.proposed_price_n1
+          ? parseFloat(reviseForm.proposed_price_n1)
+          : undefined,
+        proposed_price_n2: reviseForm.proposed_price_n2
+          ? parseFloat(reviseForm.proposed_price_n2)
+          : undefined,
+        proposed_price_n3: reviseForm.proposed_price_n3
+          ? parseFloat(reviseForm.proposed_price_n3)
+          : undefined,
+        annual_quantity_n1: reviseForm.annual_quantity_n1
+          ? parseInt(reviseForm.annual_quantity_n1)
+          : undefined,
+        annual_quantity_n2: reviseForm.annual_quantity_n2
+          ? parseInt(reviseForm.annual_quantity_n2)
+          : undefined,
+        annual_quantity_n3: reviseForm.annual_quantity_n3
+          ? parseInt(reviseForm.annual_quantity_n3)
+          : undefined,
+        annual_quantity_n4: reviseForm.annual_quantity_n4
+          ? parseInt(reviseForm.annual_quantity_n4)
+          : undefined,
+        bonus_before: reviseForm.bonus_before
+          ? parseFloat(reviseForm.bonus_before)
+          : undefined,
+        bonus_after: reviseForm.bonus_after
+          ? parseFloat(reviseForm.bonus_after)
+          : undefined,
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
       setShowRevise(false);
-      setRevisedSaving("");
-      setReviseNote("");
+      setReviseForm(emptyReviseForm);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Revision failed");
     } finally {
@@ -5877,8 +5969,9 @@ function FinancialTab({
 
       {/* Revise baseline saving — only in Phase 3 once the real start is set and the
           monthly grid exists (rebuild preserves entered actuals). Not available before
-          rows exist; adjust the estimate on the opportunity form in earlier phases. */}
-      {isOwner &&
+          rows exist; adjust the estimate on the opportunity form in earlier phases.
+          Restricted to purchasing_director/vp_conversion, not opportunity ownership. */}
+      {canReviseBaseline &&
         REVISE_BASELINE_ENABLED &&
         opp.phase_status === "Phase 3" &&
         opp.real_start_date &&
@@ -5911,7 +6004,120 @@ function FinancialTab({
             </div>
             {showRevise && (
               <form onSubmit={saveRevision} className="mt-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                {isStpType ? (
+                  (() => {
+                    const revInp =
+                      "w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
+                    const revLabel =
+                      "mb-1 block text-[10.5px] font-semibold text-slate-600";
+                    const setRev = (k: keyof typeof reviseForm, v: string) =>
+                      setReviseForm((f) => ({ ...f, [k]: v }));
+                    const priceField = (
+                      key: keyof typeof reviseForm,
+                      label: string,
+                      current: unknown,
+                    ) => (
+                      <div key={key}>
+                        <label className={revLabel}>{label}</label>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          className={revInp}
+                          placeholder={
+                            current != null ? `Current: ${current}` : "New value"
+                          }
+                          value={reviseForm[key]}
+                          onChange={(e) => setRev(key, e.target.value)}
+                        />
+                      </div>
+                    );
+                    const qtyField = (
+                      key: keyof typeof reviseForm,
+                      label: string,
+                      current: unknown,
+                    ) => (
+                      <div key={key}>
+                        <label className={revLabel}>{label}</label>
+                        <input
+                          type="number"
+                          step="1"
+                          className={revInp}
+                          placeholder={
+                            current != null ? `Current: ${current}` : "New value"
+                          }
+                          value={reviseForm[key]}
+                          onChange={(e) => setRev(key, e.target.value)}
+                        />
+                      </div>
+                    );
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-[10.5px] text-slate-500">
+                          Enter only the values that changed — leave the rest
+                          blank. Expected saving, ROI and cash impact recompute
+                          automatically from these.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {priceField(
+                            "current_price",
+                            "Current Price (Year N)",
+                            opp.current_price,
+                          )}
+                          {priceField(
+                            "proposed_price",
+                            "Proposed Price (Year N)",
+                            opp.proposed_price,
+                          )}
+                          {priceField(
+                            "proposed_price_n1",
+                            "Proposed Price N+1",
+                            opp.proposed_price_n1,
+                          )}
+                          {priceField(
+                            "proposed_price_n2",
+                            "Proposed Price N+2",
+                            opp.proposed_price_n2,
+                          )}
+                          {priceField(
+                            "proposed_price_n3",
+                            "Proposed Price N+3",
+                            opp.proposed_price_n3,
+                          )}
+                          {qtyField(
+                            "annual_quantity_n1",
+                            "Qty Year N",
+                            opp.annual_quantity_n1,
+                          )}
+                          {qtyField(
+                            "annual_quantity_n2",
+                            "Qty Year N+1",
+                            opp.annual_quantity_n2,
+                          )}
+                          {qtyField(
+                            "annual_quantity_n3",
+                            "Qty Year N+2",
+                            opp.annual_quantity_n3,
+                          )}
+                          {qtyField(
+                            "annual_quantity_n4",
+                            "Qty Year N+3",
+                            opp.annual_quantity_n4,
+                          )}
+                          {priceField(
+                            "bonus_before",
+                            "Bonus Before",
+                            opp.bonus_before,
+                          )}
+                          {priceField(
+                            "bonus_after",
+                            "Bonus After",
+                            opp.bonus_after,
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
                   <div>
                     <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
                       Revised Annual Saving (€) *
@@ -5923,41 +6129,49 @@ function FinancialTab({
                       step="0.01"
                       className={inp}
                       placeholder={line.expected_annual_saving?.toString()}
-                      value={revisedSaving}
-                      onChange={(e) => setRevisedSaving(e.target.value)}
+                      value={reviseForm.revised_saving}
+                      onChange={(e) =>
+                        setReviseForm((f) => ({
+                          ...f,
+                          revised_saving: e.target.value,
+                        }))
+                      }
                     />
-                    {revisedSaving && line.expected_annual_saving && (
+                    {reviseForm.revised_saving && line.expected_annual_saving && (
                       <p
-                        className={`text-[10px] mt-0.5 ${parseFloat(revisedSaving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
+                        className={`text-[10px] mt-0.5 ${parseFloat(reviseForm.revised_saving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
                       >
-                        {parseFloat(revisedSaving) <
+                        {parseFloat(reviseForm.revised_saving) <
                         Number(line.expected_annual_saving)
                           ? "▼"
                           : "▲"}{" "}
                         Change: €
                         {Math.abs(
-                          parseFloat(revisedSaving) -
+                          parseFloat(reviseForm.revised_saving) -
                             Number(line.expected_annual_saving),
                         ).toLocaleString("en-GB")}
                       </p>
                     )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                      Reason for revision *
-                    </label>
-                    <input
-                      required
-                      className={inp}
-                      placeholder="e.g. Tooling higher than estimated"
-                      value={reviseNote}
-                      onChange={(e) => setReviseNote(e.target.value)}
-                    />
-                  </div>
+                )}
+                <div>
+                  <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
+                    Reason for revision *
+                  </label>
+                  <input
+                    required
+                    className={inp}
+                    placeholder="e.g. Supplier renegotiated price mid-contract"
+                    value={reviseForm.note}
+                    onChange={(e) =>
+                      setReviseForm((f) => ({ ...f, note: e.target.value }))
+                    }
+                  />
                 </div>
                 <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 text-[10.5px] text-amber-700">
-                  ⚠ This will delete and rebuild all monthly expected rows. Rows
-                  that already have actuals entered will be preserved.
+                  ⚠ Every actual already entered is preserved — only the
+                  remaining (not-yet-realized) months are rebuilt from the
+                  corrected baseline.
                 </div>
                 <button
                   type="submit"
@@ -5971,6 +6185,56 @@ function FinancialTab({
             )}
           </div>
         )}
+
+      {/* Revision history — permanent audit trail of every committed-baseline
+          correction (never trimmed/rewritten). */}
+      {opp.revision_history != null && opp.revision_history.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-2">
+          <p className="text-xs font-bold text-slate-600">
+            Baseline Revision History
+          </p>
+          <div className="space-y-2">
+            {[...opp.revision_history].reverse().map((entry, i) => {
+              const e = entry as Record<string, unknown>;
+              const prevComputed =
+                (e.previous_computed as Record<string, unknown>) || {};
+              const newComputed =
+                (e.new_computed as Record<string, unknown>) || {};
+              return (
+                <div
+                  key={i}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]"
+                >
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span>
+                      {e.revised_at
+                        ? new Date(String(e.revised_at)).toLocaleString(
+                            "en-GB",
+                          )
+                        : "—"}{" "}
+                      · <strong>{String(e.revised_by ?? "unknown")}</strong>
+                    </span>
+                  </div>
+                  {typeof e.note === "string" && e.note && (
+                    <p className="mt-0.5 italic text-slate-600">"{e.note}"</p>
+                  )}
+                  <p className="mt-1 text-slate-600">
+                    Annual saving: €
+                    {Number(
+                      prevComputed.expected_annual_saving ?? 0,
+                    ).toLocaleString("en-GB")}{" "}
+                    → <strong>
+                      €{Number(
+                        newComputed.expected_annual_saving ?? 0,
+                      ).toLocaleString("en-GB")}
+                    </strong>
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Escalation banner */}
       {line.is_escalated && (
