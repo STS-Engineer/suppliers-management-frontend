@@ -81,11 +81,14 @@ export const CERTIFICATIONS = [
 ] as const;
 
 export const PLD_TOP_OPTIONS = [
+  { value: 'Cash in Advance', label: 'Cash in Advance' },
+  { value: '15 days net', label: '15 days net' },
   { value: '30 days net', label: '30 days net' },
   { value: '30 days end of month or +', label: '30 days end of month or +' },
   { value: '60 days net', label: '60 days net' },
   { value: '60 days end of month or +', label: '60 days end of month or +' },
-  { value: 'Cash in Advance', label: 'Cash in Advance' },
+  { value: '60 days eom or +', label: '60 days eom or +' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_LTA_OPTIONS = [
@@ -93,6 +96,8 @@ export const PLD_LTA_OPTIONS = [
   { value: '2 years', label: '2 years' },
   { value: '3 years/+', label: '3 years/+' },
   { value: 'None/Invalid', label: 'None/Invalid' },
+  { value: 'None', label: 'None' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_SQMA_OPTIONS = [
@@ -100,6 +105,7 @@ export const PLD_SQMA_OPTIONS = [
   { value: 'Signed', label: 'Signed' },
   { value: 'Signed m.res.', label: 'Signed m.res.' },
   { value: 'Signed M/Res/not sent', label: 'Signed M/Res/not sent' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_FAMILY_COVERAGE_OPTIONS = [
@@ -119,6 +125,7 @@ export const PLD_FAMILY_COVERAGE_OPTIONS = [
     value: 'Supplier can make the main family requirements',
     label: 'Supplier can make the main family requirements',
   },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_COMPETITIVENESS_OPTIONS = [
@@ -127,19 +134,28 @@ export const PLD_COMPETITIVENESS_OPTIONS = [
   { value: 'Ave. in Fam.', label: 'Ave. in Fam.' },
   { value: 'Less Avg', label: 'Less Avg' },
   { value: 'Not Comp.', label: 'Not Comp.' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_GEO_COVERAGE_OPTIONS = [
   { value: '1 plant is covered', label: '1 plant is covered' },
+  { value: '1 plant cov.', label: '1 plant cov.' },
   { value: 'Main plants covered', label: 'Main plants covered' },
+  { value: '100% Cov.', label: '100% Cov.' },
   { value: 'More than 50% plants are covered', label: 'More than 50% plants are covered' },
+  { value: '50% or +', label: '50% or +' },
   { value: 'None', label: 'None' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_CONS_OR_WD_OPTIONS = [
+  { value: 'Cons. or WD', label: 'Cons. or WD' },
+  { value: 'Cons. or WD Inter. User', label: 'Cons. or WD Inter. User' },
   { value: 'Biweekly Del.', label: 'Biweekly Del.' },
   { value: 'Cons. Or Daily Deliveries', label: 'Cons. Or Daily Deliveries' },
   { value: 'DDP or Weekly Del.', label: 'DDP or Weekly Del.' },
+  { value: 'None', label: 'None' },
+  { value: 'Requested', label: 'Requested' },
   { value: 'Other', label: 'Other' },
 ] as const;
 
@@ -147,12 +163,20 @@ export const PLD_FINANCIAL_HEALTH_OPTIONS = [
   { value: 'Good', label: 'Good' },
   { value: 'To Monitor', label: 'To Monitor' },
   { value: 'At Risk', label: 'At Risk' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_PROD_LIA_INS_OPTIONS = [
-  { value: '2M$ or +', label: '2M$ or +' },
-  { value: '1M$ or +', label: '1M$ or +' },
   { value: 'None', label: 'None' },
+  { value: '500k€ or less', label: '500k€ or less' },
+  { value: '1M€ or less', label: '1M€ or less' },
+  { value: '1,5M€ or less', label: '1,5M€ or less' },
+  { value: '1,5M€ or more', label: '1,5M€ or more' },
+  { value: '1M€ or +', label: '1M€ or +' },
+  { value: '2M€ or +', label: '2M€ or +' },
+  { value: '1M$ or +', label: '1M$ or +' },
+  { value: '2M$ or +', label: '2M$ or +' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_PROD_OPTIONS = [
@@ -161,6 +185,7 @@ export const PLD_PROD_OPTIONS = [
   { value: '1% or +', label: '1% or +' },
   { value: 'less than 1%', label: 'less than 1%' },
   { value: 'Neg', label: 'Neg' },
+  { value: 'Requested', label: 'Requested' },
 ] as const;
 
 export const PLD_CERTIFICATION_OPTIONS = [

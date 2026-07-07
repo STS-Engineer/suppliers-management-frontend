@@ -73,6 +73,8 @@ interface VoteForm {
   // Logistics
   incoterms_before: string | null;
   incoterms_after: string | null;
+  place_of_incoterms_before: string | null;
+  place_of_incoterms_after: string | null;
   top_days_before: number | null;
   top_days_after: number | null;
   // Planning
@@ -323,6 +325,7 @@ export default function GateApprovalPage() {
   const hasTopDays = (v: number | null) => v != null && v > 0;
   const hasLogistics =
     hasIncoterms(form.incoterms_before) || hasIncoterms(form.incoterms_after) ||
+    hasIncoterms(form.place_of_incoterms_before) || hasIncoterms(form.place_of_incoterms_after) ||
     hasTopDays(form.top_days_before) || hasTopDays(form.top_days_after);
   const hasScope = !!(form.scope_in || form.scope_out || form.customers);
   const hasSupplier = !!(
@@ -530,6 +533,8 @@ export default function GateApprovalPage() {
               <Section title="Logistics">
                 {hasIncoterms(form.incoterms_before) && <Row label="Incoterms Before" value={val(form.incoterms_before)} />}
                 {hasIncoterms(form.incoterms_after) && <Row label="Incoterms After" value={val(form.incoterms_after)} />}
+                {hasIncoterms(form.place_of_incoterms_before) && <Row label="Place of Incoterms Before" value={val(form.place_of_incoterms_before)} />}
+                {hasIncoterms(form.place_of_incoterms_after) && <Row label="Place of Incoterms After" value={val(form.place_of_incoterms_after)} />}
                 {hasTopDays(form.top_days_before) && <Row label="TOP Before" value={`${form.top_days_before} days`} />}
                 {hasTopDays(form.top_days_after) && <Row label="TOP After" value={`${form.top_days_after} days`} />}
               </Section>

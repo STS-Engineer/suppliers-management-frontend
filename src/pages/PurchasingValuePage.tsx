@@ -134,6 +134,20 @@ interface SupplierOption {
   country?: string;
 }
 
+const INCOTERMS_OPTIONS: { value: string; label: string }[] = [
+  { value: "EXW", label: "Ex Works" },
+  { value: "FCA", label: "Free Carrier" },
+  { value: "FAS", label: "Free Alongside Ship" },
+  { value: "FOB", label: "Free On Board" },
+  { value: "CFR", label: "Cost and Freight" },
+  { value: "CIF", label: "Cost, Insurance and Freight" },
+  { value: "CPT", label: "Carriage Paid To" },
+  { value: "CIP", label: "Carriage and Insurance Paid To" },
+  { value: "DAP", label: "Delivered At Place" },
+  { value: "DPU", label: "Delivered at Place Unloaded" },
+  { value: "DDP", label: "Delivered Duty Paid" },
+];
+
 interface Opp {
   opportunity_id: number;
   opportunity_name?: string;
@@ -197,6 +211,8 @@ interface Opp {
   country_after?: string;
   incoterms_before?: string;
   incoterms_after?: string;
+  place_of_incoterms_before?: string;
+  place_of_incoterms_after?: string;
   top_days_before?: number;
   top_days_after?: number;
   transit_days_before?: number;
@@ -1165,6 +1181,8 @@ function EditTab({
     country_after: opp.country_after ?? "",
     incoterms_before: opp.incoterms_before ?? "",
     incoterms_after: opp.incoterms_after ?? "",
+    place_of_incoterms_before: opp.place_of_incoterms_before ?? "",
+    place_of_incoterms_after: opp.place_of_incoterms_after ?? "",
     top_days_before: opp.top_days_before
       ? String(parseInt(String(opp.top_days_before)))
       : "",
@@ -1800,6 +1818,8 @@ function EditTab({
         country_after: form.country_after || undefined,
         incoterms_before: form.incoterms_before || undefined,
         incoterms_after: form.incoterms_after || undefined,
+        place_of_incoterms_before: form.place_of_incoterms_before || undefined,
+        place_of_incoterms_after: form.place_of_incoterms_after || undefined,
         top_days_before: form.top_days_before
           ? parseInt(form.top_days_before)
           : undefined,
@@ -3320,15 +3340,60 @@ function EditTab({
                           </tr>
                         );
                       })()}
+                      {/* Incoterms — dropdown of the standard ICC abbreviations */}
+                      <tr className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 font-semibold text-slate-500">
+                          Incoterms
+                        </td>
+                        {(["incoterms_before", "incoterms_after"] as const).map(
+                          (k) => (
+                            <td key={k} className="px-3 py-1.5">
+                              <select
+                                className={hiCell(
+                                  k === "incoterms_before" && missingFlags.incoterms
+                                )}
+                                value={form[k as keyof typeof form] as string}
+                                onChange={(e) => set(k, e.target.value)}
+                              >
+                                <option value="">—</option>
+                                {INCOTERMS_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.value} — {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )
+                        )}
+                      </tr>
+                      {/* Place of Incoterms — free text (e.g. named port/place) */}
+                      <tr className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 font-semibold text-slate-500">
+                          Place of Incoterms
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            className={hiCell(false)}
+                            placeholder="Shanghai"
+                            value={form.place_of_incoterms_before}
+                            onChange={(e) =>
+                              set("place_of_incoterms_before", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            className={hiCell(false)}
+                            placeholder="Poitiers"
+                            value={form.place_of_incoterms_after}
+                            onChange={(e) =>
+                              set("place_of_incoterms_after", e.target.value)
+                            }
+                          />
+                        </td>
+                      </tr>
                       {(
                         [
-                          [
-                            "incoterms_before",
-                            "incoterms_after",
-                            "Incoterms",
-                            "DDP",
-                            "EXW",
-                          ],
                           [
                             "top_days_before",
                             "top_days_after",
@@ -3404,7 +3469,7 @@ function EditTab({
                           [
                             "current_price",
                             "proposed_price",
-                            "Price (€/unit)",
+                            "Delivered price, including taxes and freight (€/unit)",
                             "0.4000",
                             "0.1300",
                           ],

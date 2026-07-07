@@ -1759,6 +1759,8 @@ class SupplierOnboardingAPI {
       country_after?: string;
       incoterms_before?: string;
       incoterms_after?: string;
+      place_of_incoterms_before?: string;
+      place_of_incoterms_after?: string;
       top_days_before?: number;
       top_days_after?: number;
       transit_days_before?: number;
