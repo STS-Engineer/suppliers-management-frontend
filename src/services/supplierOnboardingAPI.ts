@@ -1161,6 +1161,17 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async getNegotiationApprovers() {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/negotiation-approvers`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load Purchasing Director / VP Conversion approvers.",
+    );
+  }
+
   async addCertificationToUnit(unitId: number, data: any) {
     return this.request(
       `${this.baseUrl}/suppliers/units/${unitId}/certifications`,

@@ -4351,6 +4351,28 @@ function GateTab({
     (typeof NEGOTIATION_APPROVER_ROLES)[number]
   >(NEGOTIATION_APPROVER_ROLES[0]);
   const [negotiationApproverEmail, setNegotiationApproverEmail] = useState("");
+  // Purchasing Director / VP Conversion accounts, fetched so the approver
+  // picker (Negotiation single-approver + committee required-approver rows
+  // for these two roles) is a select instead of a free-text email field.
+  const [approverAccounts, setApproverAccounts] = useState<
+    { id_identity: number; full_name: string; email: string; access_profile: string }[]
+  >([]);
+  useEffect(() => {
+    supplierAPI
+      .getNegotiationApprovers()
+      .then((r: { data?: typeof approverAccounts }) =>
+        setApproverAccounts(r.data ?? []),
+      )
+      .catch(() => {});
+  }, []);
+  const ROLE_LABEL_TO_PROFILE: Record<string, string> = {
+    "Purchasing Director": "purchasing_director",
+    "VP Conversion": "vp_conversion",
+  };
+  const accountsForRole = (roleLabel: string) =>
+    approverAccounts.filter(
+      (a) => a.access_profile === ROLE_LABEL_TO_PROFILE[roleLabel],
+    );
   // Sourcing committee approval request (Phase 1-4)
   const [committeeLevel, setCommitteeLevel] = useState<CommitteeLevel | "">("");
   const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
@@ -4700,13 +4722,18 @@ function GateTab({
           </button>
         ))}
       </div>
-      <input
-        type="email"
+      <select
         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-        placeholder="name@avocarbon.com"
         value={negotiationApproverEmail}
         onChange={(e) => setNegotiationApproverEmail(e.target.value)}
-      />
+      >
+        <option value="">— select {negotiationApproverRole} —</option>
+        {accountsForRole(negotiationApproverRole).map((a) => (
+          <option key={a.id_identity} value={a.email}>
+            {a.full_name} ({a.email})
+          </option>
+        ))}
+      </select>
     </div>
   );
 
@@ -5081,15 +5108,32 @@ function GateTab({
                                 <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
                                   {role} <span className="text-red-500">*</span>
                                 </span>
-                                <input
-                                  type="email"
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                  placeholder="name@avocarbon.com"
-                                  value={approverEmails[role] ?? ""}
-                                  onChange={(e) =>
-                                    setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
-                                  }
-                                />
+                                {ROLE_LABEL_TO_PROFILE[role] ? (
+                                  <select
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                    value={approverEmails[role] ?? ""}
+                                    onChange={(e) =>
+                                      setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                    }
+                                  >
+                                    <option value="">— select {role} —</option>
+                                    {accountsForRole(role).map((a) => (
+                                      <option key={a.id_identity} value={a.email}>
+                                        {a.full_name} ({a.email})
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="email"
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                    placeholder="name@avocarbon.com"
+                                    value={approverEmails[role] ?? ""}
+                                    onChange={(e) =>
+                                      setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                    }
+                                  />
+                                )}
                               </div>
                             ))}
                           </div>
@@ -5108,15 +5152,32 @@ function GateTab({
                                     <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
                                       {role}
                                     </span>
-                                    <input
-                                      type="email"
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                      placeholder="name@avocarbon.com (optional)"
-                                      value={approverEmails[role] ?? ""}
-                                      onChange={(e) =>
-                                        setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
-                                      }
-                                    />
+                                    {ROLE_LABEL_TO_PROFILE[role] ? (
+                                      <select
+                                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                        value={approverEmails[role] ?? ""}
+                                        onChange={(e) =>
+                                          setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                        }
+                                      >
+                                        <option value="">— select {role} (optional) —</option>
+                                        {accountsForRole(role).map((a) => (
+                                          <option key={a.id_identity} value={a.email}>
+                                            {a.full_name} ({a.email})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type="email"
+                                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                        placeholder="name@avocarbon.com (optional)"
+                                        value={approverEmails[role] ?? ""}
+                                        onChange={(e) =>
+                                          setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                        }
+                                      />
+                                    )}
                                   </div>
                                 ))}
                               </div>
