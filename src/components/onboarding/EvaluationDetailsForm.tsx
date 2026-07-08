@@ -710,9 +710,26 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
     data.impact_question_6,
   ]);
 
+  // Live score from the fetched pld_scoring_rules-backed options (see
+  // getPldOnboardingOptions()/supplierAPI.getOnboardingOptions()) when
+  // available; falls back to the static SCORE_BY_VALUE table only while
+  // still on the onboarding.ts defaults (fetch pending/failed), so the two
+  // never need to be kept in sync by hand.
+  const getCriterionScore = (
+    optionsKey: keyof PldOptionSet,
+    value?: string,
+  ): number | undefined => {
+    if (!value) return undefined;
+    const option = pldOptions[optionsKey]?.find((o) => o.value === value);
+    if (option && option.score !== undefined && option.score !== null) {
+      return option.score;
+    }
+    return SCORE_BY_VALUE[value];
+  };
+
   const selectedClassScores = CLASS_CRITERIA.map((criterion) => {
     const value = data[criterion.field];
-    return value ? SCORE_BY_VALUE[value] : undefined;
+    return getCriterionScore(criterion.optionsKey, value);
   }).filter((value): value is number => value !== undefined);
 
   const derivedClassScore =
@@ -1107,9 +1124,19 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
             {CLASS_CRITERIA.map((criterion, index) => {
               const detail = criteriaDetails[criterion.detailKey] || {};
               const selectedValue = data[criterion.field] || "";
-              const selectedScore = selectedValue
-                ? SCORE_BY_VALUE[selectedValue]
-                : undefined;
+              const selectedScore = getCriterionScore(
+                criterion.optionsKey,
+                selectedValue,
+              );
+              // Keep a legacy/pre-canonicalization saved value (e.g. an old
+              // alias no longer in the live pld_scoring_rules-backed list)
+              // visible in the dropdown instead of it rendering blank.
+              const criterionOptions = pldOptions[criterion.optionsKey] || [];
+              const selectOptions =
+                selectedValue &&
+                !criterionOptions.some((o) => o.value === selectedValue)
+                  ? [...criterionOptions, { value: selectedValue, label: selectedValue }]
+                  : criterionOptions;
               const evidenceLabels = getCriterionEvidenceLabels(
                 criterion.evidence,
               );
@@ -1209,7 +1236,7 @@ export const EvaluationDetailsForm: React.FC<EvaluationDetailsFormProps> = ({
                       onChange={(e) =>
                         onChange(criterion.field, e.target.value)
                       }
-                      options={pldOptions[criterion.optionsKey] || []}
+                      options={selectOptions}
                       placeholder={criterion.placeholder}
                       error={errors[criterion.field]}
                     />

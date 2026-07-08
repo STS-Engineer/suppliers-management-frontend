@@ -400,7 +400,17 @@ function normalizeUiCriteriaValue(
 // Score helpers
 // ---------------------------------------------------------------------------
 
-function classScore(form: EvaluationDetailsFormData): {
+// `scoreLookup` prefers the live pld_scoring_rules-backed score (fetched from
+// GET /suppliers/onboarding/options) and falls back to the static PLD_SCORES
+// table below when the fetch hasn't resolved yet -- see getPldScore() in the
+// component, which is what callers pass here.
+function classScore(
+  form: EvaluationDetailsFormData,
+  scoreLookup: (pldKey: string, value?: string) => number | undefined = (
+    pldKey,
+    value,
+  ) => (value ? PLD_SCORES[pldKey]?.[value] : undefined),
+): {
   scores: number[];
   avg: number | null;
   classValue: number | null;
@@ -409,7 +419,7 @@ function classScore(form: EvaluationDetailsFormData): {
   for (const { key, pldKey } of CLASS_CRITERIA) {
     const val = form[key] as string | undefined;
     if (!val) continue;
-    const s = PLD_SCORES[pldKey]?.[val];
+    const s = scoreLookup(pldKey, val);
     if (s !== undefined) scores.push(s);
   }
   if (scores.length === 0) return { scores: [], avg: null, classValue: null };
@@ -699,6 +709,79 @@ export default function RelationEvaluationPage() {
   // Class edit mode — locked (read-only) by default once baseline exists
   const [classEditMode, setClassEditMode] = useState(false);
 
+  // Live class-criteria options + scores from pld_scoring_rules (via
+  // GET /suppliers/onboarding/options), keyed by this page's internal pldKey
+  // names (note: the API uses "prod" for what this page calls "productivity").
+  // Falls back to the static PLD_OPTIONS/PLD_SCORES below when unset (fetch
+  // pending/failed) so the page still works offline from that endpoint.
+  const [liveCriteriaOptions, setLiveCriteriaOptions] = useState<
+    Record<string, { value: string; label: string; score?: number | null }[]>
+  >({});
+
+  useEffect(() => {
+    let active = true;
+    supplierAPI
+      .getOnboardingOptions()
+      .then((res) => {
+        if (!active || !res?.data) return;
+        const data = res.data as Record<string, any>;
+        setLiveCriteriaOptions({
+          top: data.top ?? [],
+          lta: data.lta ?? [],
+          productivity: data.prod ?? [],
+          quality_certification: data.quality_certification ?? [],
+          prod_lia_ins: data.prod_lia_ins ?? [],
+          competitiveness: data.competitiveness ?? [],
+          sqma: data.sqma ?? [],
+          family_coverage: data.family_coverage ?? [],
+          geo_coverage: data.geo_coverage ?? [],
+          cons_or_wd: data.cons_or_wd ?? [],
+          financial_health: data.financial_health ?? [],
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to load live class-criteria options:", err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const getPldOptions = useCallback(
+    (pldKey: string, currentValue?: string): { value: string; label: string }[] => {
+      const live = liveCriteriaOptions[pldKey];
+      const base =
+        live && live.length > 0
+          ? live.map((o) => ({ value: o.value, label: o.label }))
+          : (PLD_OPTIONS[pldKey] || []).map((value) => ({ value, label: value }));
+      // Legacy/pre-canonicalization values (e.g. "30 days end of month or +",
+      // "2M€ or +", old long-form family_coverage text) can still be saved on
+      // existing relations even though the live canonical list from
+      // pld_scoring_rules no longer lists them as selectable. Keep the
+      // currently-saved value visible in the dropdown instead of it silently
+      // rendering blank -- getPldScore already resolves its score via the
+      // static legacy-aware fallback table.
+      if (currentValue && !base.some((o) => o.value === currentValue)) {
+        return [...base, { value: currentValue, label: currentValue }];
+      }
+      return base;
+    },
+    [liveCriteriaOptions],
+  );
+
+  const getPldScore = useCallback(
+    (pldKey: string, value?: string): number | undefined => {
+      if (!value) return undefined;
+      const live = liveCriteriaOptions[pldKey];
+      const match = live?.find((o) => o.value === value);
+      if (match && match.score !== undefined && match.score !== null) {
+        return match.score;
+      }
+      return PLD_SCORES[pldKey]?.[value];
+    },
+    [liveCriteriaOptions],
+  );
+
   const load = useCallback(async () => {
     if (!relId || isNaN(relId)) return;
     setLoading(true);
@@ -934,7 +1017,7 @@ export default function RelationEvaluationPage() {
     setSaving("class");
     setError(null);
     try {
-      const computed = classScore(form);
+      const computed = classScore(form, getPldScore);
       const smValue = Array.from(strategicMentions).join(",") || "none";
       const classCycleType =
         extra.reevaluation_type === "initial"
@@ -1040,7 +1123,7 @@ export default function RelationEvaluationPage() {
 
   // Validate completeness before locking the baseline
   const validateInitialSelfAssessment = (): string | null => {
-    const cs2 = classScore(form);
+    const cs2 = classScore(form, getPldScore);
     const opVals = OPERATIONAL_CRITERIA.map(
       ({ key }) => form[key] as number | undefined,
     ).filter((v) => v !== undefined && v !== null);
@@ -1074,7 +1157,7 @@ export default function RelationEvaluationPage() {
     setError(null);
     try {
       const smValue = Array.from(strategicMentions).join(",") || "none";
-      const computed = classScore(form);
+      const computed = classScore(form, getPldScore);
       const cycleType =
         extra.reevaluation_type === "initial"
           ? "Initial Re-evaluation"
@@ -1182,7 +1265,7 @@ export default function RelationEvaluationPage() {
   };
 
   // Computed live values
-  const cs = classScore(form);
+  const cs = classScore(form, getPldScore);
   const opAvg = operationalAvg(form);
   const opGrade = operationalGrade(opAvg);
   const impact = impactScore(form);
@@ -1462,6 +1545,8 @@ export default function RelationEvaluationPage() {
             isVpConversion={isVpConversion}
             readOnly={nonVpLocked}
             evalDocs={evalDocs}
+            getOptions={getPldOptions}
+            getScore={getPldScore}
           />
         ) : (
           <>
@@ -1483,6 +1568,8 @@ export default function RelationEvaluationPage() {
                   load();
                 }}
                 onFileUploaded={load}
+                getOptions={getPldOptions}
+                getScore={getPldScore}
               />
             )}
             {tab === "operational" && (
@@ -1740,6 +1827,8 @@ function InitialSelfAssessmentView({
   onSubmitForReview,
   readOnly,
   evalDocs,
+  getOptions,
+  getScore,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -1752,6 +1841,8 @@ function InitialSelfAssessmentView({
     value: string,
   ) => void;
   relationId: number;
+  getOptions: (pldKey: string, currentValue?: string) => { value: string; label: string }[];
+  getScore: (pldKey: string, value?: string) => number | undefined;
   strategicMentions: Set<string>;
   onToggleStrategic: (v: string) => void;
   impact: number;
@@ -2005,6 +2096,8 @@ function InitialSelfAssessmentView({
             relationId={relationId}
             onFileUploaded={onFileUploaded}
             readOnly={readOnly}
+            getOptions={getOptions}
+            getScore={getScore}
           />
         </div>
       )}
@@ -2221,6 +2314,8 @@ function ClassCriteriaBody({
   relationId,
   readOnly,
   onFileUploaded,
+  getOptions,
+  getScore,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -2232,6 +2327,8 @@ function ClassCriteriaBody({
     value: string,
   ) => void;
   relationId: number;
+  getOptions: (pldKey: string, currentValue?: string) => { value: string; label: string }[];
+  getScore: (pldKey: string, value?: string) => number | undefined;
   readOnly?: boolean;
   onFileUploaded?: () => void;
 }) {
@@ -2247,7 +2344,7 @@ function ClassCriteriaBody({
     <div className="divide-y divide-slate-50 dark:divide-white/[0.04]">
       {CLASS_CRITERIA.map(({ key, label, pldKey }, i) => {
         const val = (form as any)[key] || "";
-        const score = val ? (PLD_SCORES[pldKey]?.[val] ?? null) : null;
+        const score = getScore(pldKey, val) ?? null;
         const cfg = CRITERIA_DETAIL_CONFIG[pldKey] ?? {};
         const isExpanded = expanded.has(pldKey);
         const detail = criteriaDetails[pldKey] ?? {};
@@ -2342,9 +2439,9 @@ function ClassCriteriaBody({
                     className={`${inputCls} text-xs ${readOnly ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
                   >
                     <option value="">— Select —</option>
-                    {(PLD_OPTIONS[pldKey] || []).map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                    {getOptions(pldKey, val).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>
@@ -2652,6 +2749,8 @@ function ClassTab({
   onRequestEdit,
   onCancelEdit,
   onFileUploaded,
+  getOptions,
+  getScore,
 }: {
   form: EvaluationDetailsFormData;
   setField: (k: keyof EvaluationDetailsFormData, v: any) => void;
@@ -2670,6 +2769,8 @@ function ClassTab({
   onRequestEdit?: () => void;
   onCancelEdit?: () => void;
   onFileUploaded?: () => void;
+  getOptions: (pldKey: string, currentValue?: string) => { value: string; label: string }[];
+  getScore: (pldKey: string, value?: string) => number | undefined;
 }) {
   const qualCerts = extra.unit_certifications ?? [];
 
@@ -2817,6 +2918,8 @@ function ClassTab({
           relationId={relationId}
           readOnly={readOnly}
           onFileUploaded={onFileUploaded}
+          getOptions={getOptions}
+          getScore={getScore}
         />
 
         {!readOnly && (

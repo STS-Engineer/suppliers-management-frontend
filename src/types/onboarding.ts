@@ -435,19 +435,28 @@ export interface SiteRelationData {
   alias_1?: string;
 }
 
+/** A selectable class-criteria value with its live score, sourced from
+ * pld_scoring_rules (see GET /suppliers/onboarding/options). `score` is
+ * absent when using the static onboarding.ts fallback lists. */
+export interface OnboardingCriteriaOption {
+  value: string;
+  label: string;
+  score?: number | null;
+}
+
 export interface OnboardingSelectionOptions {
-  top: Array<{ value: string; label: string }>;
-  lta: Array<{ value: string; label: string }>;
-  sqma: Array<{ value: string; label: string }>;
-  quality_certification?: Array<{ value: string; label: string }>;
-  family_coverage: Array<{ value: string; label: string }>;
-  competitiveness: Array<{ value: string; label: string }>;
-  geo_coverage: Array<{ value: string; label: string }>;
-  cons_or_wd: Array<{ value: string; label: string }>;
-  financial_health: Array<{ value: string; label: string }>;
+  top: OnboardingCriteriaOption[];
+  lta: OnboardingCriteriaOption[];
+  sqma: OnboardingCriteriaOption[];
+  quality_certification?: OnboardingCriteriaOption[];
+  family_coverage: OnboardingCriteriaOption[];
+  competitiveness: OnboardingCriteriaOption[];
+  geo_coverage: OnboardingCriteriaOption[];
+  cons_or_wd: OnboardingCriteriaOption[];
+  financial_health: OnboardingCriteriaOption[];
   certification_types: Array<{ value: string; label: string }>;
-  prod_lia_ins: Array<{ value: string; label: string }>;
-  prod: Array<{ value: string; label: string }>;
+  prod_lia_ins: OnboardingCriteriaOption[];
+  prod: OnboardingCriteriaOption[];
 }
 
 export interface SupplierSiteRelation {
