@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   AlertTriangle,
   CalendarCheck,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Clock,
   FolderOpen,
+  History as HistoryIcon,
+  LayoutGrid,
+  Megaphone,
   Paperclip,
   RefreshCw,
+  Table2,
   Upload,
   User,
   XCircle,
@@ -23,6 +28,9 @@ interface ActionItem {
   plan_code: string | null;
   plan_title: string | null;
   plan_created_at: string | null;
+  plan_created_by: string | null;
+  plan_updated_at: string | null;
+  plan_updated_by: string | null;
   opportunity_id: number;
   opportunity_name: string;
   opp_phase: string | null;
@@ -38,6 +46,12 @@ interface ActionItem {
   attachments: Attachment[];
   attachment_count: number;
   description: string | null;
+  history: HistoryEntry[];
+  last_reminded_at: string | null;
+  last_reminded_to: string | null;
+  last_escalated_at: string | null;
+  last_escalated_to: string | null;
+  last_escalated_by: string | null;
 }
 
 interface Attachment {
@@ -48,6 +62,13 @@ interface Attachment {
   size: number;
   uploaded_by?: string;
   uploaded_at?: string;
+}
+
+interface HistoryEntry {
+  event: string;
+  by: string;
+  at: string;
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +143,8 @@ const PHASE_COLORS: Record<string, { bg: string; text: string; ring: string }> =
 
 function isOverdue(due: string | null, status: string) {
   if (!due || status === "closed") return false;
-  return new Date(due) < new Date();
+  // Compare calendar dates only — a task due today is not overdue until tomorrow.
+  return due.slice(0, 10) < todayIso();
 }
 
 function fmtDate(d: string | null) {
@@ -171,10 +193,10 @@ function initials(email: string | null, name: string | null) {
 // ---------------------------------------------------------------------------
 function EvidenceButton({
   item,
-  onUploaded,
+  onChanged,
 }: {
   item: ActionItem;
-  onUploaded: (item: ActionItem, att: Attachment) => void;
+  onChanged: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -186,14 +208,14 @@ function EvidenceButton({
     setUploading(true);
     setError(null);
     try {
-      const res = await supplierAPI.uploadActionEvidence(
+      await supplierAPI.uploadActionEvidence(
         item.opportunity_id,
         item.plan_id,
         item.sujet_idx,
         item.action_idx,
         file,
       );
-      onUploaded(item, (res as { data: Attachment }).data);
+      onChanged();
     } catch {
       setError("Upload failed");
     } finally {
@@ -225,27 +247,178 @@ function EvidenceButton({
       </button>
       {error && <p className="mt-0.5 text-[9px] text-rose-500">{error}</p>}
       {item.attachments.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {item.attachments.slice(0, 3).map((a, ai) => (
+        <div className="mt-1 flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+          {item.attachments.map((a, ai) => (
             <a
               key={ai}
               href={a.file_url}
               target="_blank"
               rel="noreferrer"
+              title={a.filename}
               className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
             >
               <Paperclip size={8} />
-              <span className="max-w-[90px] truncate">{a.filename}</span>
+              <span className="max-w-[110px] truncate">{a.filename}</span>
             </a>
           ))}
-          {item.attachments.length > 3 && (
-            <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
-              +{item.attachments.length - 3}
-            </span>
-          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Escalate button
+// ---------------------------------------------------------------------------
+function EscalateButton({
+  item,
+  onChanged,
+}: {
+  item: ActionItem;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [subject, setSubject] = useState(
+    `[Escalation] Action Plan — ${item.action_titre ?? "Action"} (${item.opportunity_name})`,
+  );
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    if (!recipientEmail.trim()) {
+      setError("Recipient email is required.");
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      await supplierAPI.escalateActionItem(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        {
+          recipient_email: recipientEmail.trim(),
+          subject: subject.trim(),
+          message: message.trim() || undefined,
+        },
+      );
+      setSent(true);
+      onChanged();
+      setTimeout(() => {
+        setOpen(false);
+        setSent(false);
+        setRecipientEmail("");
+        setMessage("");
+      }, 1200);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to escalate.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const close = () => {
+    setOpen(false);
+    setError(null);
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[9px] font-bold text-rose-700 hover:bg-rose-100 transition-colors"
+      >
+        <Megaphone size={9} /> Escalate
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={close}
+        >
+          <div
+            className="w-full max-w-lg space-y-4 rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100">
+                <Megaphone size={16} className="text-rose-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">
+                  Escalate this action
+                </p>
+                <p className="text-xs text-slate-400">
+                  {item.action_titre} — {item.opportunity_name}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-500">
+                To (email)
+              </label>
+              <input
+                type="email"
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+                placeholder="manager@company.com"
+                autoFocus
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500">
+                Subject
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500">
+                Message (optional)
+              </label>
+              <textarea
+                rows={4}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Add context for the recipient…"
+                className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
+              />
+            </div>
+            {error && <p className="text-xs text-rose-500">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={close}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 hover:text-rose-500 hover:border-rose-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={send}
+                disabled={sending || !recipientEmail.trim()}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-40"
+              >
+                {sending ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : sent ? (
+                  <CheckCircle2 size={14} />
+                ) : (
+                  <Megaphone size={14} />
+                )}
+                {sent ? "Sent" : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -254,14 +427,10 @@ function EvidenceButton({
 // ---------------------------------------------------------------------------
 function StatusCell({
   item,
-  onStatusChanged,
+  onChanged,
 }: {
   item: ActionItem;
-  onStatusChanged: (
-    item: ActionItem,
-    status: string,
-    closedDate?: string,
-  ) => void;
+  onChanged: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
@@ -287,7 +456,7 @@ function StatusCell({
         item.action_idx,
         newStatus,
       );
-      onStatusChanged(item, newStatus);
+      onChanged();
     } catch {
       setError("Save failed");
     } finally {
@@ -314,7 +483,7 @@ function StatusCell({
         "closed",
         implDate,
       );
-      onStatusChanged(item, "closed", implDate);
+      onChanged();
       setPendingClose(false);
     } catch (e: any) {
       setError(e?.message ?? "Save failed");
@@ -333,6 +502,7 @@ function StatusCell({
         item.action_idx,
       );
       setReminded(true);
+      onChanged();
       setTimeout(() => setReminded(false), 4000);
     } catch (e: any) {
       setError(e?.message ?? "Failed to send reminder.");
@@ -378,6 +548,23 @@ function StatusCell({
           )}
           {reminded ? "Reminder sent" : "Remind"}
         </button>
+      )}
+      {item.last_reminded_at && (
+        <p className="flex items-start gap-1 text-[9px] leading-snug text-amber-600">
+          <Clock size={9} className="mt-0.5 shrink-0" />
+          Reminded {fmtDateShort(item.last_reminded_at)}
+          {item.last_reminded_to ? ` · ${item.last_reminded_to}` : ""}
+        </p>
+      )}
+      {item.action_status !== "closed" && (
+        <EscalateButton item={item} onChanged={onChanged} />
+      )}
+      {item.last_escalated_at && (
+        <p className="flex items-start gap-1 text-[9px] leading-snug text-rose-600">
+          <Megaphone size={9} className="mt-0.5 shrink-0" />
+          Escalated {fmtDateShort(item.last_escalated_at)} to{" "}
+          {item.last_escalated_to}
+        </p>
       )}
       {pendingClose && (
         <div className="w-full space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
@@ -438,26 +625,21 @@ function StatusCell({
 // ---------------------------------------------------------------------------
 function ActionCard({
   item,
-  onUploaded,
-  onStatusChanged,
+  onChanged,
   isViewer = false,
 }: {
   item: ActionItem;
-  onUploaded: (item: ActionItem, att: Attachment) => void;
-  onStatusChanged: (
-    item: ActionItem,
-    status: string,
-    closedDate?: string,
-  ) => void;
+  onChanged: () => void;
   isViewer?: boolean;
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
   const overdue = isOverdue(item.due_date, item.action_status);
   const phase = PHASE_COLORS[item.opp_phase ?? ""] ?? PHASE_COLORS["Closed"];
   const dueFmt = fmtDate(item.due_date);
 
   return (
     <div
-      className={`group relative flex gap-4 rounded-2xl border bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)] ${overdue ? "border-rose-200" : "border-slate-200/70"}`}
+      className={`group relative rounded-2xl border bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)] ${overdue ? "border-rose-200" : "border-slate-200/70"}`}
     >
       {overdue && (
         <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-black text-white">
@@ -465,6 +647,7 @@ function ActionCard({
         </div>
       )}
 
+      <div className="flex gap-4 p-4">
       {/* Left: opp + subject */}
       <div className="w-52 shrink-0 space-y-2 border-r border-slate-100 pr-4">
         <div>
@@ -487,8 +670,15 @@ function ActionCard({
             {item.sujet_titre ?? "—"}
           </p>
         </div>
-        <div className="text-[9px] text-slate-400">
-          Created {fmtDateShort(item.plan_created_at)}
+        <div className="text-[9px] text-slate-400 space-y-0.5">
+          <div>Created {fmtDateShort(item.plan_created_at)}</div>
+          {(item.plan_created_by || item.plan_updated_at) && (
+            <div>
+              {item.plan_created_by ? `By ${item.plan_created_by}` : "Plan audit metadata available"}
+              {item.plan_updated_at ? ` ? Updated ${fmtDateShort(item.plan_updated_at)}` : ""}
+              {item.plan_updated_by ? ` by ${item.plan_updated_by}` : ""}
+            </div>
+          )}
         </div>
       </div>
 
@@ -522,19 +712,20 @@ function ActionCard({
             <span className="text-[10px] text-slate-300">No due date</span>
           )}
         </div>
-        {!isViewer && <EvidenceButton item={item} onUploaded={onUploaded} />}
+        {!isViewer && <EvidenceButton item={item} onChanged={onChanged} />}
         {isViewer && item.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {item.attachments.slice(0, 3).map((a, ai) => (
+          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+            {item.attachments.map((a, ai) => (
               <a
                 key={ai}
                 href={a.file_url}
                 target="_blank"
                 rel="noreferrer"
+                title={a.filename}
                 className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
               >
                 <Paperclip size={8} />
-                <span className="max-w-[90px] truncate">{a.filename}</span>
+                <span className="max-w-[110px] truncate">{a.filename}</span>
               </a>
             ))}
           </div>
@@ -559,11 +750,68 @@ function ActionCard({
             );
           })()
         ) : (
-          <StatusCell item={item} onStatusChanged={onStatusChanged} />
+          <StatusCell item={item} onChanged={onChanged} />
         )}
       </div>
+      </div>
+
+      {/* Audit trail */}
+      {item.history.length > 0 && (
+        <div className="relative border-t border-slate-100 px-4 py-1.5">
+          <button
+            onClick={() => setHistoryOpen((o) => !o)}
+            className="flex items-center gap-1 text-[9px] font-semibold text-slate-400 hover:text-indigo-600 transition-colors"
+          >
+            <HistoryIcon size={10} />
+            History ({item.history.length})
+            <ChevronDown
+              size={10}
+              className={`transition-transform ${historyOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {historyOpen && (
+            <div className="absolute bottom-full right-3 z-20 mb-2 max-h-[420px] w-[26rem] max-w-[90vw] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+                Audit trail
+              </p>
+              <ul className="space-y-3">
+                {[...item.history]
+                  .sort((a, b) => (a.at < b.at ? 1 : -1))
+                  .map((h, hi) => (
+                    <li
+                      key={hi}
+                      className="border-b border-slate-100 pb-2 text-sm leading-snug text-slate-600 last:border-0 last:pb-0"
+                    >
+                      <p className="font-semibold text-slate-800">
+                        {historyLabel(h)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {h.by} · {fmtDate(h.at)}
+                      </p>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function historyLabel(h: HistoryEntry): string {
+  switch (h.event) {
+    case "status_changed":
+      return `Status changed: ${h.from_status} → ${h.to_status}`;
+    case "reminder_sent":
+      return `Reminder sent to ${h.to}`;
+    case "escalation_sent":
+      return `Escalated to ${h.to}${h.subject ? ` — "${h.subject}"` : ""}`;
+    case "attachment_added":
+      return `File attached: ${h.filename ?? "unnamed"}`;
+    default:
+      return h.event;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -573,19 +821,13 @@ function PersonGroup({
   email,
   name,
   items,
-  onUploaded,
-  onStatusChanged,
+  onChanged,
   isViewer = false,
 }: {
   email: string | null;
   name: string | null;
   items: ActionItem[];
-  onUploaded: (item: ActionItem, att: Attachment) => void;
-  onStatusChanged: (
-    item: ActionItem,
-    status: string,
-    closedDate?: string,
-  ) => void;
+  onChanged: () => void;
   isViewer?: boolean;
 }) {
   const [open, setOpen] = useState(true);
@@ -642,8 +884,7 @@ function PersonGroup({
             <ActionCard
               key={i}
               item={item}
-              onUploaded={onUploaded}
-              onStatusChanged={onStatusChanged}
+              onChanged={onChanged}
               isViewer={isViewer}
             />
           ))}
@@ -674,6 +915,278 @@ function Chip({
 }
 
 // ---------------------------------------------------------------------------
+// Tabular view — flat, sortable list for quick cross-item analysis
+// ---------------------------------------------------------------------------
+type SortKey =
+  | "opportunity_name"
+  | "responsible"
+  | "due_date"
+  | "action_status";
+
+function ActionItemsTable({
+  items,
+  onChanged,
+  isViewer,
+}: {
+  items: ActionItem[];
+  onChanged: () => void;
+  isViewer: boolean;
+}) {
+  const [sortKey, setSortKey] = useState<SortKey>("due_date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+
+  const sortValue = (item: ActionItem, key: SortKey): string => {
+    switch (key) {
+      case "opportunity_name":
+        return item.opportunity_name;
+      case "responsible":
+        return personLabel(item.responsible_email, item.responsible_name);
+      case "due_date":
+        return item.due_date ?? "9999-99-99";
+      case "action_status":
+        return item.action_status;
+    }
+  };
+
+  const sorted = [...items].sort((a, b) => {
+    const av = sortValue(a, sortKey);
+    const bv = sortValue(b, sortKey);
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const Th = ({ label, sortk }: { label: string; sortk?: SortKey }) => (
+    <th
+      onClick={sortk ? () => toggleSort(sortk) : undefined}
+      className={`whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400 ${sortk ? "cursor-pointer select-none hover:text-indigo-600" : ""}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortk &&
+          sortKey === sortk &&
+          (sortDir === "asc" ? (
+            <ChevronUp size={10} />
+          ) : (
+            <ChevronDown size={10} />
+          ))}
+      </span>
+    </th>
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+      <table className="w-full min-w-[1200px] border-collapse text-xs">
+        <thead className="border-b border-slate-200 bg-slate-50">
+          <tr>
+            <Th label="Opportunity" sortk="opportunity_name" />
+            <th className="whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Action
+            </th>
+            <Th label="Responsible" sortk="responsible" />
+            <Th label="Due date" sortk="due_date" />
+            <Th label="Status" sortk="action_status" />
+            <th className="whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Last reminded
+            </th>
+            <th className="whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Last escalated
+            </th>
+            <th className="whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Files
+            </th>
+            <th className="whitespace-nowrap px-3 py-2 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((item, i) => {
+            const overdue = isOverdue(item.due_date, item.action_status);
+            const cfg = STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
+            const rowKey = `${item.plan_id}-${item.sujet_idx}-${item.action_idx}`;
+            const isExpanded = expandedRow === i;
+            return (
+              <Fragment key={rowKey}>
+                <tr
+                  className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/60 ${overdue ? "bg-rose-50/40" : ""}`}
+                >
+                  <td className="max-w-[160px] px-3 py-2 align-top">
+                    <p className="truncate font-semibold text-slate-800">
+                      {item.opportunity_name}
+                    </p>
+                    {item.opp_phase && (
+                      <span className="text-[9px] text-slate-400">
+                        {item.opp_phase}
+                      </span>
+                    )}
+                  </td>
+                  <td className="max-w-[260px] px-3 py-2 align-top">
+                    <button
+                      onClick={() => setExpandedRow(isExpanded ? null : i)}
+                      className="flex items-start gap-1 text-left font-medium text-slate-700 hover:text-indigo-600"
+                    >
+                      <ChevronDown
+                        size={11}
+                        className={`mt-0.5 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      />
+                      <span className="line-clamp-2">
+                        {item.action_titre ?? "—"}
+                      </span>
+                    </button>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top text-slate-600">
+                    {personLabel(item.responsible_email, item.responsible_name)}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-3 py-2 align-top font-semibold ${overdue ? "text-rose-600" : "text-slate-600"}`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {fmtDateShort(item.due_date)}
+                      {overdue && (
+                        <span className="rounded bg-rose-600 px-1 py-0.5 text-[8px] font-black text-white">
+                          OVERDUE
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ${cfg.bg} ${cfg.text}`}
+                    >
+                      {cfg.icon}
+                      {cfg.label}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top text-[10px] text-slate-500">
+                    {item.last_reminded_at ? (
+                      <span className="flex items-center gap-1 text-amber-600">
+                        <Clock size={9} /> {fmtDateShort(item.last_reminded_at)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top text-[10px] text-slate-500">
+                    {item.last_escalated_at ? (
+                      <span
+                        className="flex items-center gap-1 text-rose-600"
+                        title={item.last_escalated_to ?? ""}
+                      >
+                        <Megaphone size={9} />{" "}
+                        {fmtDateShort(item.last_escalated_at)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top text-[10px] text-slate-500">
+                    {item.attachment_count > 0 ? (
+                      <span className="flex items-center gap-1">
+                        <Paperclip size={9} /> {item.attachment_count}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    {isViewer ? (
+                      <span className="text-[9px] text-slate-300">
+                        Read-only
+                      </span>
+                    ) : (
+                      <div className="w-40">
+                        <StatusCell item={item} onChanged={onChanged} />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="border-b border-slate-100 bg-slate-50/60">
+                    <td colSpan={9} className="px-3 py-3">
+                      <div className="grid grid-cols-2 gap-4 text-[10px] text-slate-600 md:grid-cols-3">
+                        <div>
+                          <p className="mb-0.5 font-semibold uppercase tracking-widest text-slate-400">
+                            Subject
+                          </p>
+                          {item.sujet_titre ?? "—"}
+                        </div>
+                        <div>
+                          <p className="mb-0.5 font-semibold uppercase tracking-widest text-slate-400">
+                            Description
+                          </p>
+                          {item.description ?? "—"}
+                        </div>
+                        <div>
+                          <p className="mb-0.5 font-semibold uppercase tracking-widest text-slate-400">
+                            Files
+                          </p>
+                          {item.attachments.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.attachments.map((a, ai) => (
+                                <a
+                                  key={ai}
+                                  href={a.file_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={a.filename}
+                                  className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100"
+                                >
+                                  <Paperclip size={8} />
+                                  <span className="max-w-[110px] truncate">
+                                    {a.filename}
+                                  </span>
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </div>
+                        {item.history.length > 0 && (
+                          <div className="col-span-2 md:col-span-3">
+                            <p className="mb-1 font-semibold uppercase tracking-widest text-slate-400">
+                              History ({item.history.length})
+                            </p>
+                            <ul className="space-y-1">
+                              {[...item.history]
+                                .sort((a, b) => (a.at < b.at ? 1 : -1))
+                                .map((h, hi) => (
+                                  <li key={hi}>
+                                    <span className="font-semibold text-slate-800">
+                                      {historyLabel(h)}
+                                    </span>{" "}
+                                    <span className="text-slate-400">
+                                      — {h.by} · {fmtDate(h.at)}
+                                    </span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 export default function PurchasingActionPlansPage() {
@@ -685,17 +1198,23 @@ export default function PurchasingActionPlansPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterPerson, setFilterPerson] = useState<string>("");
   const [filterOpp, setFilterOpp] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // silent=true skips the full-page spinner — used to re-sync after a mutation
+  // (status change, upload, reminder, escalation) so audit-trail fields
+  // (history, last_reminded_at, last_escalated_at) always reflect server truth.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await supplierAPI.listAllActionItems();
       setItems((res as { data: ActionItem[] }).data ?? []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load action items");
+      if (!silent) {
+        setError(e instanceof Error ? e.message : "Failed to load action items");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -703,42 +1222,9 @@ export default function PurchasingActionPlansPage() {
     load();
   }, [load]);
 
-  const handleUploaded = (item: ActionItem, att: Attachment) => {
-    setItems((prev) =>
-      prev.map((i) =>
-        i.plan_id === item.plan_id &&
-        i.sujet_idx === item.sujet_idx &&
-        i.action_idx === item.action_idx
-          ? {
-              ...i,
-              attachments: [...i.attachments, att],
-              attachment_count: i.attachment_count + 1,
-            }
-          : i,
-      ),
-    );
-  };
-
-  const handleStatusChanged = (
-    item: ActionItem,
-    status: string,
-    closedDate?: string,
-  ) => {
-    setItems((prev) =>
-      prev.map((i) =>
-        i.plan_id === item.plan_id &&
-        i.sujet_idx === item.sujet_idx &&
-        i.action_idx === item.action_idx
-          ? {
-              ...i,
-              action_status: status,
-              closed_date:
-                status === "closed" ? (closedDate ?? i.closed_date) : null,
-            }
-          : i,
-      ),
-    );
-  };
+  const refresh = useCallback(() => {
+    load(true);
+  }, [load]);
 
   const allPersons = Array.from(
     new Set(items.map((i) => i.responsible_email).filter(Boolean)),
@@ -812,7 +1298,7 @@ export default function PurchasingActionPlansPage() {
     <div className="min-h-screen bg-[#F1F4FA]">
       {/* Header */}
       <div className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-        <div className="max-w-[1500px] mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-[2200px] mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 shadow-lg shadow-indigo-200 hidden sm:flex">
               <FolderOpen size={18} className="text-white" />
@@ -826,16 +1312,32 @@ export default function PurchasingActionPlansPage() {
               </h1>
             </div>
           </div>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-700 transition-colors"
-          >
-            <RefreshCw size={12} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+              <button
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${viewMode === "cards" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+              >
+                <LayoutGrid size={12} /> Cards
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${viewMode === "table" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+              >
+                <Table2 size={12} /> Table
+              </button>
+            </div>
+            <button
+              onClick={() => load()}
+              className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-700 transition-colors"
+            >
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-[1500px] mx-auto px-8 py-6 space-y-6">
+      <div className="max-w-[2200px] mx-auto px-8 py-6 space-y-6">
         {/* KPI strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -945,8 +1447,8 @@ export default function PurchasingActionPlansPage() {
           )}
         </div>
 
-        {/* Groups */}
-        {Object.keys(groups).length === 0 ? (
+        {/* Groups / Table */}
+        {filtered.length === 0 ? (
           <div className="rounded-2xl border border-slate-100 bg-white px-8 py-20 text-center">
             <div className="mx-auto h-16 w-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               <User size={24} className="text-slate-300" />
@@ -958,6 +1460,12 @@ export default function PurchasingActionPlansPage() {
               Create action plans inside opportunities to see them here.
             </p>
           </div>
+        ) : viewMode === "table" ? (
+          <ActionItemsTable
+            items={filtered}
+            onChanged={refresh}
+            isViewer={isViewer}
+          />
         ) : (
           <div className="space-y-4">
             {Object.values(groups).map((g) => (
@@ -966,8 +1474,7 @@ export default function PurchasingActionPlansPage() {
                 email={g.email}
                 name={g.name}
                 items={g.items}
-                onUploaded={handleUploaded}
-                onStatusChanged={handleStatusChanged}
+                onChanged={refresh}
                 isViewer={isViewer}
               />
             ))}
