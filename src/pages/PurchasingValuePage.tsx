@@ -60,6 +60,8 @@ interface MonthlyRow {
   cash_expected?: number;
   cash_actual?: number;
   cumulated_cash_actual?: number;
+  updated_at?: string;
+  updated_by?: string;
 }
 interface FinLine {
   financial_line_id: number;
@@ -119,6 +121,19 @@ interface OppDoc {
   notes?: string;
   created_at?: string;
   updated_at?: string;
+  updated_by?: string;
+}
+
+interface PhaseHistoryEntry {
+  snapshot_id: number;
+  opportunity_id: number;
+  phase_from?: string;
+  phase_to?: string;
+  gate_decision?: string;
+  decided_by?: string;
+  decided_at?: string;
+  gate_comments?: string;
+  opportunity_snapshot?: Record<string, unknown> | null;
 }
 interface SiteOption {
   id_site: number;
@@ -191,6 +206,7 @@ interface Opp {
   comments?: string;
   validation_request_sent_at?: string;
   created_at?: string;
+  created_by?: string;
   updated_at?: string;
   // STP — scope & volumes
   scope_in?: string;
@@ -252,6 +268,7 @@ interface Opp {
     suggested_status?: string;
     budget_status?: string;
     status_locked_at?: string | null;
+    status_locked_by?: string | null;
   }[];
   cash_inventory_gap?: number;
   cash_ap_gap?: number;
@@ -422,7 +439,15 @@ const fmtDate = (s?: string | null) =>
         year: "numeric",
         day: "numeric",
       })
-    : "—";
+    : "-";
+
+const fmtMonths = (months?: number | null) => {
+  if (months == null || Number.isNaN(Number(months))) return "-";
+  const value = Number(months);
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/\.00$/, "");
+};
 
 const pldColor = (cat?: string | null) =>
   cat === "High"
@@ -732,204 +757,355 @@ function OverviewTab({ opp }: { opp: Opp }) {
   const pldReady =
     opp.payback_score && opp.lead_time_score && opp.difficulty_score;
   const cur = opp.currency || "EUR";
+  const [phaseHistory, setPhaseHistory] = useState<PhaseHistoryEntry[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    supplierAPI
+      .getOpportunityPhaseHistory(opp.opportunity_id)
+      .then((res) => {
+        if (active) setPhaseHistory((res?.data as PhaseHistoryEntry[]) ?? []);
+      })
+      .catch(() => {
+        if (active) setPhaseHistory([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [opp.opportunity_id]);
+
+  const budgetLocks = [...(opp.budget_years ?? [])]
+    .filter((by) => by.status_locked_at)
+    .sort((a, b) => a.fiscal_year - b.fiscal_year);
+
+  const auditHighlights = [
+    {
+      label: "Created",
+      value: fmtDate(opp.created_at),
+      sub: opp.created_by ? `by ${opp.created_by}` : "Record timestamp from the opportunity table",
+    },
+    {
+      label: "Last update",
+      value: fmtDate(opp.updated_at),
+      sub: "Latest saved change on this opportunity",
+    },
+    {
+      label: "Budget confirmation",
+      value: opp.budget_confirmed_at ? fmtDate(opp.budget_confirmed_at) : "-",
+      sub: opp.budget_confirmed_by ? `by ${opp.budget_confirmed_by}` : "Not budget-confirmed yet",
+    },
+    {
+      label: "Gate decisions",
+      value: phaseHistory.length ? String(phaseHistory.length) : "0",
+      sub: phaseHistory.length ? "Immutable phase snapshots available" : "No recorded gate snapshot yet",
+    },
+  ];
+
   return (
-    <div className="space-y-5">
-      {opp.description && (
-        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 leading-relaxed">
-          {opp.description}
-        </p>
-      )}
-      {cur !== "EUR" && (
-        <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-700">
-          Amounts are in <strong>{cur}</strong> (rate {opp.fx_rate_to_eur ?? 1}{" "}
-          → EUR). Consolidated reports (Budgeting, Monthly Follow-up) convert to
-          EUR.
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          icon={<TrendingUp size={12} />}
-          label={`Est. Annual Saving (${cur})`}
-          value={fmt(opp.expected_annual_saving, cur)}
-        />
-        <MetricCard
-          icon={<Banknote size={12} />}
-          label={`Cash Impact (${cur})`}
-          value={fmt(opp.cash_impact, cur)}
-        />
-        <MetricCard
-          icon={<Clock size={12} />}
-          label="Duration"
-          value={opp.duration_months ? `${opp.duration_months} months` : "—"}
-        />
-        <MetricCard
-          icon={<FileText size={12} />}
-          label="Budget Year"
-          value={opp.budget_year ? String(opp.budget_year) : "—"}
-          sub={opp.validation_status ?? undefined}
-          subClassName={
-            opp.validation_status === "Budgeted"
-              ? "font-semibold text-emerald-600"
-              : undefined
-          }
-        />
-      </div>
-      {pldReady && (
-        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
-            PLD Priority
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_340px]">
+      <div className="space-y-5">
+        {opp.description && (
+          <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 leading-relaxed">
+            {opp.description}
           </p>
-          <div className="flex items-center gap-3">
-            <div className="flex gap-2 text-xs text-slate-600">
-              <span>P={opp.payback_score}</span>
-              <span>L={opp.lead_time_score}</span>
-              <span>D={opp.difficulty_score}</span>
-            </div>
-            <span className="font-bold text-sm">= {opp.priority_score}</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${pldColor(opp.priority_category)}`}
-            >
-              {opp.priority_category}
-            </span>
-          </div>
+        )}
+        {cur !== "EUR" && (
+          <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-700">
+            Amounts are in <strong>{cur}</strong> (rate {opp.fx_rate_to_eur ?? 1}{" "}
+            to EUR). Consolidated reports (Budgeting, Monthly Follow-up) convert
+            to EUR.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard
+            icon={<TrendingUp size={12} />}
+            label={`Est. Annual Saving (${cur})`}
+            value={fmt(opp.expected_annual_saving, cur)}
+          />
+          <MetricCard
+            icon={<Banknote size={12} />}
+            label={`Cash Impact (${cur})`}
+            value={fmt(opp.cash_impact, cur)}
+          />
+          <MetricCard
+            icon={<Clock size={12} />}
+            label="Duration"
+            value={opp.duration_months != null ? `${fmtMonths(opp.duration_months)} months` : "-"}
+          />
+          <MetricCard
+            icon={<FileText size={12} />}
+            label="Budget Year"
+            value={opp.budget_year ? String(opp.budget_year) : "-"}
+            sub={opp.validation_status ?? undefined}
+            subClassName={
+              opp.validation_status === "Budgeted"
+                ? "font-semibold text-emerald-600"
+                : undefined
+            }
+          />
         </div>
-      )}
-      <div className="rounded-xl border border-slate-100 divide-y divide-slate-50">
-        <InfoRow label="Idea Owner (Pilot)" value={opp.idea_owner} />
-        <InfoRow label="Purchasing Owner" value={opp.purchasing_owner} />
-        <InfoRow label="Project Manager" value={opp.project_owner} />
-        <InfoRow label="Conversion Owner" value={opp.conversion_owner} />
-        <InfoRow
-          label="Plant"
-          value={
-            opp.plant_name
-              ? `${opp.plant_name}${opp.plant_city ? ` · ${opp.plant_city}` : ""}`
-              : opp.plant_id
-                ? `#${opp.plant_id}`
-                : null
-          }
-        />
-        {opp.secondary_plants && (
-          <InfoRow label="Secondary Plants" value={opp.secondary_plants} />
+        {pldReady && (
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
+              PLD Priority
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex gap-2 text-xs text-slate-600">
+                <span>P={opp.payback_score}</span>
+                <span>L={opp.lead_time_score}</span>
+                <span>D={opp.difficulty_score}</span>
+              </div>
+              <span className="font-bold text-sm">= {opp.priority_score}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${pldColor(opp.priority_category)}`}
+              >
+                {opp.priority_category}
+              </span>
+            </div>
+          </div>
         )}
-        <InfoRow label="Change Mode" value={opp.change_mode} />
-        <InfoRow
-          label="Currency"
-          value={
-            cur === "EUR"
-              ? "EUR"
-              : `${cur} · rate ${opp.fx_rate_to_eur ?? 1} → EUR`
-          }
-        />
-        <InfoRow label="Scope IN" value={opp.scope_in} />
-        <InfoRow label="Customers" value={opp.customers} />
-        {opp.proposed_supplier_name && (
+        <div className="rounded-xl border border-slate-100 divide-y divide-slate-50">
+          <InfoRow label="Idea Owner (Pilot)" value={opp.idea_owner} />
+          <InfoRow label="Purchasing Owner" value={opp.purchasing_owner} />
+          <InfoRow label="Project Manager" value={opp.project_owner} />
+          <InfoRow label="Conversion Owner" value={opp.conversion_owner} />
           <InfoRow
-            label="Proposed Supplier"
-            value={opp.proposed_supplier_name}
+            label="Plant"
+            value={
+              opp.plant_name
+                ? `${opp.plant_name}${opp.plant_city ? ` (${opp.plant_city})` : ""}`
+                : opp.plant_id
+                  ? `#${opp.plant_id}`
+                  : null
+            }
           />
-        )}
-        {opp.current_price != null && opp.proposed_price != null && (
+          {opp.secondary_plants && (
+            <InfoRow label="Secondary Plants" value={opp.secondary_plants} />
+          )}
+          <InfoRow label="Change Mode" value={opp.change_mode} />
           <InfoRow
-            label="Price Before→After"
-            value={`${fmtPrice(opp.current_price, cur)} → ${fmtPrice(opp.proposed_price, cur)}`}
+            label="Currency"
+            value={
+              cur === "EUR"
+                ? "EUR"
+                : `${cur}, rate ${opp.fx_rate_to_eur ?? 1} to EUR`
+            }
           />
-        )}
-        {opp.total_investment != null && (
-          <InfoRow
-            label="Total Investment"
-            value={`${fmt(Number(opp.total_investment), cur)} (ROI: ${opp.roi_percent ?? "?"}%)`}
-          />
-        )}
-        {opp.period_saving != null && (
-          <InfoRow
-            label="Period Saving (Σ Year N…N+3)"
-            value={`${fmt(Number(opp.period_saving), cur)}${opp.roi_period_percent != null ? ` (ROI: ${opp.roi_period_percent}%)` : ""}`}
-          />
-        )}
-        {[
-          ["N", opp.saving_year_n],
-          ["N+1", opp.saving_year_n1],
-          ["N+2", opp.saving_year_n2],
-          ["N+3", opp.saving_year_n3],
-        ].map(([yr, val]) =>
-          val != null ? (
+          <InfoRow label="Scope IN" value={opp.scope_in} />
+          <InfoRow label="Customers" value={opp.customers} />
+          {opp.proposed_supplier_name && (
             <InfoRow
-              key={yr as string}
-              label={`Est. Saving Year ${yr}`}
-              value={fmt(Number(val), cur)}
+              label="Proposed Supplier"
+              value={opp.proposed_supplier_name}
             />
-          ) : null,
-        )}
-        {opp.saving_by_year &&
-          Object.entries(opp.saving_by_year)
-            .sort(([a], [b]) => Number(a) - Number(b))
-            .map(([yr, val]) => (
+          )}
+          {opp.current_price != null && opp.proposed_price != null && (
+            <InfoRow
+              label="Price Before / After"
+              value={`${fmtPrice(opp.current_price, cur)} / ${fmtPrice(opp.proposed_price, cur)}`}
+            />
+          )}
+          {opp.total_investment != null && (
+            <InfoRow
+              label="Total Investment"
+              value={`${fmt(Number(opp.total_investment), cur)} (ROI: ${opp.roi_percent ?? "?"}%)`}
+            />
+          )}
+          {opp.period_saving != null && (
+            <InfoRow
+              label="Period Saving (Years N to N+3)"
+              value={`${fmt(Number(opp.period_saving), cur)}${opp.roi_period_percent != null ? ` (ROI: ${opp.roi_period_percent}%)` : ""}`}
+            />
+          )}
+          {[
+            ["N", opp.saving_year_n],
+            ["N+1", opp.saving_year_n1],
+            ["N+2", opp.saving_year_n2],
+            ["N+3", opp.saving_year_n3],
+          ].map(([yr, val]) =>
+            val != null ? (
               <InfoRow
-                key={`cy-${yr}`}
-                label={`Est. Saving Budget ${yr}`}
+                key={yr as string}
+                label={`Est. Saving Year ${yr}`}
                 value={fmt(Number(val), cur)}
               />
-            ))}
-        {opp.budget_years && opp.budget_years.length > 0 && (
-          <>
-            {[...opp.budget_years]
-              .sort((a, b) => a.fiscal_year - b.fiscal_year)
-              .map((by) => (
+            ) : null,
+          )}
+          {opp.saving_by_year &&
+            Object.entries(opp.saving_by_year)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([yr, val]) => (
                 <InfoRow
-                  key={`by-${by.id}`}
-                  label={`Budget ${by.fiscal_year} (${by.portion_kind ?? "—"})`}
-                  value={`${fmt(Number(by.applicable_amount ?? 0), cur)} · ${by.budget_status ?? "Empty"} · ${by.suggested_status === "Validate" ? "Validated" : "Forecast"}`}
+                  key={`cy-${yr}`}
+                  label={`Est. Saving Budget ${yr}`}
+                  value={fmt(Number(val), cur)}
                 />
               ))}
-          </>
-        )}
-        {opp.cash_inventory_gap != null && (
+          {opp.budget_years && opp.budget_years.length > 0 && (
+            <>
+              {[...opp.budget_years]
+                .sort((a, b) => a.fiscal_year - b.fiscal_year)
+                .map((by) => (
+                  <InfoRow
+                    key={`by-${by.id}`}
+                    label={`Budget ${by.fiscal_year} (${by.portion_kind ?? "-"})`}
+                    value={`${fmt(Number(by.applicable_amount ?? 0), cur)} | ${by.budget_status ?? "Empty"} | ${by.suggested_status === "Validate" ? "Validated" : "Forecast"}${by.status_locked_at ? ` | locked ${fmtDate(by.status_locked_at)}${by.status_locked_by ? ` by ${by.status_locked_by}` : ""}` : ""}`}
+                  />
+                ))}
+            </>
+          )}
+          {opp.cash_inventory_gap != null && (
+            <InfoRow
+              label="Est. Inventory Gap"
+              value={fmt(Number(opp.cash_inventory_gap), cur)}
+            />
+          )}
+          {opp.cash_ap_gap != null && (
+            <InfoRow
+              label="Est. AP Gap"
+              value={fmt(Number(opp.cash_ap_gap), cur)}
+            />
+          )}
           <InfoRow
-            label="Est. Inventory Gap"
-            value={fmt(Number(opp.cash_inventory_gap), cur)}
+            label="Record Created"
+            value={fmtDate(opp.created_at)}
           />
-        )}
-        {opp.cash_ap_gap != null && (
+          <InfoRow label="Created By" value={opp.created_by} />
+          <InfoRow label="Last Opportunity Update" value={fmtDate(opp.updated_at)} />
           <InfoRow
-            label="Est. AP Gap"
-            value={fmt(Number(opp.cash_ap_gap), cur)}
+            label="Planned Start"
+            value={fmtDate(opp.planned_start_date)}
           />
-        )}
-        <InfoRow
-          label="Planned Start"
-          value={fmtDate(opp.planned_start_date)}
-        />
-        <InfoRow label="Planned End" value={fmtDate(opp.planned_end_date)} />
-        <InfoRow
-          label="Execution Start (Phase 2)"
-          value={fmtDate(opp.execution_start_date)}
-        />
-        <InfoRow
-          label="Deployment Start (Phase 3)"
-          value={fmtDate(opp.real_start_date)}
-        />
-        <InfoRow
-          label="Validation Date (Phase 0 Go)"
-          value={fmtDate(opp.val_date)}
-        />
-        <InfoRow
-          label="Validation Status"
-          value={
-            opp.validation_status
-              ? `${opp.validation_status}${opp.budget_confirmed_at ? ` — confirmed ${fmtDate(opp.budget_confirmed_at)}${opp.budget_confirmed_by ? ` by ${opp.budget_confirmed_by}` : ""}` : ""}`
-              : undefined
-          }
-          valueClassName={
-            opp.validation_status === "Budgeted"
-              ? "font-semibold text-emerald-600"
-              : undefined
-          }
-        />
-        {opp.assumptions_summary && (
-          <InfoRow label="Assumptions" value={opp.assumptions_summary} />
-        )}
-        {opp.comments && <InfoRow label="Comments" value={opp.comments} />}
+          <InfoRow label="Planned End" value={fmtDate(opp.planned_end_date)} />
+          <InfoRow
+            label="Execution Start (Phase 2)"
+            value={fmtDate(opp.execution_start_date)}
+          />
+          <InfoRow
+            label="Deployment Start (Phase 3)"
+            value={fmtDate(opp.real_start_date)}
+          />
+          <InfoRow
+            label="Validation Date (Phase 0 Go)"
+            value={fmtDate(opp.val_date)}
+          />
+          <InfoRow
+            label="Validation Status"
+            value={
+              opp.validation_status
+                ? `${opp.validation_status}${opp.budget_confirmed_at ? ` | confirmed ${fmtDate(opp.budget_confirmed_at)}${opp.budget_confirmed_by ? ` by ${opp.budget_confirmed_by}` : ""}` : ""}`
+                : undefined
+            }
+            valueClassName={
+              opp.validation_status === "Budgeted"
+                ? "font-semibold text-emerald-600"
+                : undefined
+            }
+          />
+          {opp.assumptions_summary && (
+            <InfoRow label="Assumptions" value={opp.assumptions_summary} />
+          )}
+          {opp.comments && <InfoRow label="Comments" value={opp.comments} />}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-4 text-white shadow-[0_14px_38px_rgba(15,23,42,0.18)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-200/80">
+            Audit Snapshot
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {auditHighlights.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-100/70">
+                  {item.label}
+                </p>
+                <p className="mt-1 text-sm font-bold text-white">{item.value}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-blue-100/70">
+                  {item.sub}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+              Approval Timeline
+            </p>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              {phaseHistory.length} event{phaseHistory.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          {phaseHistory.length === 0 ? (
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+              No immutable gate snapshot has been recorded yet for this opportunity.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {[...phaseHistory].reverse().map((entry) => (
+                <div
+                  key={entry.snapshot_id}
+                  className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold text-slate-700">
+                      {entry.phase_from ?? "-"} to {entry.phase_to ?? "-"}
+                    </p>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${entry.gate_decision === "Go" ? "bg-emerald-100 text-emerald-700" : entry.gate_decision === "No Go" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                      {entry.gate_decision ?? "Decision"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10.5px] text-slate-500">
+                    {entry.decided_by ?? "Unknown"} | {fmtDate(entry.decided_at)}
+                  </p>
+                  {entry.gate_comments && (
+                    <p className="mt-1 text-[10.5px] italic text-slate-600">
+                      "{entry.gate_comments}"
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+            Budget Locks
+          </p>
+          {budgetLocks.length === 0 ? (
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+              No budget row is locked yet for this opportunity.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {budgetLocks.map((by) => (
+                <div
+                  key={`lock-${by.id}`}
+                  className="rounded-xl border border-slate-100 bg-white px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold text-slate-700">
+                      FY {by.fiscal_year} | {by.budget_status ?? "Empty"}
+                    </p>
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700">
+                      {by.portion_kind ?? "Budget row"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10.5px] text-slate-500">
+                    Locked {fmtDate(by.status_locked_at)}
+                    {by.status_locked_by ? ` by ${by.status_locked_by}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1061,6 +1237,15 @@ function EditTab({
     ),
     benefits: !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not),
     planning: !(opp.phase1_weeks && opp.phase1_weeks > 0),
+    executionStartDate:
+      (isSourced
+        ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
+        : ["Phase 2", "Phase 3", "Phase 4"]
+      ).includes(opp.phase_status ?? "") && !opp.execution_start_date,
+    realStartDate:
+      ["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") &&
+      !(opp.budget_years?.some((by) => by.status_locked_at != null) ?? false) &&
+      !opp.real_start_date,
   };
   const goApplied = opp.validation_decision === "Go";
   const stpEditablePhases = ["Assigned", "Phase 0", "Phase 1"];
@@ -2159,16 +2344,27 @@ function EditTab({
                     — saving period length
                   </span>
                 </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  step="1"
+                <select
                   disabled={locked}
                   className={`${hi(!(opp.duration_months && opp.duration_months > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
                   value={form.duration_months}
                   onChange={(e) => set("duration_months", e.target.value)}
-                />
+                >
+                  <option value="" disabled>
+                    Select duration
+                  </option>
+                  {[1, 12, 24, 36, 48].map((m) => (
+                    <option key={m} value={m}>
+                      {m} {m === 1 ? "month" : "months"}
+                    </option>
+                  ))}
+                  {form.duration_months &&
+                    ![1, 12, 24, 36, 48].includes(Number(form.duration_months)) && (
+                      <option value={form.duration_months}>
+                        {form.duration_months} months (legacy)
+                      </option>
+                    )}
+                </select>
                 {computedEndDate && (
                   <p className="mt-1 text-[10.5px] text-slate-500">
                     → Planned end:{" "}
@@ -2244,7 +2440,7 @@ function EditTab({
                 opp.phase_status ?? "",
               ) && (
                 <div>
-                  <label className={label}>
+                  <label className={hiLabel(missingFlags.executionStartDate)}>
                     Execution Start Date
                     <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
                       Phase 2
@@ -2256,7 +2452,7 @@ function EditTab({
                   </label>
                   <input
                     type="date"
-                    className={inp}
+                    className={hi(missingFlags.executionStartDate)}
                     value={form.execution_start_date}
                     onChange={(e) =>
                       set("execution_start_date", e.target.value)
@@ -2267,7 +2463,7 @@ function EditTab({
               {/* Phase 3 date — when savings actually started flowing */}
               {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
                 <div>
-                  <label className={label}>
+                  <label className={hiLabel(missingFlags.realStartDate)}>
                     Deployment Start Date (Real Savings Start)
                     <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-600">
                       Phase 3
@@ -2292,7 +2488,7 @@ function EditTab({
                       <>
                         <input
                           type="date"
-                          className={inp}
+                          className={hi(missingFlags.realStartDate)}
                           value={form.real_start_date}
                           onChange={(e) =>
                             set("real_start_date", e.target.value)
@@ -6015,20 +6211,30 @@ function FinancialTab({
         )
       : null;
 
-  // Gap 1 — Year split: aggregate monthly rows by calendar year
+  // Gap 1 — Year split: aggregate monthly rows by calendar year.
+  // Expected uses the same exact-day prorata as the Budgeting page
+  // (opp.budget_years[].applicable_amount) when available, so the two screens
+  // agree — the monthly profile below is whole-month (lands on day 1) and would
+  // otherwise show a different figure for the anchor year. Falls back to summing
+  // the monthly rows for years the budgeting module hasn't produced yet.
+  const budgetYearExpected: Record<number, number> = {};
+  (opp.budget_years ?? []).forEach((by) => {
+    if (by.applicable_amount != null) {
+      budgetYearExpected[by.fiscal_year] = toNum(by.applicable_amount);
+    }
+  });
   const yearBreakdown = rows.reduce<
-    Record<number, { expected: number; actual: number; budget: number }>
+    Record<number, { expected: number; actual: number }>
   >((acc, row) => {
     if (!row.period_month) return acc;
     const yr = new Date(row.period_month).getFullYear();
     if (!acc[yr])
       acc[yr] = {
-        expected: 0,
+        expected: budgetYearExpected[yr] ?? 0,
         actual: 0,
-        budget:
-          (toNum(line.budget_value) / toNum(line.duration_months || 12)) * 12,
       };
-    acc[yr].expected += toNum(row.expected_saving);
+    if (budgetYearExpected[yr] == null)
+      acc[yr].expected += toNum(row.expected_saving);
     if (row.actual_saving != null) acc[yr].actual += toNum(row.actual_saving);
     return acc;
   }, {});
@@ -6610,7 +6816,10 @@ function FinancialTab({
       {/* Gap 1 — Year split KPI */}
       {yearEntries.length > 1 && (
         <div className="rounded-xl border border-slate-100 bg-white p-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+          <p
+            className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2"
+            title="Expected matches the Budgeting page's exact-day prorata; Actual is summed from monthly entries."
+          >
             Year-by-Year Breakdown
           </p>
           <div className="flex gap-4 flex-wrap">
@@ -7308,9 +7517,22 @@ function FinancialTab({
                           placeholder="What happened…"
                         />
                       ) : row.comment ? (
-                        <span>{row.comment}</span>
+                        <div className="space-y-0.5">
+                          <span>{row.comment}</span>
+                          {(row.updated_by || row.updated_at) && (
+                            <div className="text-[9.5px] text-slate-300">
+                              Last update {row.updated_by ? `by ${row.updated_by}` : "saved"}
+                              {row.updated_at ? ` | ${fmtDate(row.updated_at)}` : ""}
+                            </div>
+                          )}
+                        </div>
+                      ) : row.updated_by || row.updated_at ? (
+                        <span className="text-[9.5px] text-slate-300">
+                          Last update {row.updated_by ? `by ${row.updated_by}` : "saved"}
+                          {row.updated_at ? ` | ${fmtDate(row.updated_at)}` : ""}
+                        </span>
                       ) : (
-                        <span className="text-slate-200">—</span>
+                        <span className="text-slate-200">-</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -7540,6 +7762,12 @@ function FilesTab({
                     </span>
                   )}
                 </div>
+                {(doc.uploaded_by || doc.created_at) && (
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    {doc.uploaded_by ? `Uploaded by ${doc.uploaded_by}` : "Uploaded"}
+                    {doc.created_at ? ` | ${fmtDate(doc.created_at)}` : ""}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {doc.file_url && (
@@ -7813,6 +8041,7 @@ interface ActionPlanRecord {
   created_at?: string;
   created_by?: string;
   updated_at?: string;
+  updated_by?: string;
 }
 
 const AP_PHASE_OPTIONS = [
@@ -7849,6 +8078,16 @@ function autoTitle(oppName: string | undefined, phase: string, date: string) {
   const base = oppName ? oppName : "Action Plan";
   const p = phase ? ` — ${phase}` : "";
   return `${base}${p} — ${date}`;
+}
+
+// Company emails follow firstname.lastname@company.com — derive a display name from it.
+function fullNameFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function ActionPlanTab({
@@ -7930,6 +8169,10 @@ function ActionPlanTab({
     }
     if (form.actions.some((a) => !a.titre.trim())) {
       setError("All action titles are required.");
+      return;
+    }
+    if (form.actions.some((a) => !a.due_date)) {
+      setError("Due date is required for all actions.");
       return;
     }
 
@@ -8167,35 +8410,40 @@ function ActionPlanTab({
                     />
                   </div>
                   <div>
-                    <label className={lbl}>Responsible</label>
-                    <input
-                      className={inp}
-                      value={action.responsable ?? ""}
-                      onChange={(e) =>
-                        setAction(ai, { responsable: e.target.value })
-                      }
-                      placeholder="Full name"
-                    />
-                  </div>
-                  <div>
                     <label className={lbl}>Responsible Email</label>
                     <input
                       className={inp}
                       type="email"
                       value={action.email_responsable ?? ""}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const email = e.target.value;
                         setAction(ai, {
-                          email_responsable: e.target.value || undefined,
-                        })
-                      }
-                      placeholder="email@company.com"
+                          email_responsable: email || undefined,
+                          responsable: email
+                            ? fullNameFromEmail(email)
+                            : undefined,
+                        });
+                      }}
+                      placeholder="firstname.lastname@company.com"
                     />
                   </div>
                   <div>
-                    <label className={lbl}>Due Date</label>
+                    <label className={lbl}>Responsible</label>
+                    <input
+                      className={inp + " bg-slate-50"}
+                      value={action.responsable ?? ""}
+                      readOnly
+                      placeholder="Derived from email"
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>
+                      Due Date <span className="text-red-500">*</span>
+                    </label>
                     <input
                       className={inp}
                       type="date"
+                      required
                       value={action.due_date ?? ""}
                       onChange={(e) =>
                         setAction(ai, { due_date: e.target.value || null })
@@ -9550,27 +9798,46 @@ export default function PurchasingValuePage() {
   const budgetedOpps = opportunities.filter((o) =>
     committedOppIds.has(o.opportunity_id),
   );
+  // EUR is the group reporting currency — non-EUR opportunities must be
+  // converted before summing into a board-wide KPI tile, same rule the KPI
+  // dashboard (kpi_service.py) already applies. A missing/zero rate excludes
+  // the opportunity from the total rather than distorting it with a 1:1
+  // fallback.
+  const fxOf = (o: Opp) => {
+    const currency = o.currency || "EUR";
+    if (currency === "EUR") return 1;
+    return o.fx_rate_to_eur && o.fx_rate_to_eur > 0 ? o.fx_rate_to_eur : 0;
+  };
   const budgetedSaving = budgetedOpps.reduce(
-    (s, o) => s + toNum(o.expected_annual_saving),
+    (s, o) => s + toNum(o.expected_annual_saving) * fxOf(o),
     0,
   );
-  const totalActual = opportunities
-    .flatMap((o) => o.financial_lines)
-    .reduce((s, l) => s + toNum(l.cumulated_real_saving), 0);
+  const totalActual = opportunities.reduce(
+    (s, o) =>
+      s +
+      (o.financial_lines ?? []).reduce(
+        (s2, l) => s2 + toNum(l.cumulated_real_saving) * fxOf(o),
+        0,
+      ),
+    0,
+  );
   const budgeted = budgetedOpps.length;
   const overBudgetLines = opportunities
     .filter((o) => committedOppIds.has(o.opportunity_id))
-    .flatMap((o) => o.financial_lines)
+    .flatMap((o) =>
+      (o.financial_lines ?? []).map((l) => ({ line: l, fx: fxOf(o) })),
+    )
     .filter(
-      (l) =>
+      ({ line: l }) =>
         toNum(l.budget_value) > 0 &&
         toNum(l.forecast_eoy_current) > toNum(l.budget_value),
     );
   const overBudgetCount = new Set(
-    overBudgetLines.map((l) => l.financial_line_id),
+    overBudgetLines.map(({ line: l }) => l.financial_line_id),
   ).size;
   const overBudgetAmount = overBudgetLines.reduce(
-    (s, l) => s + (toNum(l.forecast_eoy_current) - toNum(l.budget_value)),
+    (s, { line: l, fx }) =>
+      s + (toNum(l.forecast_eoy_current) - toNum(l.budget_value)) * fx,
     0,
   );
   const stuck = opportunities.filter((o) => o.status === "Stuck").length;
