@@ -34,11 +34,15 @@ interface BudgetYearItem {
   suggested_status?: string | null;
   is_additional?: boolean;
   status_locked_at?: string | null;
+  status_locked_by?: string | null;
   eoy_forecast_eur?: number | null;
   expected_annual_saving_eur?: number | null;
   actual_ytd_eur?: number | null;
   delta_ytd_eur?: number | null;
   delta_eoy_budget?: number | null;
+  saving_actual_fy_eur?: number | null;
+  cash_expected_eur?: number | null;
+  cash_actual_eur?: number | null;
   real_start_date?: string | null;
   execution_start_date?: string | null;
   planned_start_date?: string | null;
@@ -59,6 +63,12 @@ interface Summary {
   baseline_budgeted_eur: number;
   additional_accepted_eur: number;
   total_budget_eur: number;
+  baseline_cash_expected_eur: number;
+  additional_cash_expected_eur: number;
+  total_cash_expected_eur: number;
+  baseline_cash_actual_eur: number;
+  additional_cash_actual_eur: number;
+  total_cash_actual_eur: number;
   additional_pending: number;
   additional_accepted: number;
   additional_rejected: number;
@@ -431,14 +441,31 @@ export default function BudgetingPage() {
           )}
         </td>
         <td className="px-3 py-2.5 text-right font-semibold text-slate-800">
-          {fmtCur(item.applicable_amount, item.currency)}
-          {item.currency &&
-            item.currency !== "EUR" &&
-            item.applicable_amount_eur != null && (
+          <div>
+            {fmtCur(item.applicable_amount, item.currency)}
+            {item.currency &&
+              item.currency !== "EUR" &&
+              item.applicable_amount_eur != null && (
+                <span className="ml-1 font-normal text-slate-400">
+                  (= {fmt(item.applicable_amount_eur)})
+                </span>
+              )}
+          </div>
+          <div className="text-[10px] font-normal text-slate-400">
+            actual {fmt(item.saving_actual_fy_eur)}
+          </div>
+        </td>
+        <td className="px-3 py-2.5 text-right text-slate-700">
+          {item.cash_expected_eur == null && item.cash_actual_eur == null ? (
+            <span className="text-slate-300">—</span>
+          ) : (
+            <>
+              <div>{fmt(item.cash_expected_eur)}</div>
               <div className="text-[10px] font-normal text-slate-400">
-                = {fmt(item.applicable_amount_eur)}
+                actual {fmt(item.cash_actual_eur)}
               </div>
-            )}
+            </>
+          )}
         </td>
         <td className="px-3 py-2.5 text-right text-slate-700">
           {fmt(item.eoy_forecast_eur)}
@@ -497,7 +524,18 @@ export default function BudgetingPage() {
           </th>
           <th className={COL_HEADER}>Savings Duration</th>
           <th className={COL_HEADER}>Portion</th>
-          <th className={`${COL_HEADER} text-right`}>Saving FY {fiscalYear}</th>
+          <th
+            className={`${COL_HEADER} text-right`}
+            title="Expected — pro-rata portion of annual saving allocated to this fiscal year. Actual — real saving recorded so far within this fiscal year."
+          >
+            Saving FY {fiscalYear}
+          </th>
+          <th
+            className={`${COL_HEADER} text-right`}
+            title="Cash-type opportunities only — planned (expected) cash, with actual recorded so far below"
+          >
+            Cash FY {fiscalYear}
+          </th>
           <th className={`${COL_HEADER} text-right`}>EOY Forecast</th>
           <th className={`${COL_HEADER} text-right`}>Δ EOY−Budget</th>
           {!showDecisionCol && <th className={COL_HEADER}>Status</th>}
@@ -718,7 +756,7 @@ export default function BudgetingPage() {
 
       {/* ── 3 KPI Cards ── */}
       {summary && !selectMode && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           {/* Card 1 — Initial Baseline */}
           <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
@@ -753,10 +791,10 @@ export default function BudgetingPage() {
             </p>
           </div>
 
-          {/* Card 3 — Total Budget */}
+          {/* Card 3 — Total Budget by Saving */}
           <div className="rounded-xl border border-slate-100 bg-slate-800 p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-              Total Budget {fiscalYear}
+              Total Budget (Saving) {fiscalYear}
             </p>
             <p className="mt-1 text-2xl font-bold text-white">
               {fmt(summary.total_budget_eur)}
@@ -764,6 +802,21 @@ export default function BudgetingPage() {
             <p className="mt-0.5 text-[10px] text-slate-400">
               Baseline {fmt(summary.baseline_budgeted_eur)} + Additional{" "}
               {fmt(summary.additional_accepted_eur)}
+            </p>
+          </div>
+
+          {/* Card 4 — Total Budget by Cash */}
+          <div className="rounded-xl border border-slate-100 bg-slate-800 p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Total Budget (Cash) {fiscalYear}
+            </p>
+            <p className="mt-1 text-2xl font-bold text-white">
+              {fmt(summary.total_cash_expected_eur)}
+            </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Baseline {fmt(summary.baseline_cash_expected_eur)} + Additional{" "}
+              {fmt(summary.additional_cash_expected_eur)} · Actual{" "}
+              {fmt(summary.total_cash_actual_eur)}
             </p>
           </div>
         </div>
@@ -849,16 +902,24 @@ export default function BudgetingPage() {
                     <CommonCells item={item} />
                     {!selectMode && (
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <BudgetStatusBadge status={item.budget_status} />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <BudgetStatusBadge status={item.budget_status} />
+                            {item.status_locked_at && (
+                              <span title="Locked" className="inline-flex">
+                                <Lock
+                                  size={10}
+                                  className="text-slate-300"
+                                  aria-hidden="true"
+                                />
+                              </span>
+                            )}
+                          </div>
                           {item.status_locked_at && (
-                            <span title="Locked" className="inline-flex">
-                              <Lock
-                                size={10}
-                                className="text-slate-300"
-                                aria-hidden="true"
-                              />
-                            </span>
+                            <div className="text-[10px] text-slate-400">
+                              Locked {fmtDate(item.status_locked_at)}
+                              {item.status_locked_by ? ` by ${item.status_locked_by}` : ""}
+                            </div>
                           )}
                         </div>
                       </td>
