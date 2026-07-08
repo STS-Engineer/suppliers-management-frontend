@@ -796,6 +796,7 @@ class SupplierOnboardingAPI {
       {
         method: "GET",
         headers: this.getAuthHeaders(),
+        cache: "no-store",
       },
       "Failed to load sites.",
     );
@@ -1254,6 +1255,7 @@ class SupplierOnboardingAPI {
       {
         method: "GET",
         headers: this.getAuthHeaders(),
+        cache: "no-store",
       },
       "Failed to load the relation evaluation workspace.",
     );
@@ -1265,6 +1267,7 @@ class SupplierOnboardingAPI {
       {
         method: "GET",
         headers: this.getAuthHeaders(),
+        cache: "no-store",
       },
       "Failed to load the relation status history.",
     );
@@ -1632,6 +1635,14 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}`,
       { method: "GET", headers: this.getAuthHeaders() },
       "Failed to load opportunity.",
+    );
+  }
+
+  async getOpportunityPhaseHistory(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/phase-history`,
+      { method: "GET", headers: this.getAuthHeaders() },
+      "Failed to load opportunity phase history.",
     );
   }
 
@@ -2265,7 +2276,7 @@ class SupplierOnboardingAPI {
     const qs = q.toString() ? `?${q}` : "";
     return this.request(
       `${this.baseUrl}/purchasing-value/action-plans/all-items${qs}`,
-      { method: "GET", headers: this.getAuthHeaders() },
+      { method: "GET", headers: this.getAuthHeaders(), cache: "no-store" },
       "Failed to load action items.",
     );
   }
@@ -2316,6 +2327,30 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/action-plans/${planId}/items/remind?${q}`,
       { method: "POST", headers: this.getAuthHeaders() },
       "Failed to send reminder.",
+    );
+  }
+
+  async escalateActionItem(
+    planId: number,
+    sujetIdx: number,
+    actionIdx: number,
+    data: { recipient_email: string; subject: string; message?: string },
+  ) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+    });
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/${planId}/items/escalate?${q}`,
+      {
+        method: "POST",
+        headers: {
+          ...this.getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      "Failed to escalate.",
     );
   }
 
