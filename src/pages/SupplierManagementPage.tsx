@@ -11,10 +11,12 @@ import {
   ChevronRight,
   Edit2,
   Globe,
+  AlertTriangle,
   Layers,
   Mail,
   Phone,
   Plus,
+  Power,
   RefreshCw,
   Save,
   Search,
@@ -31,16 +33,32 @@ import type { SupplierGroupSummary } from "../types/onboarding";
 // ── design helpers ────────────────────────────────────────────────────────────
 
 const SCOPE_STYLE: Record<string, string> = {
-  global:    "bg-indigo-50 text-indigo-700 border-indigo-200",
-  strategic: "bg-amber-50  text-amber-700  border-amber-200",
-  local:     "bg-slate-100 text-slate-600  border-slate-200",
+  global: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  // strategic: "bg-amber-50  text-amber-700  border-amber-200",
+  local: "bg-slate-100 text-slate-600  border-slate-200",
 };
 
 const FLAG_CFG = [
-  { key: "strategique",    label: "Strategic",    cls: "bg-violet-50 text-violet-700 border-violet-200" },
-  { key: "monopolistique", label: "Monopolistic",  cls: "bg-amber-50  text-amber-700  border-amber-200" },
-  { key: "directed",       label: "Directed",     cls: "bg-sky-50    text-sky-700    border-sky-200" },
-  { key: "multi_site",     label: "Multi-site",   cls: "bg-teal-50   text-teal-700   border-teal-200" },
+  {
+    key: "strategique",
+    label: "Strategic",
+    cls: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  {
+    key: "monopolistique",
+    label: "Monopolistic",
+    cls: "bg-amber-50  text-amber-700  border-amber-200",
+  },
+  {
+    key: "directed",
+    label: "Directed",
+    cls: "bg-sky-50    text-sky-700    border-sky-200",
+  },
+  {
+    key: "multi_site",
+    label: "Multi-site",
+    cls: "bg-teal-50   text-teal-700   border-teal-200",
+  },
 ] as const;
 
 const AVATAR_GRADIENTS = [
@@ -67,7 +85,6 @@ function initials(name: string) {
   return (w[0][0] + w[w.length - 1][0]).toUpperCase();
 }
 
-
 // ── GroupCard ─────────────────────────────────────────────────────────────────
 
 function GroupCard({
@@ -86,12 +103,16 @@ function GroupCard({
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)]"
     >
       {/* Colour stripe */}
-      <div className={`h-1 w-full bg-gradient-to-r ${avatarGradient(group.nom)}`} />
+      <div
+        className={`h-1 w-full bg-gradient-to-r ${avatarGradient(group.nom)}`}
+      />
 
       <div className="flex flex-1 flex-col p-5">
         {/* Header row */}
         <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow-sm ${avatarGradient(group.nom)}`}>
+          <div
+            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow-sm ${avatarGradient(group.nom)}`}
+          >
             {initials(group.nom)}
           </div>
           <div className="min-w-0 flex-1">
@@ -99,12 +120,20 @@ function GroupCard({
               {group.nom}
             </p>
             <p className="mt-0.5 font-mono text-[11px] text-slate-400">
-              {group.group_code || `GRP-${String(group.id_group).padStart(6, "0")}`}
+              {group.group_code ||
+                `GRP-${String(group.id_group).padStart(6, "0")}`}
             </p>
           </div>
           {group.supplier_scope && (
-            <span className={`flex-shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${SCOPE_STYLE[scopeKey] ?? SCOPE_STYLE.local}`}>
+            <span
+              className={`flex-shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${SCOPE_STYLE[scopeKey] ?? SCOPE_STYLE.local}`}
+            >
               {group.supplier_scope}
+            </span>
+          )}
+          {group.is_active === false && (
+            <span className="flex-shrink-0 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-600">
+              Deactivated
             </span>
           )}
         </div>
@@ -176,15 +205,22 @@ function GroupDrawer({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [form, setForm] = useState<EditState>(fromGroup(group));
+  const [confirmStatus, setConfirmStatus] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     setEditing(false);
     setSaveError(null);
     setForm(fromGroup(group));
+    setConfirmStatus(false);
+    setStatusError(null);
   }, [group.id_group]);
 
   const set = (f: keyof EditState, v: string | boolean | string[]) =>
     setForm((p) => ({ ...p, [f]: v }));
+
+  const isActive = group.is_active ?? true;
 
   const handleSave = async () => {
     setSaving(true);
@@ -203,8 +239,29 @@ function GroupDrawer({
     }
   };
 
-  const inp = "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100";
-  const lbl = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400";
+  const handleToggleStatus = async () => {
+    setStatusSaving(true);
+    setStatusError(null);
+    try {
+      const res = await supplierAPI.setGroupActiveStatus(
+        group.id_group,
+        !isActive,
+      );
+      onGroupUpdated(res.data.group);
+      setConfirmStatus(false);
+    } catch (e) {
+      setStatusError(
+        e instanceof Error ? e.message : "Failed to update status.",
+      );
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
+  const inp =
+    "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100";
+  const lbl =
+    "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400";
 
   return (
     <>
@@ -216,24 +273,31 @@ function GroupDrawer({
 
       {/* Drawer panel */}
       <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-[−20px_0_60px_rgba(15,23,42,0.15)]">
-
         {/* Header */}
         <div className="relative overflow-hidden bg-[#0f2744] px-6 py-6 text-white">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.25),transparent_60%)]" />
           <div className="relative flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow ${avatarGradient(group.nom)}`}>
+              <div
+                className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow ${avatarGradient(group.nom)}`}
+              >
                 {initials(group.nom)}
               </div>
               <div>
                 <h2 className="text-lg font-bold leading-tight">{group.nom}</h2>
                 <p className="mt-0.5 font-mono text-xs text-blue-200/70">
-                  {group.group_code || `GRP-${String(group.id_group).padStart(6, "0")}`}
+                  {group.group_code ||
+                    `GRP-${String(group.id_group).padStart(6, "0")}`}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {group.supplier_scope && (
                     <span className="rounded-md border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase text-white/80">
                       {group.supplier_scope}
+                    </span>
+                  )}
+                  {!isActive && (
+                    <span className="rounded-md border border-rose-300/40 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-200">
+                      Deactivated
                     </span>
                   )}
                 </div>
@@ -251,13 +315,25 @@ function GroupDrawer({
 
           {/* Action buttons */}
           {!editing && (
-            <div className="relative mt-4">
+            <div className="relative mt-4 flex gap-2">
               <button
                 type="button"
                 onClick={() => setEditing(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20"
               >
                 <Edit2 className="h-3.5 w-3.5" /> Edit group
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmStatus(true)}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                  isActive
+                    ? "border-rose-300/30 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                    : "border-emerald-300/30 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                }`}
+              >
+                <Power className="h-3.5 w-3.5" />
+                {isActive ? "Deactivate" : "Activate"}
               </button>
             </div>
           )}
@@ -267,7 +343,11 @@ function GroupDrawer({
         <div className="flex-1 overflow-y-auto">
           {saveError && (
             <div className="px-6 pt-4">
-              <InlineAlert title="Save failed" message={saveError} tone="danger" />
+              <InlineAlert
+                title="Save failed"
+                message={saveError}
+                tone="danger"
+              />
             </div>
           )}
 
@@ -276,7 +356,11 @@ function GroupDrawer({
               {/* Scope */}
               <div>
                 <label className={lbl}>Scope</label>
-                <select className={inp} value={form.supplier_scope} onChange={(e) => set("supplier_scope", e.target.value)}>
+                <select
+                  className={inp}
+                  value={form.supplier_scope}
+                  onChange={(e) => set("supplier_scope", e.target.value)}
+                >
                   <option value="">— not set —</option>
                   <option value="local">Local</option>
                   <option value="global">Global</option>
@@ -287,12 +371,16 @@ function GroupDrawer({
               <div>
                 <label className={lbl}>
                   Global supplier owner
-                  {form.supplier_scope === "global" && <span className="ml-1 text-red-500">*</span>}
+                  {form.supplier_scope === "global" && (
+                    <span className="ml-1 text-red-500">*</span>
+                  )}
                 </label>
                 {form.supplier_scope === "global" && !form.supplier_owner && (
                   <div className="mb-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
                     <span className="mt-0.5 font-bold">!</span>
-                    <span>A global owner is required when scope is set to Global.</span>
+                    <span>
+                      A global owner is required when scope is set to Global.
+                    </span>
                   </div>
                 )}
                 <input
@@ -304,13 +392,31 @@ function GroupDrawer({
               </div>
 
               <div className="flex gap-2.5 pt-1">
-                <button type="button" onClick={handleSave} disabled={saving || (form.supplier_scope === "global" && !form.supplier_owner.trim())}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40">
-                  {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={
+                    saving ||
+                    (form.supplier_scope === "global" &&
+                      !form.supplier_owner.trim())
+                  }
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40"
+                >
+                  {saving ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
                   {saving ? "Saving…" : "Save changes"}
                 </button>
-                <button type="button" onClick={() => { setEditing(false); setSaveError(null); }}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false);
+                    setSaveError(null);
+                  }}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
                   Cancel
                 </button>
               </div>
@@ -319,8 +425,16 @@ function GroupDrawer({
             <div className="space-y-5 px-6 py-5">
               {/* Info blocks */}
               <div className="grid grid-cols-2 gap-3">
-                <InfoBlock icon={<Globe className="h-4 w-4" />} label="Scope" value={group.supplier_scope || "—"} />
-                <InfoBlock icon={<Users className="h-4 w-4" />} label="Owner" value={group.supplier_owner || "—"} />
+                <InfoBlock
+                  icon={<Globe className="h-4 w-4" />}
+                  label="Scope"
+                  value={group.supplier_scope || "—"}
+                />
+                <InfoBlock
+                  icon={<Users className="h-4 w-4" />}
+                  label="Owner"
+                  value={group.supplier_owner || "—"}
+                />
               </div>
 
               {/* Commodity — read-only, aggregated from the group's supplier units */}
@@ -331,7 +445,10 @@ function GroupDrawer({
                 {group.commodities && group.commodities.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {group.commodities.map((c) => (
-                      <span key={c} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+                      <span
+                        key={c}
+                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600"
+                      >
                         {c}
                       </span>
                     ))}
@@ -344,12 +461,24 @@ function GroupDrawer({
               {/* Dates */}
               <div className="grid grid-cols-2 gap-3">
                 {group.created_at && (
-                  <InfoBlock icon={<TrendingUp className="h-4 w-4" />} label="Created"
-                    value={new Date(group.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })} />
+                  <InfoBlock
+                    icon={<TrendingUp className="h-4 w-4" />}
+                    label="Created"
+                    value={new Date(group.created_at).toLocaleDateString(
+                      undefined,
+                      { day: "2-digit", month: "short", year: "numeric" },
+                    )}
+                  />
                 )}
                 {group.updated_at && (
-                  <InfoBlock icon={<TrendingDown className="h-4 w-4" />} label="Last updated"
-                    value={new Date(group.updated_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })} />
+                  <InfoBlock
+                    icon={<TrendingDown className="h-4 w-4" />}
+                    label="Last updated"
+                    value={new Date(group.updated_at).toLocaleDateString(
+                      undefined,
+                      { day: "2-digit", month: "short", year: "numeric" },
+                    )}
+                  />
                 )}
               </div>
 
@@ -361,18 +490,27 @@ function GroupDrawer({
                   </p>
                   <div className="space-y-1.5">
                     {group.units.slice(0, 5).map((u) => (
-                      <div key={u.id_supplier_unit} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+                      <div
+                        key={u.id_supplier_unit}
+                        className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs"
+                      >
                         <Building2 className="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
                         <span className="font-mono font-semibold text-slate-700">
-                          {u.unit_code || `UNT-${String(u.id_supplier_unit).padStart(6, "0")}`}
+                          {u.unit_code ||
+                            `UNT-${String(u.id_supplier_unit).padStart(6, "0")}`}
                         </span>
                         {u.city && (
-                          <span className="ml-auto text-slate-400">{u.city}{u.country ? `, ${u.country}` : ""}</span>
+                          <span className="ml-auto text-slate-400">
+                            {u.city}
+                            {u.country ? `, ${u.country}` : ""}
+                          </span>
                         )}
                       </div>
                     ))}
                     {group.units.length > 5 && (
-                      <p className="px-1 text-xs text-slate-400">+{group.units.length - 5} more units</p>
+                      <p className="px-1 text-xs text-slate-400">
+                        +{group.units.length - 5} more units
+                      </p>
                     )}
                   </div>
                 </div>
@@ -386,20 +524,32 @@ function GroupDrawer({
                   </p>
                   <div className="space-y-1.5">
                     {group.contacts.map((c) => (
-                      <div key={c.id_contact} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                      <div
+                        key={c.id_contact}
+                        className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5"
+                      >
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-semibold text-slate-800">{c.full_name || "—"}</span>
+                          <span className="text-sm font-semibold text-slate-800">
+                            {c.full_name || "—"}
+                          </span>
                           {c.is_primary_contact && (
                             <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600">
                               Primary
                             </span>
                           )}
                         </div>
-                        {c.role_label && <p className="text-xs text-slate-500">{c.role_label}</p>}
+                        {c.role_label && (
+                          <p className="text-xs text-slate-500">
+                            {c.role_label}
+                          </p>
+                        )}
                         {(c.email || c.phone) && (
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                             {c.email && (
-                              <a href={`mailto:${c.email}`} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                              <a
+                                href={`mailto:${c.email}`}
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              >
                                 <Mail className="h-3 w-3" /> {c.email}
                               </a>
                             )}
@@ -422,24 +572,122 @@ function GroupDrawer({
         {/* Sticky footer */}
         {!editing && (
           <div className="border-t border-slate-100 px-6 py-4">
-            <button type="button" onClick={onOpenWorkspace}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+            <button
+              type="button"
+              onClick={onOpenWorkspace}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
               Open unit &amp; site workspace <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         )}
       </div>
+
+      {/* Activate / Deactivate confirmation */}
+      {confirmStatus && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md"
+          onClick={() => !statusSaving && setConfirmStatus(false)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl bg-white shadow-[0_20px_80px_rgba(2,6,23,0.4)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className={`flex items-center gap-3 rounded-t-2xl px-6 py-5 ${
+                isActive ? "bg-rose-600" : "bg-emerald-600"
+              }`}
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white/15">
+                <Power className="h-4 w-4 text-white" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  {isActive ? "Deactivate group" : "Activate group"}
+                </h3>
+                <p className="mt-0.5 text-xs text-white/70">{group.nom}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 px-6 py-5">
+              <p className="text-sm text-slate-700">
+                {isActive ? (
+                  <>
+                    This will deactivate <strong>{group.nom}</strong> and{" "}
+                    <strong>all of its supplier units</strong>, and in turn
+                    every one of those units'{" "}
+                    <strong>site relations with plants</strong>. They will no
+                    longer appear in supplier pickers across the app.
+                  </>
+                ) : (
+                  <>
+                    This will reactivate <strong>{group.nom}</strong> and{" "}
+                    <strong>all of its supplier units</strong>. Their site
+                    relations will <strong>not</strong> be reactivated — each
+                    one must be reactivated individually.
+                  </>
+                )}
+              </p>
+              {isActive && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <span>This cascades to every unit under this group — it cannot be scoped to a subset.</span>
+                </div>
+              )}
+              {statusError && (
+                <InlineAlert title="Failed" message={statusError} tone="danger" />
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setConfirmStatus(false)}
+                disabled={statusSaving}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={statusSaving}
+                onClick={handleToggleStatus}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50 ${
+                  isActive
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {statusSaving && <RefreshCw className="h-4 w-4 animate-spin" />}
+                {isActive ? "Yes, deactivate" : "Yes, activate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-function InfoBlock({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoBlock({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
       <span className="mt-0.5 flex-shrink-0 text-slate-400">{icon}</span>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{label}</p>
-        <p className="mt-0.5 truncate text-sm font-medium text-slate-800">{value}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+          {label}
+        </p>
+        <p className="mt-0.5 truncate text-sm font-medium text-slate-800">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -472,7 +720,7 @@ const PAGE_SIZE = 24; // cards per page
 const SCOPE_OPTIONS = [
   { value: "", label: "All scopes" },
   { value: "global", label: "Global" },
-  { value: "strategic", label: "Strategic" },
+  // { value: "strategic", label: "Strategic" },
   { value: "local", label: "Local" },
 ];
 
@@ -485,8 +733,13 @@ export const SupplierManagementPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [scopeFilter, setScopeFilter] = useState("");
-  const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(null);
-  const [directGroup, setDirectGroup] = useState<SupplierGroupSummary | null>(null);
+  const [tab, setTab] = useState<"active" | "inactive">("active");
+  const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(
+    null,
+  );
+  const [directGroup, setDirectGroup] = useState<SupplierGroupSummary | null>(
+    null,
+  );
   const [reloadTick, setReloadTick] = useState(0);
   const [page, setPage] = useState(0);
 
@@ -495,46 +748,68 @@ export const SupplierManagementPage = () => {
     setLoading(true);
     setError(null);
 
-    supplierAPI.listSupplierGroups(0, 1000).then((res) => {
-      if (cancelled) return;
-      const items: SupplierGroupSummary[] = res.data?.items || [];
-      setGroups(items);
-      if (groupId) {
-        const matched = items.find((g) => g.id_group === Number.parseInt(groupId, 10));
-        setDirectGroup(matched ?? null);
-      }
-    }).catch((e) => {
-      if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load groups");
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    // Fetch both active and inactive groups — the Active/Deactivated tab
+    // filters client-side (like the scope filter below), so a direct link to
+    // a deactivated group's workspace still resolves.
+    supplierAPI
+      .listSupplierGroups(0, 1000, "all")
+      .then((res) => {
+        if (cancelled) return;
+        const items: SupplierGroupSummary[] = res.data?.items || [];
+        setGroups(items);
+        if (groupId) {
+          const matched = items.find(
+            (g) => g.id_group === Number.parseInt(groupId, 10),
+          );
+          setDirectGroup(matched ?? null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "Failed to load groups");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [groupId, reloadTick]);
 
-  // Reset page on filter/search change
-  useEffect(() => { setPage(0); }, [search, scopeFilter]);
+  // Reset page on filter/search/tab change
+  useEffect(() => {
+    setPage(0);
+  }, [search, scopeFilter, tab]);
 
   const filtered = useMemo(() => {
-    let list = groups;
+    let list = groups.filter((g) =>
+      tab === "active" ? g.is_active ?? true : g.is_active === false,
+    );
     if (scopeFilter) {
-      list = list.filter((g) => (g.supplier_scope ?? "").toLowerCase() === scopeFilter);
+      list = list.filter(
+        (g) => (g.supplier_scope ?? "").toLowerCase() === scopeFilter,
+      );
     }
     const kw = search.trim().toLowerCase();
     if (kw) {
       list = list.filter((g) =>
         [g.nom, g.supplier_scope, g.group_code]
-          .filter(Boolean).some((v) => String(v).toLowerCase().includes(kw))
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(kw)),
       );
     }
     return list;
-  }, [groups, search, scopeFilter]);
+  }, [groups, search, scopeFilter, tab]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const hasFilters = !!(search || scopeFilter);
-  const clearFilters = () => { setSearch(""); setScopeFilter(""); };
+  const clearFilters = () => {
+    setSearch("");
+    setScopeFilter("");
+  };
 
   // Direct navigation to /suppliers/:groupId/manage
   if (groupId && directGroup) {
@@ -554,12 +829,33 @@ export const SupplierManagementPage = () => {
         title="Supplier Group Management"
         description="Browse supplier groups, inspect details, edit information, and open the unit & site assignment workspace."
         actions={
-          <button type="button" onClick={() => navigate("/suppliers/onboarding")}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20">
+          <button
+            type="button"
+            onClick={() => navigate("/suppliers/onboarding")}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+          >
             <Plus className="h-4 w-4" /> New supplier master
           </button>
         }
       />
+
+      {/* ── Active / Deactivated tabs ── */}
+      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
+        {(["active", "inactive"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+              tab === t
+                ? "bg-[#0f2744] text-white shadow-sm"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            {t === "active" ? "Active" : "Deactivated"}
+          </button>
+        ))}
+      </div>
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -573,8 +869,11 @@ export const SupplierManagementPage = () => {
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
           />
           {search && (
-            <button type="button" onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
               <X className="h-4 w-4" />
             </button>
           )}
@@ -587,13 +886,18 @@ export const SupplierManagementPage = () => {
           className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
         >
           {SCOPE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </select>
 
         {hasFilters && (
-          <button type="button" onClick={clearFilters}
-            className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 shadow-sm hover:bg-slate-50">
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 shadow-sm hover:bg-slate-50"
+          >
             <X className="h-3.5 w-3.5" /> Clear
           </button>
         )}
@@ -604,15 +908,23 @@ export const SupplierManagementPage = () => {
           {hasFilters ? " matching" : ""}
         </p>
 
-        {loading && <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />}
+        {loading && (
+          <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />
+        )}
       </div>
 
       {/* ── Error ── */}
       {error && (
-        <InlineAlert title="Failed to load groups" message={error} tone="danger"
+        <InlineAlert
+          title="Failed to load groups"
+          message={error}
+          tone="danger"
           action={
-            <button type="button" onClick={() => setReloadTick((v) => v + 1)}
-              className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50">
+            <button
+              type="button"
+              onClick={() => setReloadTick((v) => v + 1)}
+              className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+            >
               Retry
             </button>
           }
@@ -622,18 +934,27 @@ export const SupplierManagementPage = () => {
       {/* ── Grid ── */}
       {loading && groups.length === 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center">
           <Building2 className="mx-auto mb-3 h-8 w-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-500">No groups found</p>
+          <p className="text-sm font-semibold text-slate-500">
+            No groups found
+          </p>
           <p className="mt-1 text-xs text-slate-400">
-            {hasFilters ? "Try adjusting your filters." : "No supplier groups exist yet."}
+            {hasFilters
+              ? "Try adjusting your filters."
+              : "No supplier groups exist yet."}
           </p>
           {hasFilters && (
-            <button type="button" onClick={clearFilters}
-              className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
               Clear filters
             </button>
           )}
@@ -642,7 +963,11 @@ export const SupplierManagementPage = () => {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {paginated.map((g) => (
-              <GroupCard key={g.id_group} group={g} onClick={() => setDrawerGroup(g)} />
+              <GroupCard
+                key={g.id_group}
+                group={g}
+                onClick={() => setDrawerGroup(g)}
+              />
             ))}
           </div>
 
@@ -650,7 +975,8 @@ export const SupplierManagementPage = () => {
           {totalPages > 1 && (
             <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
               <span className="text-xs text-slate-500">
-                Page {page + 1} of {totalPages} — {filtered.length} group{filtered.length !== 1 ? "s" : ""}
+                Page {page + 1} of {totalPages} — {filtered.length} group
+                {filtered.length !== 1 ? "s" : ""}
               </span>
               <div className="flex items-center gap-1">
                 <button
@@ -662,24 +988,32 @@ export const SupplierManagementPage = () => {
                 </button>
                 {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
                   const pg =
-                    totalPages <= 7 ? i
-                    : page < 4 ? i
-                    : page > totalPages - 5 ? totalPages - 7 + i
-                    : page - 3 + i;
+                    totalPages <= 7
+                      ? i
+                      : page < 4
+                        ? i
+                        : page > totalPages - 5
+                          ? totalPages - 7 + i
+                          : page - 3 + i;
                   return (
-                    <button key={pg} onClick={() => setPage(pg)}
+                    <button
+                      key={pg}
+                      onClick={() => setPage(pg)}
                       className={[
                         "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition",
                         pg === page
                           ? "bg-blue-600 text-white shadow-sm"
                           : "border border-slate-200 text-slate-600 hover:bg-slate-50",
-                      ].join(" ")}>
+                      ].join(" ")}
+                    >
                       {pg + 1}
                     </button>
                   );
                 })}
                 <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  onClick={() =>
+                    setPage((p) => Math.min(totalPages - 1, p + 1))
+                  }
                   disabled={page >= totalPages - 1}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-40 hover:bg-slate-50"
                 >
@@ -696,9 +1030,13 @@ export const SupplierManagementPage = () => {
         <GroupDrawer
           group={drawerGroup}
           onClose={() => setDrawerGroup(null)}
-          onOpenWorkspace={() => navigate(`/suppliers/${drawerGroup.id_group}/manage`)}
+          onOpenWorkspace={() =>
+            navigate(`/suppliers/${drawerGroup.id_group}/manage`)
+          }
           onGroupUpdated={(updated) => {
-            setGroups((prev) => prev.map((g) => g.id_group === updated.id_group ? updated : g));
+            setGroups((prev) =>
+              prev.map((g) => (g.id_group === updated.id_group ? updated : g)),
+            );
             setDrawerGroup(updated);
           }}
         />

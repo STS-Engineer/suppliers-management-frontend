@@ -1036,6 +1036,12 @@ const panelTabs: WorkspaceTab[] = [
     icon: <ClipboardCheck className="h-3.5 w-3.5" />,
     panelDecision: "panel_add_exec_committee",
   },
+  {
+    key: "deactivated",
+    label: "Deactivated",
+    icon: <Power className="h-3.5 w-3.5" />,
+    panelDecision: undefined,
+  },
 ];
 
 const gradeOptions = [
@@ -1112,6 +1118,12 @@ export default function ActiveSitesPage() {
           alias: filterAlias || undefined,
           group_name: filterGroupName || undefined,
           unit_name: filterUnitName || undefined,
+          // Load every relation regardless of active status — the tabs below
+          // filter client-side, and deactivated relations (including ones
+          // cascade-deactivated from a group/unit) must stay visible here so
+          // they can be reactivated. Without this the backend excludes them
+          // by default and a deactivated relation would vanish entirely.
+          include_inactive: true,
         });
 
         if (cancelled) return;
@@ -1197,6 +1209,8 @@ export default function ActiveSitesPage() {
       rows = rows.filter(
         (row) => row.relation.panel_decision === "panel_add_exec_committee",
       );
+    } else if (activeTab === "deactivated") {
+      rows = rows.filter((row) => !(row.relation.is_active ?? true));
     }
 
     if (search) {
@@ -1233,15 +1247,18 @@ export default function ActiveSitesPage() {
   const counts = useMemo(() => {
     let onPanel = 0;
     let needsCommittee = 0;
+    let deactivated = 0;
     relationRows.forEach((row) => {
       const d = row.relation.panel_decision;
       if (d && PANEL_ACTIVE.includes(d)) onPanel += 1;
       if (d === "panel_add_exec_committee") needsCommittee += 1;
+      if (!(row.relation.is_active ?? true)) deactivated += 1;
     });
     return {
       all: relationRows.length,
       panel_add: onPanel,
       panel_add_exec_committee: needsCommittee,
+      deactivated,
     };
   }, [relationRows]);
 

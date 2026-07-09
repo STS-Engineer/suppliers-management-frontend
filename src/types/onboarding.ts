@@ -384,6 +384,8 @@ export interface SupplierGroupSummary {
   directed?: boolean;
   multi_site?: boolean;
   validation_status?: string;
+  is_active?: boolean;
+  inactivated_at?: string | null;
   created_at?: string;
   updated_at?: string;
   units?: SupplierUnitResponse[];
@@ -417,6 +419,7 @@ export interface SupplierUnitResponse {
   monopolistique?: boolean;
   directed?: boolean;
   is_active?: boolean;
+  inactivated_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }

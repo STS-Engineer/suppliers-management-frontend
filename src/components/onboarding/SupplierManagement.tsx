@@ -241,6 +241,14 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   const setError = (error: string | null) =>
     setShared((prev) => ({ ...prev, error }));
 
+  const [unitStatusFilter, setUnitStatusFilter] = useState<
+    "active" | "inactive"
+  >("active");
+  const [confirmUnitStatus, setConfirmUnitStatus] =
+    useState<SupplierUnitResponse | null>(null);
+  const [unitStatusSaving, setUnitStatusSaving] = useState(false);
+  const [unitStatusError, setUnitStatusError] = useState<string | null>(null);
+
   const resetDevelopmentPlanRequestFields = useCallback(
     (relation?: SupplierSiteRelation | null) => {
       setDevelopmentPlanRequestError(null);
@@ -255,7 +263,10 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   const loadUnits = useCallback(async () => {
     setShared((prev) => ({ ...prev, isLoadingUnits: true, error: null }));
     try {
-      const response = await supplierAPI.listUnitsForGroup(groupId);
+      const response = await supplierAPI.listUnitsForGroup(
+        groupId,
+        unitStatusFilter,
+      );
       setShared((prev) => ({
         ...prev,
         units: response.data?.units || [],
@@ -291,7 +302,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
         error: error instanceof Error ? error.message : "Failed to load units",
       }));
     }
-  }, [groupId]);
+  }, [groupId, unitStatusFilter]);
 
   const loadGroupContext = useCallback(async () => {
     try {
@@ -354,6 +365,37 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
     },
     [loadRelationsForUnit],
   );
+
+  const handleToggleUnitStatus = async () => {
+    if (!confirmUnitStatus) return;
+    const nextActive = !(confirmUnitStatus.is_active ?? true);
+    setUnitStatusSaving(true);
+    setUnitStatusError(null);
+    try {
+      await supplierAPI.setUnitActiveStatus(
+        confirmUnitStatus.id_supplier_unit,
+        nextActive,
+      );
+      if (
+        shared.selectedUnit?.id_supplier_unit ===
+        confirmUnitStatus.id_supplier_unit
+      ) {
+        setShared((prev) => ({
+          ...prev,
+          selectedUnit: null,
+          siteRelations: [],
+        }));
+      }
+      setConfirmUnitStatus(null);
+      await loadUnits();
+    } catch (error) {
+      setUnitStatusError(
+        error instanceof Error ? error.message : "Failed to update status",
+      );
+    } finally {
+      setUnitStatusSaving(false);
+    }
+  };
 
   const handleRelationUnlink = async (relation: SupplierSiteRelation) => {
     if (!window.confirm("Remove this site relation?")) {
@@ -930,6 +972,24 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
               </div>
             </div>
 
+            {/* Active / Deactivated tabs */}
+            <div className="flex items-center gap-1 border-b border-slate-100 px-4 py-2.5">
+              {(["active", "inactive"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setUnitStatusFilter(t)}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                    unitStatusFilter === t
+                      ? "bg-[#062B49] text-white"
+                      : "text-slate-500 hover:bg-slate-100"
+                  }`}
+                >
+                  {t === "active" ? "Active" : "Deactivated"}
+                </button>
+              ))}
+            </div>
+
             {/* Search */}
             <div className="border-b border-slate-100 px-4 py-3">
               <UnitSearchBox units={shared.units} onSelect={selectUnit}
@@ -955,7 +1015,8 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                   <UnitCard key={unit.id_supplier_unit} unit={unit}
                     summary={shared.evaluationSummaryByUnit[unit.id_supplier_unit]}
                     isSelected={shared.selectedUnit?.id_supplier_unit === unit.id_supplier_unit}
-                    onClick={() => selectUnit(unit)} />
+                    onClick={() => selectUnit(unit)}
+                    onToggleStatus={() => setConfirmUnitStatus(unit)} />
                 ))
               )}
             </div>
@@ -1218,6 +1279,85 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
           onSubmit={saveDevelopmentPlan}
           onSendRequest={sendDevelopmentPlanRequest}
         />
+      )}
+
+      {/* Activate / Deactivate unit confirmation */}
+      {confirmUnitStatus && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md"
+          onClick={() => !unitStatusSaving && setConfirmUnitStatus(null)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl bg-white shadow-[0_20px_80px_rgba(2,6,23,0.4)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className={`flex items-center gap-3 rounded-t-2xl px-6 py-5 ${
+                confirmUnitStatus.is_active ?? true ? "bg-rose-600" : "bg-emerald-600"
+              }`}
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white/15">
+                <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v9m6.364-6.364a9 9 0 11-12.728 0" />
+                </svg>
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  {confirmUnitStatus.is_active ?? true ? "Deactivate unit" : "Activate unit"}
+                </h3>
+                <p className="mt-0.5 text-xs text-white/70">{confirmUnitStatus.supplier_name}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 px-6 py-5">
+              <p className="text-sm text-slate-700">
+                {(confirmUnitStatus.is_active ?? true) ? (
+                  <>
+                    This will deactivate <strong>{confirmUnitStatus.supplier_name}</strong> and all of its{" "}
+                    <strong>site relations with plants</strong>. It will no longer appear in supplier pickers
+                    across the app.
+                  </>
+                ) : (
+                  <>
+                    This will reactivate <strong>{confirmUnitStatus.supplier_name}</strong>. Its site relations
+                    will <strong>not</strong> be reactivated — each one must be reactivated individually.
+                  </>
+                )}
+              </p>
+              {unitStatusError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
+                  {unitStatusError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setConfirmUnitStatus(null)}
+                disabled={unitStatusSaving}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={unitStatusSaving}
+                onClick={handleToggleUnitStatus}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50 ${
+                  confirmUnitStatus.is_active ?? true
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {unitStatusSaving && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                )}
+                {(confirmUnitStatus.is_active ?? true) ? "Yes, deactivate" : "Yes, activate"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       </div>{/* end padded wrapper */}
@@ -1931,51 +2071,78 @@ const UnitCard: React.FC<{
   summary?: UnitEvaluationSummary;
   isSelected: boolean;
   onClick: () => void;
-}> = ({ unit, summary, isSelected, onClick }) => (
-  <button onClick={onClick}
-    className={`w-full border-b border-slate-100 px-5 py-4 text-left transition ${
-      isSelected
-        ? "border-l-[3px] border-l-[#062B49] bg-[#062B49]/5"
-        : "border-l-[3px] border-l-transparent bg-white hover:bg-slate-50"
-    }`}>
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        {/* Primary: unit name */}
-        <div className={`truncate text-sm font-bold ${isSelected ? "text-[#062B49]" : "text-slate-900"}`}>
-          {unit.supplier_name}
-        </div>
-        {/* Location */}
-        {(unit.city || unit.country) && (
-          <div className="mt-0.5 text-[11px] text-slate-500">
-            {[unit.city, unit.country].filter(Boolean).join(", ")}
+  onToggleStatus: () => void;
+}> = ({ unit, summary, isSelected, onClick, onToggleStatus }) => {
+  const isActive = unit.is_active ?? true;
+  return (
+    <div
+      className={`group relative w-full border-b border-slate-100 transition ${
+        isSelected
+          ? "border-l-[3px] border-l-[#062B49] bg-[#062B49]/5"
+          : "border-l-[3px] border-l-transparent bg-white hover:bg-slate-50"
+      }`}
+    >
+      <button onClick={onClick} className="w-full px-5 py-4 pr-12 text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            {/* Primary: unit name */}
+            <div className={`truncate text-sm font-bold ${isSelected ? "text-[#062B49]" : "text-slate-900"}`}>
+              {unit.supplier_name}
+            </div>
+            {/* Location */}
+            {(unit.city || unit.country) && (
+              <div className="mt-0.5 text-[11px] text-slate-500">
+                {[unit.city, unit.country].filter(Boolean).join(", ")}
+              </div>
+            )}
+            {/* Grade chips */}
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {!isActive && (
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
+                  Deactivated
+                </span>
+              )}
+              {summary?.final_grade ? (
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                  Grade {summary.final_grade}
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                  Pending evaluation
+                </span>
+              )}
+              {(summary?.site_relations_count ?? 0) > 0 && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                  {summary!.site_relations_count} plant{summary!.site_relations_count !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
           </div>
-        )}
-        {/* Grade chips */}
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {summary?.final_grade ? (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-              Grade {summary.final_grade}
-            </span>
-          ) : (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
-              Pending evaluation
-            </span>
-          )}
-          {(summary?.site_relations_count ?? 0) > 0 && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-              {summary!.site_relations_count} plant{summary!.site_relations_count !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
-      </div>
 
-      {isSelected && (
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#062B49] text-white text-[10px] font-bold">
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
+          {isSelected && (
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#062B49] text-white text-[10px] font-bold">
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+          )}
         </div>
-      )}
+      </button>
+
+      <button
+        type="button"
+        title={isActive ? "Deactivate unit" : "Activate unit"}
+        onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
+        className={`absolute right-3 top-4 flex h-7 w-7 items-center justify-center rounded-full transition ${
+          isActive
+            ? "text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+            : "text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+        }`}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v9m6.364-6.364a9 9 0 11-12.728 0" />
+        </svg>
+      </button>
     </div>
-  </button>
-);
+  );
+};

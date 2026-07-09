@@ -928,7 +928,8 @@ class SupplierOnboardingAPI {
 
   async listSupplierGroups(
     skip: number = 0,
-    limit: number = 100
+    limit: number = 100,
+    status: "active" | "inactive" | "all" = "active",
   ): Promise<{
     status: string;
     data: {
@@ -940,12 +941,32 @@ class SupplierOnboardingAPI {
     message?: string;
   }> {
     return this.request(
-      `${this.baseUrl}/suppliers/groups?skip=${skip}&limit=${limit}`,
+      `${this.baseUrl}/suppliers/groups?skip=${skip}&limit=${limit}&status=${status}`,
       {
         method: "GET",
         headers: this.getAuthHeaders(),
       },
       "Failed to load supplier groups.",
+    );
+  }
+
+  async setGroupActiveStatus(groupId: number, isActive: boolean): Promise<{
+    status: string;
+    data: {
+      group: SupplierGroupSummary;
+      units_affected: number;
+      relations_affected: number;
+    };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/groups/${groupId}/status`,
+      {
+        method: "PATCH",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: isActive }),
+      },
+      "Failed to update the supplier group's status.",
     );
   }
 
@@ -1117,14 +1138,33 @@ class SupplierOnboardingAPI {
     );
   }
 
-  async listUnitsForGroup(groupId: number) {
+  async listUnitsForGroup(
+    groupId: number,
+    status: "active" | "inactive" | "all" = "active",
+  ) {
     return this.request(
-      `${this.baseUrl}/suppliers/groups/${groupId}/units`,
+      `${this.baseUrl}/suppliers/groups/${groupId}/units?status=${status}`,
       {
         method: "GET",
         headers: this.getAuthHeaders(),
       },
       "Failed to load units for this supplier group.",
+    );
+  }
+
+  async setUnitActiveStatus(unitId: number, isActive: boolean): Promise<{
+    status: string;
+    data: { unit: Record<string, unknown>; relations_affected: number };
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}/status`,
+      {
+        method: "PATCH",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: isActive }),
+      },
+      "Failed to update the supplier unit's status.",
     );
   }
 
