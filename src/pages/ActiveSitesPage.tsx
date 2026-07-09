@@ -28,6 +28,10 @@ import {
 } from "../components/UI";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
 import type {
   AvocarbonSite,
   RelationEvaluationWorkspace,
@@ -1060,12 +1064,52 @@ const gradeOptions = [
   "D",
 ];
 
+const SB1_FILTERS_PAGE_KEY = "sb1-supplier-panel";
+
+interface Sb1Filters {
+  search: string;
+  filterGrade: string;
+  filterStatus: string;
+  filterScope: string;
+  filterPlant: string;
+  filterFamily: string;
+  filterSubFamily: string;
+  filterProductLine: string;
+  filterAlias: string;
+  filterGroupName: string;
+  filterUnitName: string;
+  activeTab: string;
+}
+
+const SB1_FILTERS_DEFAULT: Sb1Filters = {
+  search: "",
+  filterGrade: "",
+  filterStatus: "",
+  filterScope: "",
+  filterPlant: "",
+  filterFamily: "",
+  filterSubFamily: "",
+  filterProductLine: "",
+  filterAlias: "",
+  filterGroupName: "",
+  filterUnitName: "",
+  activeTab: "all",
+};
+
 export default function ActiveSitesPage() {
   const { user } = useAuth();
   const userEmail = user?.email ?? "";
   const isVpConversion = user?.access_profile === "vp_conversion";
   const isPurchasingDirector = user?.access_profile === "purchasing_director";
   const isAdmin = isVpConversion || isPurchasingDirector;
+
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialFilters = loadPersistedFilters(
+    SB1_FILTERS_PAGE_KEY,
+    userEmail,
+    SB1_FILTERS_DEFAULT,
+  );
 
   const [siteBundles, setSiteBundles] = useState<SitePanelBundle[]>([]);
   const [modalRow, setModalRow] = useState<RelationRow | null>(null);
@@ -1077,19 +1121,52 @@ export default function ActiveSitesPage() {
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [filterGrade, setFilterGrade] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterScope, setFilterScope] = useState("");
-  const [filterPlant, setFilterPlant] = useState("");
-  const [filterFamily, setFilterFamily] = useState("");
-  const [filterSubFamily, setFilterSubFamily] = useState("");
-  const [filterProductLine, setFilterProductLine] = useState("");
-  const [filterAlias, setFilterAlias] = useState("");
-  const [filterGroupName, setFilterGroupName] = useState("");
-  const [filterUnitName, setFilterUnitName] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [search, setSearch] = useState(initialFilters.search);
+  const [filterGrade, setFilterGrade] = useState(initialFilters.filterGrade);
+  const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus);
+  const [filterScope, setFilterScope] = useState(initialFilters.filterScope);
+  const [filterPlant, setFilterPlant] = useState(initialFilters.filterPlant);
+  const [filterFamily, setFilterFamily] = useState(initialFilters.filterFamily);
+  const [filterSubFamily, setFilterSubFamily] = useState(initialFilters.filterSubFamily);
+  const [filterProductLine, setFilterProductLine] = useState(initialFilters.filterProductLine);
+  const [filterAlias, setFilterAlias] = useState(initialFilters.filterAlias);
+  const [filterGroupName, setFilterGroupName] = useState(initialFilters.filterGroupName);
+  const [filterUnitName, setFilterUnitName] = useState(initialFilters.filterUnitName);
+  const [activeTab, setActiveTab] = useState(initialFilters.activeTab);
   const [page, setPage] = useState(1);
+
+  // Persist on every change so leaving and returning to this page (or a full
+  // reload) restores the same filters for this user.
+  useEffect(() => {
+    savePersistedFilters(SB1_FILTERS_PAGE_KEY, userEmail, {
+      search,
+      filterGrade,
+      filterStatus,
+      filterScope,
+      filterPlant,
+      filterFamily,
+      filterSubFamily,
+      filterProductLine,
+      filterAlias,
+      filterGroupName,
+      filterUnitName,
+      activeTab,
+    });
+  }, [
+    userEmail,
+    search,
+    filterGrade,
+    filterStatus,
+    filterScope,
+    filterPlant,
+    filterFamily,
+    filterSubFamily,
+    filterProductLine,
+    filterAlias,
+    filterGroupName,
+    filterUnitName,
+    activeTab,
+  ]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);

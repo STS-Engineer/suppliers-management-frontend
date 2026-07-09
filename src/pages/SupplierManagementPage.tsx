@@ -28,7 +28,26 @@ import {
 import { SupplierManagement } from "../components/onboarding/SupplierManagement";
 import { InlineAlert, PageIntro } from "../components/UI";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
+import { useAuth } from "../context/AuthContext";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
 import type { SupplierGroupSummary } from "../types/onboarding";
+
+const SB9_FILTERS_PAGE_KEY = "sb9-supplier-groups";
+
+interface Sb9Filters {
+  search: string;
+  scopeFilter: string;
+  tab: "active" | "inactive";
+}
+
+const SB9_FILTERS_DEFAULT: Sb9Filters = {
+  search: "",
+  scopeFilter: "",
+  tab: "active",
+};
 
 // ── design helpers ────────────────────────────────────────────────────────────
 
@@ -727,13 +746,23 @@ const SCOPE_OPTIONS = [
 export const SupplierManagementPage = () => {
   const { groupId } = useParams<{ groupId?: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const userEmail = (user as { email?: string })?.email ?? "";
+
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialFilters = loadPersistedFilters(
+    SB9_FILTERS_PAGE_KEY,
+    userEmail,
+    SB9_FILTERS_DEFAULT,
+  );
 
   const [groups, setGroups] = useState<SupplierGroupSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [scopeFilter, setScopeFilter] = useState("");
-  const [tab, setTab] = useState<"active" | "inactive">("active");
+  const [search, setSearch] = useState(initialFilters.search);
+  const [scopeFilter, setScopeFilter] = useState(initialFilters.scopeFilter);
+  const [tab, setTab] = useState<"active" | "inactive">(initialFilters.tab);
   const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(
     null,
   );
@@ -781,6 +810,16 @@ export const SupplierManagementPage = () => {
   useEffect(() => {
     setPage(0);
   }, [search, scopeFilter, tab]);
+
+  // Persist on every change so leaving and returning to this page (or a full
+  // reload) restores the same filters for this user.
+  useEffect(() => {
+    savePersistedFilters(SB9_FILTERS_PAGE_KEY, userEmail, {
+      search,
+      scopeFilter,
+      tab,
+    });
+  }, [userEmail, search, scopeFilter, tab]);
 
   const filtered = useMemo(() => {
     let list = groups.filter((g) =>

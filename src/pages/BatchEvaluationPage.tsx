@@ -8,6 +8,22 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { PageIntro } from "../components/UI";
 import { useAuth } from "../context/AuthContext";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+
+const BATCH_EVAL_FILTERS_PAGE_KEY = "batch-evaluation-dashboard";
+
+interface BatchEvalFilters {
+  activeFilter: string;
+  search: string;
+}
+
+const BATCH_EVAL_FILTERS_DEFAULT: BatchEvalFilters = {
+  activeFilter: "ALL",
+  search: "",
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -154,16 +170,32 @@ export default function BatchEvaluationPage() {
 // ---------------------------------------------------------------------------
 
 function EvaluationDashboard() {
+  const { user } = useAuth();
+  const userEmail = (user as { email?: string })?.email ?? "";
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets it.
+  const initialFilters = loadPersistedFilters(
+    BATCH_EVAL_FILTERS_PAGE_KEY,
+    userEmail,
+    BATCH_EVAL_FILTERS_DEFAULT,
+  );
   const [items, setItems] = useState<DueItem[]>([]);
   const [summary, setSummary] = useState<DueSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<string>("ALL");
-  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<string>(initialFilters.activeFilter);
+  const [search, setSearch] = useState(initialFilters.search);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [triggering, setTriggering] = useState(false);
   const [triggerMsg, setTriggerMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    savePersistedFilters(BATCH_EVAL_FILTERS_PAGE_KEY, userEmail, {
+      activeFilter,
+      search,
+    });
+  }, [userEmail, activeFilter, search]);
 
   const load = useCallback(async () => {
     setLoading(true);

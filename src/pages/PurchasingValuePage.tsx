@@ -34,6 +34,10 @@ import supplierAPI, {
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
 import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+import {
   ALL_ROLES,
   COMMITTEE_LEVELS,
   mandatoryRolesForPhase,
@@ -324,6 +328,46 @@ interface Opp {
 // which filters by "has a cash_impact" instead of a Cash opportunity_type.
 const TYPES = ["Negotiation", "Sourcing", "Technical Productivity"];
 const FILTER_TYPES = [...TYPES, "Cash"];
+
+// ---------------------------------------------------------------------------
+// Filter persistence — remembered per logged-in user across navigation/reload
+// (kanban filters used to reset every time you left the page and came back).
+// See utils/persistedFilters.ts — the same helper is reused by other
+// filter-heavy pages (KPI dashboard, SB1 supplier panel, etc).
+// ---------------------------------------------------------------------------
+const PV_FILTERS_PAGE_KEY = "purchasing-value";
+
+interface PvFilters {
+  filterType: string;
+  filterStatus: string;
+  filterBudget: string;
+  filterPriority: string;
+  filterPlant: string;
+  filterPM: string;
+  filterPurchasingOwner: string;
+  filterConversionOwner: string;
+  filterPilot: string;
+  filterBudgetYear: string;
+  filterEscalated: boolean;
+  filterValidation: string;
+  showClosed: boolean;
+}
+
+const PV_FILTERS_DEFAULT: PvFilters = {
+  filterType: "All",
+  filterStatus: "All",
+  filterBudget: "All",
+  filterPriority: "All",
+  filterPlant: "All",
+  filterPM: "All",
+  filterPurchasingOwner: "All",
+  filterConversionOwner: "All",
+  filterPilot: "All",
+  filterBudgetYear: "All",
+  filterEscalated: false,
+  filterValidation: "All",
+  showClosed: false,
+};
 // "Assigned" is a STATUS on a Phase 0 card — not a separate phase column
 const PHASES = [
   "Phase 0",
@@ -9922,20 +9966,73 @@ export default function PurchasingValuePage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Opp | null>(null);
-  const [filterType, setFilterType] = useState("All");
-  const [filterStatus, setFilterStatus] = useState("All");
-  const [filterBudget, setFilterBudget] = useState("All");
-  const [filterPriority, setFilterPriority] = useState("All");
-  const [filterPlant, setFilterPlant] = useState("All");
-  const [filterPM, setFilterPM] = useState("All");
-  const [filterPurchasingOwner, setFilterPurchasingOwner] = useState("All");
-  const [filterConversionOwner, setFilterConversionOwner] = useState("All");
-  const [filterPilot, setFilterPilot] = useState("All");
-  const [filterBudgetYear, setFilterBudgetYear] = useState("All");
-  const [filterEscalated, setFilterEscalated] = useState(false);
-  const [filterValidation, setFilterValidation] = useState("All");
-  const [showClosed, setShowClosed] = useState(false);
+  // Lazy-init reads localStorage once on mount — restores whatever this user
+  // last had filtered, instead of resetting to "All" every time they
+  // navigate away from this page and come back.
+  const initialFilters = loadPersistedFilters(
+    PV_FILTERS_PAGE_KEY,
+    userEmail,
+    PV_FILTERS_DEFAULT,
+  );
+  const [filterType, setFilterType] = useState(initialFilters.filterType);
+  const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus);
+  const [filterBudget, setFilterBudget] = useState(initialFilters.filterBudget);
+  const [filterPriority, setFilterPriority] = useState(initialFilters.filterPriority);
+  const [filterPlant, setFilterPlant] = useState(initialFilters.filterPlant);
+  const [filterPM, setFilterPM] = useState(initialFilters.filterPM);
+  const [filterPurchasingOwner, setFilterPurchasingOwner] = useState(
+    initialFilters.filterPurchasingOwner,
+  );
+  const [filterConversionOwner, setFilterConversionOwner] = useState(
+    initialFilters.filterConversionOwner,
+  );
+  const [filterPilot, setFilterPilot] = useState(initialFilters.filterPilot);
+  const [filterBudgetYear, setFilterBudgetYear] = useState(
+    initialFilters.filterBudgetYear,
+  );
+  const [filterEscalated, setFilterEscalated] = useState(
+    initialFilters.filterEscalated,
+  );
+  const [filterValidation, setFilterValidation] = useState(
+    initialFilters.filterValidation,
+  );
+  const [showClosed, setShowClosed] = useState(initialFilters.showClosed);
   const [compact, setCompact] = useState(false);
+
+  // Persist on every change so leaving and returning to this page (or a full
+  // reload) restores the same filters for this user.
+  useEffect(() => {
+    savePersistedFilters(PV_FILTERS_PAGE_KEY, userEmail, {
+      filterType,
+      filterStatus,
+      filterBudget,
+      filterPriority,
+      filterPlant,
+      filterPM,
+      filterPurchasingOwner,
+      filterConversionOwner,
+      filterPilot,
+      filterBudgetYear,
+      filterEscalated,
+      filterValidation,
+      showClosed,
+    });
+  }, [
+    userEmail,
+    filterType,
+    filterStatus,
+    filterBudget,
+    filterPriority,
+    filterPlant,
+    filterPM,
+    filterPurchasingOwner,
+    filterConversionOwner,
+    filterPilot,
+    filterBudgetYear,
+    filterEscalated,
+    filterValidation,
+    showClosed,
+  ]);
 
   const load = useCallback(async () => {
     setLoading(true);

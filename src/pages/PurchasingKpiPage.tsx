@@ -6,6 +6,13 @@ import {
   Target, TrendingUp, Users, XCircle, Zap,
 } from "lucide-react";
 import supplierAPI from "../services/supplierOnboardingAPI";
+import { useAuth } from "../context/AuthContext";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+
+const KPI_FILTERS_PAGE_KEY = "purchasing-kpis";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,6 +99,7 @@ interface AvailableFilters {
   buyers: string[];
 }
 interface KpiFilters { plantIds: number[]; categories: string[]; buyers: string[]; }
+interface PersistedKpiFilters extends KpiFilters { selectedYear: number | null; }
 interface KpiData {
   year: number; computed_at: string; reporting_currency?: string;
   available_filters?: AvailableFilters;
@@ -872,14 +880,38 @@ function SectionLabel({ label, dim }: { label: string; dim?: string }) {
 // Main Dashboard Page
 // ---------------------------------------------------------------------------
 export default function PurchasingKpiPage() {
+  const { user } = useAuth();
+  const userEmail = (user as { email?: string })?.email ?? "";
   const today = new Date();
   const activeBudgetYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialFilters = loadPersistedFilters<PersistedKpiFilters>(
+    KPI_FILTERS_PAGE_KEY,
+    userEmail,
+    { selectedYear: null, plantIds: [], categories: [], buyers: [] },
+  );
   const [data, setData] = useState<KpiData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState(activeBudgetYear);
-  const [filters, setFilters] = useState<KpiFilters>({ plantIds: [], categories: [], buyers: [] });
+  const [selectedYear, setSelectedYear] = useState(
+    initialFilters.selectedYear ?? activeBudgetYear,
+  );
+  const [filters, setFilters] = useState<KpiFilters>({
+    plantIds: initialFilters.plantIds,
+    categories: initialFilters.categories,
+    buyers: initialFilters.buyers,
+  });
   const [tab, setTab] = useState<"monthly" | "plant" | "supplier" | "type" | "buyer" | "alerts">("monthly");
+
+  useEffect(() => {
+    savePersistedFilters<PersistedKpiFilters>(KPI_FILTERS_PAGE_KEY, userEmail, {
+      selectedYear,
+      plantIds: filters.plantIds,
+      categories: filters.categories,
+      buyers: filters.buyers,
+    });
+  }, [userEmail, selectedYear, filters]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);

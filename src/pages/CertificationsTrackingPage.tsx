@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
@@ -654,6 +658,34 @@ interface AppliedFilters {
   q?: string;
 }
 
+const CERTIFICATIONS_FILTERS_PAGE_KEY = "certifications-tracker";
+
+interface CertFilters {
+  standardType: string;
+  statusFilter: StatusFilter;
+  nameSearch: string;
+}
+
+const CERT_FILTERS_DEFAULT: CertFilters = {
+  standardType: "",
+  statusFilter: "",
+  nameSearch: "",
+};
+
+function buildFilters(
+  std: string,
+  status: StatusFilter,
+  search: string,
+): AppliedFilters {
+  const f: AppliedFilters = {};
+  if (std) f.standard_type = std;
+  if (status === "expired") f.expired_only = true;
+  if (status === "expiring") f.expiring_days = 90;
+  if (status === "valid") f.valid_only = true;
+  if (search.trim()) f.q = search.trim();
+  return f;
+}
+
 interface KpiCounts {
   total: number;
   unfiltered_total: number;
@@ -682,11 +714,35 @@ export default function CertificationsTrackingPage() {
   } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [standardType, setStandardType] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
-  const [nameSearch, setNameSearch] = useState("");
-  const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>({});
+  const userEmail = (user as { email?: string })?.email ?? "";
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialCertFilters = loadPersistedFilters(
+    CERTIFICATIONS_FILTERS_PAGE_KEY,
+    userEmail,
+    CERT_FILTERS_DEFAULT,
+  );
+  const [standardType, setStandardType] = useState(initialCertFilters.standardType);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    initialCertFilters.statusFilter,
+  );
+  const [nameSearch, setNameSearch] = useState(initialCertFilters.nameSearch);
+  const [appliedFilters, setAppliedFilters] = useState<AppliedFilters>(() =>
+    buildFilters(
+      initialCertFilters.standardType,
+      initialCertFilters.statusFilter,
+      initialCertFilters.nameSearch,
+    ),
+  );
   const [kpiCounts, setKpiCounts] = useState<KpiCounts | null>(null);
+
+  useEffect(() => {
+    savePersistedFilters(CERTIFICATIONS_FILTERS_PAGE_KEY, userEmail, {
+      standardType,
+      statusFilter,
+      nameSearch,
+    });
+  }, [userEmail, standardType, statusFilter, nameSearch]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const groups = groupByUnit(certs);
@@ -728,20 +784,6 @@ export default function CertificationsTrackingPage() {
     if (appliedFilters.q) baseFilters.q = appliedFilters.q;
     fetchSummary(baseFilters);
   }, [page, appliedFilters]);
-
-  function buildFilters(
-    std: string,
-    status: StatusFilter,
-    search: string,
-  ): AppliedFilters {
-    const f: AppliedFilters = {};
-    if (std) f.standard_type = std;
-    if (status === "expired") f.expired_only = true;
-    if (status === "expiring") f.expiring_days = 90;
-    if (status === "valid") f.valid_only = true;
-    if (search.trim()) f.q = search.trim();
-    return f;
-  }
 
   function applyFilters() {
     setPage(0);

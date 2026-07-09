@@ -11,6 +11,24 @@ import {
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+
+const RECOVERY_FILTERS_PAGE_KEY = "purchasing-recovery";
+
+interface RecoveryFilters {
+  filterStatus: string;
+  filterPlant: string;
+  filterFollower: string;
+}
+
+const RECOVERY_FILTERS_DEFAULT: RecoveryFilters = {
+  filterStatus: "Active",
+  filterPlant: "All",
+  filterFollower: "All",
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -382,10 +400,24 @@ export default function PurchasingRecoveryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters
-  const [filterStatus, setFilterStatus] = useState<string>("Active");
-  const [filterPlant, setFilterPlant] = useState<string>("All");
-  const [filterFollower, setFilterFollower] = useState<string>("All");
+  // Filters — restores whatever this user last had filtered, otherwise
+  // leaving this page and coming back (or a reload) silently resets them.
+  const initialFilters = loadPersistedFilters(
+    RECOVERY_FILTERS_PAGE_KEY,
+    userEmail,
+    RECOVERY_FILTERS_DEFAULT,
+  );
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilters.filterStatus);
+  const [filterPlant, setFilterPlant] = useState<string>(initialFilters.filterPlant);
+  const [filterFollower, setFilterFollower] = useState<string>(initialFilters.filterFollower);
+
+  useEffect(() => {
+    savePersistedFilters(RECOVERY_FILTERS_PAGE_KEY, userEmail, {
+      filterStatus,
+      filterPlant,
+      filterFollower,
+    });
+  }, [userEmail, filterStatus, filterPlant, filterFollower]);
 
   async function load() {
     setLoading(true);

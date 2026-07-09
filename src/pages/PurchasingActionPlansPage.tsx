@@ -1,6 +1,26 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+
+const ACTION_PLANS_FILTERS_PAGE_KEY = "purchasing-action-plans";
+
+interface ActionPlansFilters {
+  filterStatus: string;
+  filterPerson: string;
+  filterOpp: string;
+  viewMode: "cards" | "table";
+}
+
+const ACTION_PLANS_FILTERS_DEFAULT: ActionPlansFilters = {
+  filterStatus: "",
+  filterPerson: "",
+  filterOpp: "",
+  viewMode: "cards",
+};
+import {
   AlertTriangle,
   CalendarCheck,
   CheckCircle2,
@@ -1192,13 +1212,30 @@ function ActionItemsTable({
 export default function PurchasingActionPlansPage() {
   const { user } = useAuth();
   const isViewer = user?.access_profile === "viewer";
+  const userEmail = (user as { email?: string })?.email ?? "";
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialFilters = loadPersistedFilters(
+    ACTION_PLANS_FILTERS_PAGE_KEY,
+    userEmail,
+    ACTION_PLANS_FILTERS_DEFAULT,
+  );
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>("");
-  const [filterPerson, setFilterPerson] = useState<string>("");
-  const [filterOpp, setFilterOpp] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilters.filterStatus);
+  const [filterPerson, setFilterPerson] = useState<string>(initialFilters.filterPerson);
+  const [filterOpp, setFilterOpp] = useState<string>(initialFilters.filterOpp);
+  const [viewMode, setViewMode] = useState<"cards" | "table">(initialFilters.viewMode);
+
+  useEffect(() => {
+    savePersistedFilters(ACTION_PLANS_FILTERS_PAGE_KEY, userEmail, {
+      filterStatus,
+      filterPerson,
+      filterOpp,
+      viewMode,
+    });
+  }, [userEmail, filterStatus, filterPerson, filterOpp, viewMode]);
 
   // silent=true skips the full-page spinner — used to re-sync after a mutation
   // (status change, upload, reminder, escalation) so audit-trail fields

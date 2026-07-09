@@ -12,6 +12,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
@@ -72,6 +76,9 @@ interface BulkItem {
 type ValidityStatus = "expired" | "expiring" | "valid" | "missing";
 type StatusFilter = "all" | "expired" | "expiring";
 type GroupBy = "supplier" | "criterion";
+
+const CRITERIA_VALIDITY_FILTERS_PAGE_KEY = "criteria-validity";
+const CRITERIA_VALIDITY_RESULTS_PAGE_KEY = "criteria-validity-results";
 
 interface CriterionEntry {
   relId: number;
@@ -361,10 +368,24 @@ function ResultsPanel({
   refreshing: boolean;
   canReset: boolean;
 }) {
-  const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
-  const [search, setSearch] = useState("");
+  const { user } = useAuth();
+  const userEmail = (user as { email?: string })?.email ?? "";
+  const initialResultsFilters = loadPersistedFilters(
+    CRITERIA_VALIDITY_RESULTS_PAGE_KEY,
+    userEmail,
+    { groupBy: "supplier" as GroupBy, search: "" },
+  );
+  const [groupBy, setGroupBy] = useState<GroupBy>(initialResultsFilters.groupBy);
+  const [search, setSearch] = useState(initialResultsFilters.search);
   const [confirmReset, setConfirmReset] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    savePersistedFilters(CRITERIA_VALIDITY_RESULTS_PAGE_KEY, userEmail, {
+      groupBy,
+      search,
+    });
+  }, [userEmail, groupBy, search]);
 
   function toggleGroup(key: string) {
     setCollapsed((prev) => {
@@ -762,6 +783,7 @@ function ResultsPanel({
 
 export default function DocumentsValidityPage() {
   const { user } = useAuth();
+  const userEmail = (user as { email?: string })?.email ?? "";
   const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
   const [relations, setRelations] = useState<SitePanelRelation[]>([]);
   const [sites, setSites] = useState<Record<number, string>>({});
@@ -777,8 +799,21 @@ export default function DocumentsValidityPage() {
   const [resetting, setResetting] = useState(false);
   const [resetLog, setResetLog] = useState<ResetLogEntry[] | null>(null);
 
-  // Lifted up so KPI cards can set it directly
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("expired");
+  // Lifted up so KPI cards can set it directly. Restores whatever this user
+  // last had filtered — otherwise leaving this page and coming back (or a
+  // reload) silently resets it.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    () =>
+      loadPersistedFilters(CRITERIA_VALIDITY_FILTERS_PAGE_KEY, userEmail, {
+        statusFilter: "expired" as StatusFilter,
+      }).statusFilter,
+  );
+
+  useEffect(() => {
+    savePersistedFilters(CRITERIA_VALIDITY_FILTERS_PAGE_KEY, userEmail, {
+      statusFilter,
+    });
+  }, [userEmail, statusFilter]);
 
   // relId → { supplierName, siteName } built once from the panel response
   const relMeta = useMemo<

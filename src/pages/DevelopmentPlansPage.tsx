@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
+import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
@@ -54,6 +58,30 @@ const PLAN_STATUSES = [
 type StatusGroup = "action" | "progress" | "closed";
 type StatusTab = "all" | StatusGroup;
 type ModalKey = "send" | "received" | "review" | "decision" | "revision" | "details";
+
+const DEV_PLANS_FILTERS_PAGE_KEY = "development-plans";
+
+interface DevPlansFilters {
+  search: string;
+  statusTab: StatusTab;
+  filterPlant: string;
+  filterGroup: string;
+  filterOwner: string;
+  filterGrade: string;
+  filterHold: "" | "hold" | "nohold";
+  filterEscalated: "" | "yes" | "no";
+}
+
+const DEV_PLANS_FILTERS_DEFAULT: DevPlansFilters = {
+  search: "",
+  statusTab: "all",
+  filterPlant: "",
+  filterGroup: "",
+  filterOwner: "",
+  filterGrade: "",
+  filterHold: "",
+  filterEscalated: "",
+};
 
 const STATUS_GROUP: Record<string, StatusGroup> = {
   "must be send": "action",
@@ -2467,21 +2495,56 @@ function RemindModal({
 export default function DevelopmentPlansPage() {
   const { user } = useAuth();
   const isViewer = user?.access_profile === "viewer";
+  const userEmail = (user as { email?: string })?.email ?? "";
+  // Restores whatever this user last had filtered — otherwise leaving this
+  // page and coming back (or a reload) silently resets every filter.
+  const initialFilters = loadPersistedFilters(
+    DEV_PLANS_FILTERS_PAGE_KEY,
+    userEmail,
+    DEV_PLANS_FILTERS_DEFAULT,
+  );
   const [items, setItems] = useState<DevelopmentPlanRegisterRow[]>([]);
-  const [search, setSearch] = useState("");
-  const [statusTab, setStatusTab] = useState<StatusTab>("all");
+  const [search, setSearch] = useState(initialFilters.search);
+  const [statusTab, setStatusTab] = useState<StatusTab>(initialFilters.statusTab);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
-  const [filterPlant, setFilterPlant] = useState("");
-  const [filterGroup, setFilterGroup] = useState("");
-  const [filterOwner, setFilterOwner] = useState("");
-  const [filterGrade, setFilterGrade] = useState("");
-  const [filterHold, setFilterHold] = useState<"" | "hold" | "nohold">("");
-  const [filterEscalated, setFilterEscalated] = useState<"" | "yes" | "no">("");
+  const [filterPlant, setFilterPlant] = useState(initialFilters.filterPlant);
+  const [filterGroup, setFilterGroup] = useState(initialFilters.filterGroup);
+  const [filterOwner, setFilterOwner] = useState(initialFilters.filterOwner);
+  const [filterGrade, setFilterGrade] = useState(initialFilters.filterGrade);
+  const [filterHold, setFilterHold] = useState<"" | "hold" | "nohold">(
+    initialFilters.filterHold,
+  );
+  const [filterEscalated, setFilterEscalated] = useState<"" | "yes" | "no">(
+    initialFilters.filterEscalated,
+  );
+
+  useEffect(() => {
+    savePersistedFilters(DEV_PLANS_FILTERS_PAGE_KEY, userEmail, {
+      search,
+      statusTab,
+      filterPlant,
+      filterGroup,
+      filterOwner,
+      filterGrade,
+      filterHold,
+      filterEscalated,
+    });
+  }, [
+    userEmail,
+    search,
+    statusTab,
+    filterPlant,
+    filterGroup,
+    filterOwner,
+    filterGrade,
+    filterHold,
+    filterEscalated,
+  ]);
 
   const clearFilters = () => {
     setFilterPlant("");
