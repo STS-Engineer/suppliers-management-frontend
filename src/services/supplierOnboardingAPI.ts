@@ -1838,6 +1838,17 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async deleteOpportunity(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}`,
+      {
+        method: "DELETE",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to delete opportunity.",
+    );
+  }
+
   async updateMonthlyActual(
     monthId: number,
     data: {

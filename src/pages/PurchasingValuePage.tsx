@@ -9070,13 +9070,36 @@ function DetailDrawer({
   opp,
   onClose,
   onRefresh,
+  onDeleted,
   userEmail,
 }: {
   opp: Opp;
   onClose: () => void;
   onRefresh: (o: Opp) => void;
+  onDeleted: (opportunityId: number) => void;
   userEmail: string;
 }) {
+  const { user } = useAuth();
+  const canDelete = user?.access_profile === "vp_conversion";
+  const [deleting, setDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleConfirmDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await supplierAPI.deleteOpportunity(opp.opportunity_id);
+      setConfirmOpen(false);
+      onDeleted(opp.opportunity_id);
+    } catch (e) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Failed to delete opportunity.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
   const defaultTab = (o: Opp): Tab => {
     const ps = o.phase_status ?? "";
     const st = o.status ?? "";
@@ -9270,6 +9293,19 @@ function DetailDrawer({
                 </button>
               ))}
             </div>
+            {canDelete && (
+              <button
+                onClick={() => {
+                  setDeleteError(null);
+                  setConfirmOpen(true);
+                }}
+                disabled={deleting}
+                title="Delete opportunity"
+                className="mr-1 rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-200"
@@ -9344,7 +9380,86 @@ function DetailDrawer({
           )}
         </div>
       </div>
+      {confirmOpen && (
+        <DeleteOpportunityModal
+          oppName={opp.opportunity_name ?? `#${opp.opportunity_id}`}
+          loading={deleting}
+          error={deleteError}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delete Confirmation Modal
+// ---------------------------------------------------------------------------
+function DeleteOpportunityModal({
+  oppName,
+  loading,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  oppName: string;
+  loading: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 dark:border-white/[0.08] dark:bg-[#0f1e30]"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+            <AlertTriangle size={18} />
+          </div>
+          <div className="min-w-0 pt-0.5">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+              Delete opportunity?
+            </h3>
+            <p className="mt-1 text-[12.5px] leading-snug text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {oppName}
+              </span>{" "}
+              will be permanently removed from all views. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[11.5px] font-medium text-red-600 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+          >
+            {loading && <RefreshCw size={12} className="animate-spin" />}
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -9355,15 +9470,55 @@ function OppCard({
   opp,
   onClick,
   onRefresh,
+  onDeleted,
   userEmail,
   compact = false,
 }: {
   opp: Opp;
   onClick: () => void;
   onRefresh?: (o: Opp) => void;
+  onDeleted?: (opportunityId: number) => void;
   userEmail?: string;
   compact?: boolean;
 }) {
+  const { user } = useAuth();
+  const canDelete = user?.access_profile === "vp_conversion";
+  const [deleting, setDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function openConfirm(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeleteError(null);
+    setConfirmOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await supplierAPI.deleteOpportunity(opp.opportunity_id);
+      setConfirmOpen(false);
+      onDeleted?.(opp.opportunity_id);
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete opportunity.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const deleteModal = confirmOpen && (
+    <DeleteOpportunityModal
+      oppName={opp.opportunity_name ?? `#${opp.opportunity_id}`}
+      loading={deleting}
+      error={deleteError}
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setConfirmOpen(false)}
+    />
+  );
+
   const typeClass =
     TYPE_COLORS[opp.opportunity_type ?? ""] ??
     "bg-slate-100 text-slate-600 border-slate-200";
@@ -9402,6 +9557,17 @@ function OppCard({
                   ? "Rework"
                   : opp.status}
         </span>
+        {canDelete && (
+          <button
+            onClick={openConfirm}
+            disabled={deleting}
+            title="Delete opportunity"
+            className="shrink-0 rounded p-1 text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+        {deleteModal}
       </div>
     );
   }
@@ -9409,10 +9575,20 @@ function OppCard({
   return (
     <div
       onClick={onClick}
-      className="group cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]"
+      className={`group relative cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]${canDelete ? " pb-9" : ""}`}
     >
+      {canDelete && (
+        <button
+          onClick={openConfirm}
+          disabled={deleting}
+          title="Delete opportunity"
+          className="absolute bottom-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md transition-colors hover:bg-red-600 disabled:opacity-50"
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="line-clamp-2 text-[12.5px] font-bold leading-snug text-slate-800 dark:text-slate-100">
+        <p className="line-clamp-2 pr-3 text-[12.5px] font-bold leading-snug text-slate-800 dark:text-slate-100">
           {opp.opportunity_name}
         </p>
         <ChevronRight
@@ -9493,6 +9669,7 @@ function OppCard({
           <Clock size={10} /> {opp.status}
         </div>
       )}
+      {deleteModal}
     </div>
   );
 }
@@ -9505,6 +9682,7 @@ function PhaseColumn({
   opps,
   onSelect,
   onRefresh,
+  onDeleted,
   userEmail,
   compact = false,
 }: {
@@ -9512,6 +9690,7 @@ function PhaseColumn({
   opps: Opp[];
   onSelect: (o: Opp) => void;
   onRefresh?: (o: Opp) => void;
+  onDeleted?: (opportunityId: number) => void;
   userEmail?: string;
   compact?: boolean;
 }) {
@@ -9544,6 +9723,7 @@ function PhaseColumn({
               opp={o}
               onClick={() => onSelect(o)}
               onRefresh={onRefresh}
+              onDeleted={onDeleted}
               userEmail={userEmail}
               compact={compact}
             />
@@ -9852,6 +10032,10 @@ export default function PurchasingValuePage() {
     );
     setSelected(u);
   }
+  function handleDeleted(opportunityId: number) {
+    setOpportunities((p) => p.filter((o) => o.opportunity_id !== opportunityId));
+    setSelected(null);
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#f0f7ff_0,#f8fafc_50%,#f0f4f8_100%)] dark:bg-[radial-gradient(circle_at_top_left,#0f1e35_0,#0b1829_50%,#0a1525_100%)]">
@@ -10153,6 +10337,7 @@ export default function PurchasingValuePage() {
                   opps={grouped[ph] ?? []}
                   onSelect={setSelected}
                   onRefresh={handleRefresh}
+                  onDeleted={handleDeleted}
                   userEmail={userEmail}
                   compact={compact}
                 />
@@ -10181,6 +10366,7 @@ export default function PurchasingValuePage() {
           userEmail={userEmail}
           onClose={() => setSelected(null)}
           onRefresh={handleRefresh}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
