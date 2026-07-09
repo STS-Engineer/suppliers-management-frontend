@@ -23,6 +23,7 @@ interface VoteForm {
   // Identity
   opportunity_name: string | null;
   opportunity_type: string | null;
+  description: string | null;
   phase_from: string | null;
   requested_by: string | null;
   message: string | null;
@@ -323,6 +324,10 @@ export default function GateApprovalPage() {
 
   const phaseArrow = `${val(form.phase_from)} → ${NEXT_PHASE[form.phase_from ?? ""] ?? "next phase"}`;
 
+  // Negotiation has no STP format — no project manager, no price/quantity
+  // breakdown, and no ROI (ROI is derived from investment costs, which
+  // Negotiation doesn't track).
+  const isNegotiation = form.opportunity_type === "Negotiation";
   const hasPricingData = form.current_price != null || form.current_price_n1 != null;
   const hasCosts = (form.tooling_cost ?? 0) + (form.travel_cost ?? 0) + (form.qualification_cost ?? 0) + (form.other_cost ?? 0) > 0;
   const hasIncoterms = (v: string | null) => v != null && v !== "" && v !== "0";
@@ -367,6 +372,9 @@ export default function GateApprovalPage() {
               </p>
               <h1 className="text-base font-bold text-slate-800 leading-snug">{val(form.opportunity_name)}</h1>
               <p className="text-xs text-slate-400 mt-0.5">{val(form.opportunity_type)}</p>
+              {form.description && (
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">{form.description}</p>
+              )}
             </div>
             <span className="shrink-0 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold px-2.5 py-1">
               Pending your decision
@@ -453,7 +461,7 @@ export default function GateApprovalPage() {
           {/* People & context */}
           <Section title="Context">
             <Row label="Idea Owner" value={val(form.idea_owner)} />
-            <Row label="Project Manager" value={val(form.project_owner)} />
+            {!isNegotiation && <Row label="Project Manager" value={val(form.project_owner)} />}
             <Row label="Change Type" value={val(form.change_mode)} highlight={form.change_mode === "Standard"} />
             <Row label="Opportunity Type" value={val(form.opportunity_type)} />
           </Section>
@@ -523,8 +531,10 @@ export default function GateApprovalPage() {
             {form.cash_ap_gap != null && form.cash_ap_gap !== 0 && (
               <Row label="Cash — AP Gap" value={eur(form.cash_ap_gap)} />
             )}
-            <Row label="ROI" value={form.roi_percent != null ? `${form.roi_percent.toFixed(1)} %` : "—"} />
-            {form.roi_period_percent != null && (
+            {!isNegotiation && (
+              <Row label="ROI" value={form.roi_percent != null ? `${form.roi_percent.toFixed(1)} %` : "—"} />
+            )}
+            {!isNegotiation && form.roi_period_percent != null && (
               <Row label="ROI (period)" value={`${form.roi_period_percent.toFixed(1)} %`} />
             )}
           </Section>
