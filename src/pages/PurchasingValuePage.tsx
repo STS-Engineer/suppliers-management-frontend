@@ -1172,6 +1172,10 @@ function EditTab({
   const isFlatType = ["Negotiation", "Cash"].includes(
     opp.opportunity_type ?? "",
   );
+  // Negotiation has no execution/tooling phase (no supplier qualification, no
+  // PPAP work) — only the Deployment Start Date (when the negotiated price
+  // actually takes effect) matters, so Execution Start Date is skipped entirely.
+  const isNegotiation = opp.opportunity_type === "Negotiation";
   const { user } = useAuth();
   // The only two roles allowed to (a) Approve/Reject a pending STP revision
   // request, AND (b) edit the Phase 2/3 STP baseline directly without going
@@ -1242,6 +1246,7 @@ function EditTab({
     benefits: !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not),
     planning: !(opp.phase1_weeks && opp.phase1_weeks > 0),
     executionStartDate:
+      !isNegotiation &&
       (isSourced
         ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
         : ["Phase 2", "Phase 3", "Phase 4"]
@@ -1888,9 +1893,12 @@ function EditTab({
       // Sourcing/Technical Productivity opportunities expose it as "Phase 1
       // Starting Date" already in Phase 1 (STP planning section), so it's
       // required from there; other types only get the field from Phase 2.
-      const executionDateRequiredPhases = isSourced
-        ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
-        : ["Phase 2", "Phase 3", "Phase 4"];
+      // Negotiation has no execution/tooling phase, so it never requires it.
+      const executionDateRequiredPhases = isNegotiation
+        ? []
+        : isSourced
+          ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
+          : ["Phase 2", "Phase 3", "Phase 4"];
       if (
         executionDateRequiredPhases.includes(phase) &&
         !form.execution_start_date
@@ -2441,8 +2449,9 @@ function EditTab({
                     </p>
                   )}
               </div>
-              {/* Phase 2 date — when execution work began */}
-              {["Phase 2", "Phase 3", "Phase 4"].includes(
+              {/* Phase 2 date — when execution work began (not applicable to
+                  Negotiation, which has no tooling/qualification phase) */}
+              {!isNegotiation && ["Phase 2", "Phase 3", "Phase 4"].includes(
                 opp.phase_status ?? "",
               ) && (
                 <div>
