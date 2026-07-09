@@ -62,6 +62,10 @@ interface VoteForm {
   saving_year_n3: number | null;
   period_saving: number | null;
   expected_annual_saving: number | null;
+  // Cash — one-shot impact, any opportunity type can carry one
+  cash_impact: number | null;
+  cash_inventory_gap: number | null;
+  cash_ap_gap: number | null;
   // ROI & investment
   roi_percent: number | null;
   roi_period_percent: number | null;
@@ -504,8 +508,21 @@ export default function GateApprovalPage() {
 
           {/* Savings summary */}
           <Section title="Total Savings">
-            <Row label="Period Saving" value={eur(form.period_saving)} highlight />
-            <Row label="Expected Annual Saving" value={eur(form.expected_annual_saving)} highlight />
+            {form.period_saving != null && form.period_saving !== 0 && (
+              <Row label="Period Saving" value={eur(form.period_saving)} highlight />
+            )}
+            {form.expected_annual_saving != null && form.expected_annual_saving !== 0 && (
+              <Row label="Expected Annual Saving" value={eur(form.expected_annual_saving)} highlight />
+            )}
+            {form.cash_impact != null && form.cash_impact !== 0 && (
+              <Row label="Cash Impact" value={eur(form.cash_impact)} highlight />
+            )}
+            {form.cash_inventory_gap != null && form.cash_inventory_gap !== 0 && (
+              <Row label="Cash — Inventory Gap" value={eur(form.cash_inventory_gap)} />
+            )}
+            {form.cash_ap_gap != null && form.cash_ap_gap !== 0 && (
+              <Row label="Cash — AP Gap" value={eur(form.cash_ap_gap)} />
+            )}
             <Row label="ROI" value={form.roi_percent != null ? `${form.roi_percent.toFixed(1)} %` : "—"} />
             {form.roi_period_percent != null && (
               <Row label="ROI (period)" value={`${form.roi_period_percent.toFixed(1)} %`} />

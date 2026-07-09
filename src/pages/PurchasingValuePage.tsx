@@ -319,7 +319,11 @@ interface Opp {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const TYPES = ["Negotiation", "Sourcing", "Technical Productivity", "Cash"];
+// Real opportunity types (creation) — "Cash" is not a type, it's a cash_impact
+// value any of these types can carry. See FILTER_TYPES for the filter pill,
+// which filters by "has a cash_impact" instead of a Cash opportunity_type.
+const TYPES = ["Negotiation", "Sourcing", "Technical Productivity"];
+const FILTER_TYPES = [...TYPES, "Cash"];
 // "Assigned" is a STATUS on a Phase 0 card — not a separate phase column
 const PHASES = [
   "Phase 0",
@@ -1297,12 +1301,14 @@ function EditTab({
     description: opp.description ?? "",
     // Strip Python Decimal trailing zeros ("12.00"→"12", "2700.00"→"2700")
     // Prevents French locale browser rendering "12,00" in number inputs
-    expected_annual_saving: opp.expected_annual_saving
-      ? String(parseFloat(String(opp.expected_annual_saving)))
-      : "",
-    cash_impact: opp.cash_impact
-      ? String(parseFloat(String(opp.cash_impact)))
-      : "",
+    expected_annual_saving:
+      opp.expected_annual_saving != null
+        ? String(parseFloat(String(opp.expected_annual_saving)))
+        : "",
+    cash_impact:
+      opp.cash_impact != null
+        ? String(parseFloat(String(opp.cash_impact)))
+        : "",
     duration_months: opp.duration_months
       ? String(parseInt(String(opp.duration_months)))
       : "",
@@ -1848,8 +1854,8 @@ function EditTab({
           missing.push("Duration (months)");
         }
         if (
-          !form.expected_annual_saving ||
-          parseFloat(form.expected_annual_saving) <= 0
+          form.expected_annual_saving.trim() === "" ||
+          parseFloat(form.expected_annual_saving) < 0
         ) {
           missing.push("Est. Annual Saving");
         }
@@ -2269,7 +2275,7 @@ function EditTab({
                 <label
                   className={
                     !isSourced
-                      ? hiLabel(!(opp.expected_annual_saving && opp.expected_annual_saving > 0))
+                      ? hiLabel(opp.expected_annual_saving == null)
                       : label
                   }
                 >
@@ -2293,7 +2299,7 @@ function EditTab({
                     type="text"
                     inputMode="decimal"
                     disabled={locked}
-                    className={`${hi(!(opp.expected_annual_saving && opp.expected_annual_saving > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    className={`${hi(opp.expected_annual_saving == null)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
                     value={fmtDecInputSpace(form.expected_annual_saving)}
                     onChange={(e) =>
                       set("expected_annual_saving", stripDec(e.target.value))
@@ -4917,7 +4923,7 @@ function GateTab({
   // Phase 0 → PM validation: what must be filled
   const phase0Checks = [
     {
-      ok: !!opp.expected_annual_saving && opp.expected_annual_saving > 0,
+      ok: opp.expected_annual_saving != null,
       label: "Est. Annual Saving is required",
     },
     {
@@ -6099,6 +6105,8 @@ function FinancialTab({
   const [error, setError] = useState<string | null>(null);
   const [showEscalate, setShowEscalate] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [showCashEntry, setShowCashEntry] = useState(false);
+  const [cashAmount, setCashAmount] = useState("");
   const [pendingRecoveryPrompt, setPendingRecoveryPrompt] = useState(false);
   const [escalateForm, setEscalateForm] = useState({
     escalation_reason: "",
@@ -6242,8 +6250,34 @@ function FinancialTab({
     ([a], [b]) => Number(a) - Number(b),
   );
 
-  // Gap 3 — cash tracking visible for Cash/Negotiation type
-  const showCash = ["Cash", "Negotiation"].includes(opp.opportunity_type ?? "");
+  // Cash tracking is visible whenever the opportunity carries a cash_impact —
+  // any opportunity type can have one (not just Negotiation), so this checks
+  // the actual data rather than opportunity_type.
+  const showCash =
+    opp.cash_impact != null || rows.some((r) => r.cash_expected != null);
+  // cash_impact is a one-shot booked entirely into a single month (see backend
+  // _one_shot_cash_ideals) — that's the one row with cash_expected set.
+  const cashRow = rows.find((r) => r.cash_expected != null) ?? null;
+
+  async function saveCashReceived(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cashRow) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await supplierAPI.updateMonthlyActual(cashRow.monthly_financial_id, {
+        cash_actual: cashAmount ? parseFloat(cashAmount) : undefined,
+        updated_by: userEmail,
+      });
+      const res = await supplierAPI.getOpportunity(opp.opportunity_id);
+      onRefresh(res.data as Opp);
+      setShowCashEntry(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function saveRow(monthId: number) {
     if (!canEditFinancialRows) {
@@ -7244,6 +7278,96 @@ function FinancialTab({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Cash Impact — one-shot record, not a monthly grid. The rare case of cash
+          trickling in over several months is still handled by editing each
+          month's "Cash Act." cell directly in the table below. */}
+      {showCash && cashRow && phaseCtx.showActuals && (
+        <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-amber-700">
+                Cash Impact — one-time
+              </p>
+              <p className="text-[11px] text-amber-600 mt-0.5">
+                Target: <strong>{fmtC(cashRow.cash_expected)}</strong>
+                {cashRow.cash_actual != null && (
+                  <>
+                    {" "}
+                    · Achieved: <strong>{fmtC(cashRow.cash_actual)}</strong>
+                  </>
+                )}
+                {cashRow.period_month && (
+                  <>
+                    {" "}
+                    (
+                    {new Date(cashRow.period_month).toLocaleDateString(
+                      "en-GB",
+                      { month: "short", year: "numeric" },
+                    )}
+                    )
+                  </>
+                )}
+              </p>
+            </div>
+            {canEditFinancialRows && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCashAmount(cashRow.cash_actual?.toString() ?? cashRow.cash_expected?.toString() ?? "");
+                  setShowCashEntry((s) => !s);
+                }}
+                className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+              >
+                {cashRow.cash_actual != null ? "Update" : "Record"} Cash
+                Received →
+              </button>
+            )}
+          </div>
+          {showCashEntry && (
+            <form
+              onSubmit={saveCashReceived}
+              className="mt-3 flex flex-wrap items-end gap-2"
+            >
+              <div>
+                <label className="mb-1 block text-[10.5px] font-semibold text-amber-700">
+                  Amount received ({opp.currency || "EUR"})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  autoFocus
+                  className="w-40 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-100"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                {loading && (
+                  <RefreshCw size={11} className="mr-1 inline animate-spin" />
+                )}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCashEntry(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600"
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+          <p className="mt-2 text-[10px] text-amber-500">
+            Exceptional case: if this cash is actually realized gradually
+            across several months instead of at once, edit the "Cash Act."
+            cell for each month directly in the table below.
+          </p>
         </div>
       )}
 
@@ -9582,7 +9706,7 @@ function OppCard({
           onClick={openConfirm}
           disabled={deleting}
           title="Delete opportunity"
-          className="absolute bottom-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md transition-colors hover:bg-red-600 disabled:opacity-50"
+          className="absolute bottom-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-slate-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
         >
           <Trash2 size={12} />
         </button>
@@ -9877,7 +10001,11 @@ export default function PurchasingValuePage() {
   ];
 
   const filtered = opportunities.filter((o) => {
-    if (filterType !== "All" && o.opportunity_type !== filterType) return false;
+    if (filterType === "Cash") {
+      if (o.cash_impact == null) return false;
+    } else if (filterType !== "All" && o.opportunity_type !== filterType) {
+      return false;
+    }
     if (filterStatus !== "All" && o.status !== filterStatus) return false;
     if (filterBudget !== "All" && o.validation_status !== filterBudget)
       return false;
@@ -10143,7 +10271,7 @@ export default function PurchasingValuePage() {
           <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
             Type
           </span>
-          {["All", ...TYPES].map((t) => (
+          {["All", ...FILTER_TYPES].map((t) => (
             <button
               key={t}
               onClick={() => setFilterType(t)}
