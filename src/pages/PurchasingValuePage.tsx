@@ -173,6 +173,7 @@ interface Opp {
   opportunity_name?: string;
   opportunity_type?: string;
   saving_nature?: string;
+  entry_mode?: string;
   description?: string;
   status?: string;
   phase_status?: string;
@@ -336,8 +337,12 @@ const TYPES = ["Negotiation", "Sourcing", "Technical Productivity"];
 const FILTER_TYPES = [...TYPES, "Cash"];
 // Profiles allowed to create/duplicate opportunities (mirrors backend _NON_VIEWER).
 const EDITOR_PROFILES = [
-  "purchasing_manager", "vp_conversion", "purchasing_director",
-  "supplier_owner", "global_purchaser", "local_purchaser",
+  "purchasing_manager",
+  "vp_conversion",
+  "purchasing_director",
+  "supplier_owner",
+  "global_purchaser",
+  "local_purchaser",
 ];
 
 // ---------------------------------------------------------------------------
@@ -639,6 +644,7 @@ function CreateModal({
     opportunity_name: "",
     opportunity_type: "Sourcing",
     saving_nature: "",
+    entry_mode: "",
     idea_owner: userEmail,
     description: "",
     plant_id: "",
@@ -722,13 +728,41 @@ function CreateModal({
               required
               className={inp}
               value={form.opportunity_type}
-              onChange={(e) => set("opportunity_type", e.target.value)}
+              onChange={(e) =>
+                // Reset entry_mode: Bonus/Rework are tied to a specific type.
+                setForm((f) => ({
+                  ...f,
+                  opportunity_type: e.target.value,
+                  entry_mode: "",
+                }))
+              }
             >
               {TYPES.map((t) => (
                 <option key={t}>{t}</option>
               ))}
             </select>
           </div>
+          {(form.opportunity_type === "Negotiation" ||
+            form.opportunity_type === "Technical Productivity") && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Mode
+              </label>
+              <select
+                className={inp}
+                value={form.entry_mode}
+                onChange={(e) => set("entry_mode", e.target.value)}
+              >
+                <option value="">Standard (price × quantity)</option>
+                {form.opportunity_type === "Negotiation" && (
+                  <option value="Bonus">Bonus — single one-time gain</option>
+                )}
+                {form.opportunity_type === "Technical Productivity" && (
+                  <option value="Rework">Rework — single one-time gain</option>
+                )}
+              </select>
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               Saving nature
@@ -739,7 +773,7 @@ function CreateModal({
               onChange={(e) => set("saving_nature", e.target.value)}
             >
               <option value="">— Not classified —</option>
-              <option value="Hard">Hard — cost reduction (P&amp;L / EBITDA impact)</option>
+              <option value="Hard">Hard — cost reduction</option>
               <option value="Soft">Soft — cost avoidance</option>
             </select>
           </div>
@@ -856,7 +890,9 @@ function OverviewTab({ opp }: { opp: Opp }) {
     {
       label: "Created",
       value: fmtDate(opp.created_at),
-      sub: opp.created_by ? `by ${opp.created_by}` : "Record timestamp from the opportunity table",
+      sub: opp.created_by
+        ? `by ${opp.created_by}`
+        : "Record timestamp from the opportunity table",
     },
     {
       label: "Last update",
@@ -866,12 +902,16 @@ function OverviewTab({ opp }: { opp: Opp }) {
     {
       label: "Budget confirmation",
       value: opp.budget_confirmed_at ? fmtDate(opp.budget_confirmed_at) : "-",
-      sub: opp.budget_confirmed_by ? `by ${opp.budget_confirmed_by}` : "Not budget-confirmed yet",
+      sub: opp.budget_confirmed_by
+        ? `by ${opp.budget_confirmed_by}`
+        : "Not budget-confirmed yet",
     },
     {
       label: "Gate decisions",
       value: phaseHistory.length ? String(phaseHistory.length) : "0",
-      sub: phaseHistory.length ? "Immutable phase snapshots available" : "No recorded gate snapshot yet",
+      sub: phaseHistory.length
+        ? "Immutable phase snapshots available"
+        : "No recorded gate snapshot yet",
     },
   ];
 
@@ -885,9 +925,9 @@ function OverviewTab({ opp }: { opp: Opp }) {
         )}
         {cur !== "EUR" && (
           <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-700">
-            Amounts are in <strong>{cur}</strong> (rate {opp.fx_rate_to_eur ?? 1}{" "}
-            to EUR). Consolidated reports (Budgeting, Monthly Follow-up) convert
-            to EUR.
+            Amounts are in <strong>{cur}</strong> (rate{" "}
+            {opp.fx_rate_to_eur ?? 1} to EUR). Consolidated reports (Budgeting,
+            Monthly Follow-up) convert to EUR.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -904,7 +944,11 @@ function OverviewTab({ opp }: { opp: Opp }) {
           <MetricCard
             icon={<Clock size={12} />}
             label="Duration"
-            value={opp.duration_months != null ? `${fmtMonths(opp.duration_months)} months` : "-"}
+            value={
+              opp.duration_months != null
+                ? `${fmtMonths(opp.duration_months)} months`
+                : "-"
+            }
           />
           <MetricCard
             icon={<FileText size={12} />}
@@ -1042,12 +1086,12 @@ function OverviewTab({ opp }: { opp: Opp }) {
               value={fmt(Number(opp.cash_ap_gap), cur)}
             />
           )}
-          <InfoRow
-            label="Record Created"
-            value={fmtDate(opp.created_at)}
-          />
+          <InfoRow label="Record Created" value={fmtDate(opp.created_at)} />
           <InfoRow label="Created By" value={opp.created_by} />
-          <InfoRow label="Last Opportunity Update" value={fmtDate(opp.updated_at)} />
+          <InfoRow
+            label="Last Opportunity Update"
+            value={fmtDate(opp.updated_at)}
+          />
           <InfoRow
             label="Planned Start"
             value={fmtDate(opp.planned_start_date)}
@@ -1099,7 +1143,9 @@ function OverviewTab({ opp }: { opp: Opp }) {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-100/70">
                   {item.label}
                 </p>
-                <p className="mt-1 text-sm font-bold text-white">{item.value}</p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {item.value}
+                </p>
                 <p className="mt-1 text-[10px] leading-relaxed text-blue-100/70">
                   {item.sub}
                 </p>
@@ -1119,7 +1165,8 @@ function OverviewTab({ opp }: { opp: Opp }) {
           </div>
           {phaseHistory.length === 0 ? (
             <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
-              No immutable gate snapshot has been recorded yet for this opportunity.
+              No immutable gate snapshot has been recorded yet for this
+              opportunity.
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -1132,12 +1179,15 @@ function OverviewTab({ opp }: { opp: Opp }) {
                     <p className="text-[11px] font-bold text-slate-700">
                       {entry.phase_from ?? "-"} to {entry.phase_to ?? "-"}
                     </p>
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${entry.gate_decision === "Go" ? "bg-emerald-100 text-emerald-700" : entry.gate_decision === "No Go" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${entry.gate_decision === "Go" ? "bg-emerald-100 text-emerald-700" : entry.gate_decision === "No Go" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}
+                    >
                       {entry.gate_decision ?? "Decision"}
                     </span>
                   </div>
                   <p className="mt-1 text-[10.5px] text-slate-500">
-                    {entry.decided_by ?? "Unknown"} | {fmtDate(entry.decided_at)}
+                    {entry.decided_by ?? "Unknown"} |{" "}
+                    {fmtDate(entry.decided_at)}
                   </p>
                   {entry.gate_comments && (
                     <p className="mt-1 text-[10.5px] italic text-slate-600">
@@ -1203,7 +1253,9 @@ function FormSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={`rounded-xl border bg-white ${highlight ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}>
+    <div
+      className={`rounded-xl border bg-white ${highlight ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -1248,6 +1300,14 @@ function EditTab({
   // PPAP work) — only the Deployment Start Date (when the negotiated price
   // actually takes effect) matters, so Execution Start Date is skipped entirely.
   const isNegotiation = opp.opportunity_type === "Negotiation";
+  // Bonus (Negotiation) / Rework (Technical Productivity) = a single lump gain
+  // entered directly, one-time over 1 month — no price grid, no cash.
+  const isDirectGain =
+    opp.entry_mode === "Bonus" || opp.entry_mode === "Rework";
+  // The STP price×quantity section now applies to Negotiation (standard mode) too,
+  // not just Sourcing/Technical Productivity — a negotiation carries prices, quantities,
+  // scope and (via renegotiated terms) cash. Direct-gain modes never use it.
+  const usesStp = (isSourced || isNegotiation) && !isDirectGain;
   const { user } = useAuth();
   // The only two roles allowed to (a) Approve/Reject a pending STP revision
   // request, AND (b) edit the Phase 2/3 STP baseline directly without going
@@ -1322,7 +1382,8 @@ function EditTab({
       (isSourced
         ? ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
         : ["Phase 2", "Phase 3", "Phase 4"]
-      ).includes(opp.phase_status ?? "") && !opp.execution_start_date,
+      ).includes(opp.phase_status ?? "") &&
+      !opp.execution_start_date,
     realStartDate:
       ["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") &&
       !(opp.budget_years?.some((by) => by.status_locked_at != null) ?? false) &&
@@ -1330,7 +1391,7 @@ function EditTab({
   };
   const goApplied = opp.validation_decision === "Go";
   const stpEditablePhases = ["Assigned", "Phase 0", "Phase 1"];
-  const showStpSection = isSourced;
+  const showStpSection = usesStp;
   // STP inputs become read-only past the editable phases. They are ALSO locked while
   // the STP is awaiting a gate decision (submitted to a PM / committee) — so the
   // approved document can't be silently changed out from under the reviewer. A
@@ -1349,8 +1410,7 @@ function EditTab({
   const canEditStpDirectly =
     canDecideStpRevision && isStpPhase23 && !hasPendingSTPRevision;
   const stpReadOnly =
-    (!stpEditablePhases.includes(opp.phase_status ?? "") ||
-      pendingApproval) &&
+    (!stpEditablePhases.includes(opp.phase_status ?? "") || pendingApproval) &&
     !canEditStpDirectly;
   // Budget status is derived from validation (Validate→Budgeted). The financial
   // baseline locks once the opportunity is validated/budgeted.
@@ -1376,6 +1436,7 @@ function EditTab({
   const [form, setForm] = useState({
     opportunity_name: opp.opportunity_name ?? "",
     saving_nature: opp.saving_nature ?? "",
+    entry_mode: opp.entry_mode ?? "",
     description: opp.description ?? "",
     // Strip Python Decimal trailing zeros ("12.00"→"12", "2700.00"→"2700")
     // Prevents French locale browser rendering "12,00" in number inputs
@@ -1940,8 +2001,9 @@ function EditTab({
         if (!form.planned_start_date) {
           missing.push("Planned Start Date");
         }
-        // Negotiation/Cash skip PLD scoring and the sourcing-specific fields below.
-        if (!isFlatType) {
+        // Negotiation/Cash skip PLD scoring; Bonus/Rework (direct-gain) also skip the
+        // STP price/quantity/scope requirements — they only carry a single gain.
+        if (!isFlatType && !isDirectGain) {
           if (!form.plant_id) missing.push("Plant");
           if (!form.scope_in) missing.push("Scope IN");
           if (!form.proposed_supplier_name) {
@@ -2014,8 +2076,7 @@ function EditTab({
       // recorded (unless the budget year is already closed and the field is locked).
       if (["Phase 3", "Phase 4"].includes(phase)) {
         const budgetLocked =
-          opp.budget_years?.some((by) => by.status_locked_at != null) ??
-          false;
+          opp.budget_years?.some((by) => by.status_locked_at != null) ?? false;
         if (!budgetLocked && !form.real_start_date) {
           missing.push("Deployment Start Date (Real Savings Start)");
         }
@@ -2051,6 +2112,8 @@ function EditTab({
       const res = await supplierAPI.updateOpportunity(opp.opportunity_id, {
         opportunity_name: form.opportunity_name || undefined,
         saving_nature: form.saving_nature || undefined,
+        // "" → "Standard" so a user can switch a Bonus/Rework back to standard STP.
+        entry_mode: form.entry_mode || "Standard",
         description: form.description || undefined,
         expected_annual_saving: form.expected_annual_saving
           ? parseFloat(form.expected_annual_saving)
@@ -2367,6 +2430,28 @@ function EditTab({
             onChange={(e) => set("description", e.target.value)}
           />
         </div>
+        {(opp.opportunity_type === "Negotiation" ||
+          opp.opportunity_type === "Technical Productivity") && (
+          <div className="order-3">
+            <label className={label}>Mode</label>
+            {/* Mode is fixed at creation (like opportunity_type) — switching it later
+                would wipe the STP grid. To change it, duplicate or recreate. */}
+            <div
+              className={`${inp} bg-slate-100 text-slate-600 flex items-center justify-between`}
+            >
+              <span>
+                {opp.entry_mode === "Bonus"
+                  ? "Bonus — single one-time gain"
+                  : opp.entry_mode === "Rework"
+                    ? "Rework — single one-time gain"
+                    : "Standard (price × quantity)"}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                set at creation
+              </span>
+            </div>
+          </div>
+        )}
         <div className="order-3">
           <label className={label}>Saving nature</label>
           <select
@@ -2375,7 +2460,7 @@ function EditTab({
             onChange={(e) => set("saving_nature", e.target.value)}
           >
             <option value="">— Not classified —</option>
-            <option value="Hard">Hard — cost reduction (P&amp;L / EBITDA impact)</option>
+            <option value="Hard">Hard — cost reduction</option>
             <option value="Soft">Soft — cost avoidance</option>
           </select>
         </div>
@@ -2395,17 +2480,25 @@ function EditTab({
               <div>
                 <label
                   className={
-                    !isSourced
+                    !usesStp
                       ? hiLabel(opp.expected_annual_saving == null)
                       : label
                   }
                 >
-                  {isSourced ? "EBITDA Period (€)" : "Est. Annual Saving (€)"}
+                  {usesStp
+                    ? "EBITDA Period (€)"
+                    : isDirectGain
+                      ? "Gain (€)"
+                      : "Est. Annual Saving (€)"}
                   <span className="ml-1 font-normal text-slate-400">
-                    {isSourced ? "— auto, all years (N…N+3)" : ""}
+                    {usesStp
+                      ? "— auto, all years (N…N+3)"
+                      : isDirectGain
+                        ? "— one-time gain"
+                        : ""}
                   </span>
                 </label>
-                {isSourced ? (
+                {usesStp ? (
                   <div
                     className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
                   >
@@ -2427,71 +2520,86 @@ function EditTab({
                     }
                   />
                 )}
-                {isSourced && (
+                {usesStp && (
                   <p className="text-[10px] text-emerald-600 mt-0.5">
                     Sum of the EBITDA savings across all fulfilled years (EBITDA
                     Period).
                   </p>
                 )}
               </div>
+              {/* A one-time Bonus/Rework gain has no cash impact — hide the field. */}
+              {!isDirectGain && (
+                <div>
+                  <label className={label}>
+                    Cash Impact (€){" "}
+                    <span className="font-normal text-slate-400">
+                      {usesStp
+                        ? "— auto: Inventory gap + AP gap"
+                        : "— total cash estimate, locked when Budgeted"}
+                    </span>
+                  </label>
+                  {usesStp ? (
+                    <div
+                      className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
+                    >
+                      {autoCashImpact != null
+                        ? `€${autoCashImpact.toLocaleString("en-GB")}`
+                        : opp.cash_impact != null
+                          ? fmt(opp.cash_impact)
+                          : "—"}
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={locked}
+                      className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                      value={form.cash_impact}
+                      onChange={(e) => set("cash_impact", e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
               <div>
-                <label className={label}>
-                  Cash Impact (€){" "}
-                  <span className="font-normal text-slate-400">
-                    {isSourced
-                      ? "— auto: Inventory gap + AP gap"
-                      : "— total cash estimate, locked when Budgeted"}
-                  </span>
-                </label>
-                {isSourced ? (
-                  <div
-                    className={`${inp} bg-emerald-50 font-bold text-emerald-700`}
-                  >
-                    {autoCashImpact != null
-                      ? `€${autoCashImpact.toLocaleString("en-GB")}`
-                      : opp.cash_impact != null
-                        ? fmt(opp.cash_impact)
-                        : "—"}
-                  </div>
-                ) : (
-                  <input
-                    type="number"
-                    step="0.01"
-                    disabled={locked}
-                    className={`${inp} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                    value={form.cash_impact}
-                    onChange={(e) => set("cash_impact", e.target.value)}
-                  />
-                )}
-              </div>
-              <div>
-                <label className={hiLabel(!(opp.duration_months && opp.duration_months > 0))}>
+                <label
+                  className={hiLabel(
+                    !(opp.duration_months && opp.duration_months > 0),
+                  )}
+                >
                   Duration (months){" "}
                   <span className="font-normal text-slate-400">
                     — saving period length
                   </span>
                 </label>
-                <select
-                  disabled={locked}
-                  className={`${hi(!(opp.duration_months && opp.duration_months > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                  value={form.duration_months}
-                  onChange={(e) => set("duration_months", e.target.value)}
-                >
-                  <option value="" disabled>
-                    Select duration
-                  </option>
-                  {[1, 12, 24, 36, 48].map((m) => (
-                    <option key={m} value={m}>
-                      {m} {m === 1 ? "month" : "months"}
+                {isDirectGain ? (
+                  <div className={`${inp} bg-slate-100 text-slate-500`}>
+                    1 month (one-time gain)
+                  </div>
+                ) : (
+                  <select
+                    disabled={locked}
+                    className={`${hi(!(opp.duration_months && opp.duration_months > 0))} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                    value={form.duration_months}
+                    onChange={(e) => set("duration_months", e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Select duration
                     </option>
-                  ))}
-                  {form.duration_months &&
-                    ![1, 12, 24, 36, 48].includes(Number(form.duration_months)) && (
-                      <option value={form.duration_months}>
-                        {form.duration_months} months (legacy)
+                    {[1, 12, 24, 36, 48].map((m) => (
+                      <option key={m} value={m}>
+                        {m} {m === 1 ? "month" : "months"}
                       </option>
-                    )}
-                </select>
+                    ))}
+                    {form.duration_months &&
+                      ![1, 12, 24, 36, 48].includes(
+                        Number(form.duration_months),
+                      ) && (
+                        <option value={form.duration_months}>
+                          {form.duration_months} months (legacy)
+                        </option>
+                      )}
+                  </select>
+                )}
                 {computedEndDate && (
                   <p className="mt-1 text-[10.5px] text-slate-500">
                     → Planned end:{" "}
@@ -2501,9 +2609,9 @@ function EditTab({
                   </p>
                 )}
                 <p className="mt-1 text-[10.5px] text-amber-600">
-                  For STP opportunities the duration is recomputed on save from the
-                  yearly prices (flat price → 12 months; each further year of price
-                  change → +12).
+                  For STP opportunities the duration is recomputed on save from
+                  the yearly prices (flat price → 12 months; each further year
+                  of price change → +12).
                 </p>
               </div>
               <div>
@@ -2569,30 +2677,31 @@ function EditTab({
               </div>
               {/* Phase 2 date — when execution work began (not applicable to
                   Negotiation, which has no tooling/qualification phase) */}
-              {!isNegotiation && ["Phase 2", "Phase 3", "Phase 4"].includes(
-                opp.phase_status ?? "",
-              ) && (
-                <div>
-                  <label className={hiLabel(missingFlags.executionStartDate)}>
-                    Execution Start Date
-                    <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
-                      Phase 2
-                    </span>
-                    <span className="ml-1 font-normal text-slate-400">
-                      — when work began (tooling, qualification, supplier
-                      contacted)
-                    </span>
-                  </label>
-                  <input
-                    type="date"
-                    className={hi(missingFlags.executionStartDate)}
-                    value={form.execution_start_date}
-                    onChange={(e) =>
-                      set("execution_start_date", e.target.value)
-                    }
-                  />
-                </div>
-              )}
+              {!isNegotiation &&
+                ["Phase 2", "Phase 3", "Phase 4"].includes(
+                  opp.phase_status ?? "",
+                ) && (
+                  <div>
+                    <label className={hiLabel(missingFlags.executionStartDate)}>
+                      Execution Start Date
+                      <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
+                        Phase 2
+                      </span>
+                      <span className="ml-1 font-normal text-slate-400">
+                        — when work began (tooling, qualification, supplier
+                        contacted)
+                      </span>
+                    </label>
+                    <input
+                      type="date"
+                      className={hi(missingFlags.executionStartDate)}
+                      value={form.execution_start_date}
+                      onChange={(e) =>
+                        set("execution_start_date", e.target.value)
+                      }
+                    />
+                  </div>
+                )}
               {/* Phase 3 date — when savings actually started flowing */}
               {["Phase 3", "Phase 4"].includes(opp.phase_status ?? "") && (
                 <div>
@@ -2797,158 +2906,293 @@ function EditTab({
           )}
           {/* PLD scoring — compact — hidden for Negotiation/Cash, which skip PLD entirely */}
           {!isFlatType && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
-                PLD
-              </span>
-              <div className="flex items-center gap-1.5 text-[11px]">
-                {livePScore != null && (
-                  <span className="text-slate-500">
-                    P=<b className="text-slate-700">{livePScore}</b>
-                  </span>
-                )}
-                {liveLScore != null && (
-                  <span className="text-slate-400">
-                    × L=<b className="text-slate-700">{liveLScore}</b>
-                  </span>
-                )}
-                {liveDScore != null && (
-                  <span className="text-slate-400">
-                    × D=<b className="text-slate-700">{liveDScore}</b>
-                  </span>
-                )}
-                {pScore != null ? (
-                  <>
-                    <span className="text-slate-400">=</span>
-                    <span className="font-black text-blue-700 text-sm">
-                      {pScore}
+            <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
+                  PLD
+                </span>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  {livePScore != null && (
+                    <span className="text-slate-500">
+                      P=<b className="text-slate-700">{livePScore}</b>
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}
+                  )}
+                  {liveLScore != null && (
+                    <span className="text-slate-400">
+                      × L=<b className="text-slate-700">{liveLScore}</b>
+                    </span>
+                  )}
+                  {liveDScore != null && (
+                    <span className="text-slate-400">
+                      × D=<b className="text-slate-700">{liveDScore}</b>
+                    </span>
+                  )}
+                  {pScore != null ? (
+                    <>
+                      <span className="text-slate-400">=</span>
+                      <span className="font-black text-blue-700 text-sm">
+                        {pScore}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pldColor(pCat)}`}
+                      >
+                        {pCat}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-300 text-[10px]">
+                      incomplete
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {isSourced && (
+                <div className="grid grid-cols-3 gap-2 text-[10px]">
+                  {/* P */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                        P
+                      </span>
+                      <span className="text-slate-500 font-medium">
+                        Pay-back
+                      </span>
+                    </div>
+                    <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                      {_pldHasInvData ? (
+                        <span
+                          className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                        >
+                          {_pldPaybackMonths === 0
+                            ? "0 mo."
+                            : _pldPaybackMonths >= 999
+                              ? "∞"
+                              : `${_pldPaybackMonths.toFixed(1)} mo.`}
+                          {livePScore != null && (
+                            <span className="ml-1 text-slate-400">
+                              → {livePScore}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">
+                          fill costs + saving
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[9px] text-slate-400 space-y-0.5">
+                      {(
+                        [
+                          ["0 mo.", "1 ★"],
+                          ["≤2 mo.", "2"],
+                          ["≤4 mo.", "3"],
+                          ["≤12 mo.", "4"],
+                          [">12 mo.", "5"],
+                        ] as [string, string][]
+                      ).map(([v, s]) => (
+                        <div
+                          key={s}
+                          className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                        >
+                          <span>{v}</span>
+                          <span>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* L */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                        L
+                      </span>
+                      <span className="text-slate-500 font-medium">
+                        Lead-time
+                      </span>
+                    </div>
+                    <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
+                      {_pldTotalWeeks > 0 ? (
+                        <span
+                          className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
+                        >
+                          {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
+                          {liveLScore != null && (
+                            <span className="ml-1 text-slate-400">
+                              → {liveLScore}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">fill phase weeks</span>
+                      )}
+                    </div>
+                    <div className="text-[9px] text-slate-400 space-y-0.5">
+                      {(
+                        [
+                          ["<1m", "1 ★"],
+                          ["<2m", "2"],
+                          ["<4m", "3"],
+                          ["<6m", "4"],
+                          ["≥6m", "5"],
+                        ] as [string, string][]
+                      ).map(([v, s]) => (
+                        <div
+                          key={s}
+                          className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                        >
+                          <span>{v}</span>
+                          <span>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* D */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
+                        D
+                      </span>
+                      <span className="text-slate-500 font-medium">
+                        Difficulty
+                      </span>
+                    </div>
+                    <select
+                      className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
+                      value={liveDScore ?? ""}
+                      onChange={(e) =>
+                        set(
+                          "difficulty_score",
+                          e.target.value as unknown as number,
+                        )
+                      }
                     >
-                      {pCat}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-slate-300 text-[10px]">incomplete</span>
+                      <option value="">— select —</option>
+                      <option value="1">1 — Easy</option>
+                      <option value="2">2 — Relatively easy</option>
+                      <option value="3">3 — Moderately difficult</option>
+                      <option value="4">4 — Difficult</option>
+                      <option value="5">5 — Very Difficult</option>
+                    </select>
+                    <div className="text-[9px] text-slate-400 space-y-0.5">
+                      {(
+                        [
+                          ["Easy", "1 ★"],
+                          ["Rel. easy", "2"],
+                          ["Moderate", "3"],
+                          ["Difficult", "4"],
+                          ["Very diff.", "5"],
+                        ] as [string, string][]
+                      ).map(([v, s]) => (
+                        <div
+                          key={s}
+                          className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
+                        >
+                          <span>{v}</span>
+                          <span>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {/* PLD scores — manual for STP; hidden entirely for Negotiation/Cash */}
+          {!isFlatType && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  PLD Scores
+                </p>
+                {isSourced && (
+                  <p className="text-[10px] text-slate-400 text-right leading-relaxed">
+                    P &amp; L auto-calculated — set to override, clear to reset
+                  </p>
                 )}
               </div>
-            </div>
-
-            {isSourced && (
-              <div className="grid grid-cols-3 gap-2 text-[10px]">
-                {/* P */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1">
-                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                      P
-                    </span>
-                    <span className="text-slate-500 font-medium">Pay-back</span>
-                  </div>
-                  <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-                    {_pldHasInvData ? (
-                      <span
-                        className={`font-semibold ${livePScore! <= 2 ? "text-emerald-600" : livePScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
-                      >
-                        {_pldPaybackMonths === 0
-                          ? "0 mo."
-                          : _pldPaybackMonths >= 999
-                            ? "∞"
-                            : `${_pldPaybackMonths.toFixed(1)} mo.`}
-                        {livePScore != null && (
-                          <span className="ml-1 text-slate-400">
-                            → {livePScore}
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">
-                        fill costs + saving
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[9px] text-slate-400 space-y-0.5">
-                    {(
-                      [
-                        ["0 mo.", "1 ★"],
-                        ["≤2 mo.", "2"],
-                        ["≤4 mo.", "3"],
-                        ["≤12 mo.", "4"],
-                        [">12 mo.", "5"],
-                      ] as [string, string][]
-                    ).map(([v, s]) => (
-                      <div
-                        key={s}
-                        className={`flex justify-between px-1 rounded ${String(livePScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                      >
-                        <span>{v}</span>
-                        <span>{s}</span>
-                      </div>
-                    ))}
-                  </div>
+              {isSourced && (
+                <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-[10.5px] text-blue-700 flex flex-wrap gap-3">
+                  <span>
+                    Auto P: <strong>{_autoP ?? "—"}</strong>
+                  </span>
+                  <span>
+                    Auto L: <strong>{_autoL ?? "—"}</strong>
+                  </span>
+                  {(form.payback_score || form.lead_time_score) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        set("payback_score", "" as unknown as number);
+                        set("lead_time_score", "" as unknown as number);
+                      }}
+                      className="ml-auto text-blue-500 hover:text-blue-700 underline text-[10px]"
+                    >
+                      Reset P &amp; L to auto
+                    </button>
+                  )}
                 </div>
-
-                {/* L */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1">
-                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                      L
+              )}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={label}>
+                    P — Pay-back
+                    <span className="ml-1 font-normal text-slate-400">
+                      (1 = quick)
                     </span>
-                    <span className="text-slate-500 font-medium">
-                      Lead-time
-                    </span>
-                  </div>
-                  <div className="rounded bg-white border border-slate-100 px-2 py-1 text-[10px]">
-                    {_pldTotalWeeks > 0 ? (
-                      <span
-                        className={`font-semibold ${liveLScore! <= 2 ? "text-emerald-600" : liveLScore! >= 4 ? "text-red-500" : "text-amber-500"}`}
-                      >
-                        {_pldTotalWeeks} wks = {_pldLeadMonths.toFixed(1)} mo.
-                        {liveLScore != null && (
-                          <span className="ml-1 text-slate-400">
-                            → {liveLScore}
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">fill phase weeks</span>
-                    )}
-                  </div>
-                  <div className="text-[9px] text-slate-400 space-y-0.5">
-                    {(
-                      [
-                        ["<1m", "1 ★"],
-                        ["<2m", "2"],
-                        ["<4m", "3"],
-                        ["<6m", "4"],
-                        ["≥6m", "5"],
-                      ] as [string, string][]
-                    ).map(([v, s]) => (
-                      <div
-                        key={s}
-                        className={`flex justify-between px-1 rounded ${String(liveLScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                      >
-                        <span>{v}</span>
-                        <span>{s}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* D */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1">
-                    <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-black text-blue-700">
-                      D
-                    </span>
-                    <span className="text-slate-500 font-medium">
-                      Difficulty
-                    </span>
-                  </div>
+                  </label>
                   <select
-                    className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] outline-none focus:border-blue-300"
-                    value={liveDScore ?? ""}
+                    className={inp}
+                    value={form.payback_score ?? ""}
+                    onChange={(e) =>
+                      set("payback_score", e.target.value as unknown as number)
+                    }
+                  >
+                    <option value="">— select —</option>
+                    <option value="1">1 — Immediate / &lt;1 mo.</option>
+                    <option value="2">2 — ≤2 months</option>
+                    <option value="3">3 — ≤4 months</option>
+                    <option value="4">4 — ≤12 months</option>
+                    <option value="5">5 — &gt;12 months</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={label}>
+                    L — Lead-time
+                    <span className="ml-1 font-normal text-slate-400">
+                      (1 = fast)
+                    </span>
+                  </label>
+                  <select
+                    className={inp}
+                    value={form.lead_time_score ?? ""}
+                    onChange={(e) =>
+                      set(
+                        "lead_time_score",
+                        e.target.value as unknown as number,
+                      )
+                    }
+                  >
+                    <option value="">— select —</option>
+                    <option value="1">1 — &lt;1 month</option>
+                    <option value="2">2 — &lt;2 months</option>
+                    <option value="3">3 — &lt;4 months</option>
+                    <option value="4">4 — &lt;6 months</option>
+                    <option value="5">5 — ≥6 months</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={label}>
+                    D — Difficulty
+                    <span className="ml-1 font-normal text-slate-400">
+                      (1 = easy)
+                    </span>
+                  </label>
+                  <select
+                    className={inp}
+                    value={form.difficulty_score ?? ""}
                     onChange={(e) =>
                       set(
                         "difficulty_score",
@@ -2963,169 +3207,43 @@ function EditTab({
                     <option value="4">4 — Difficult</option>
                     <option value="5">5 — Very Difficult</option>
                   </select>
-                  <div className="text-[9px] text-slate-400 space-y-0.5">
-                    {(
-                      [
-                        ["Easy", "1 ★"],
-                        ["Rel. easy", "2"],
-                        ["Moderate", "3"],
-                        ["Difficult", "4"],
-                        ["Very diff.", "5"],
-                      ] as [string, string][]
-                    ).map(([v, s]) => (
-                      <div
-                        key={s}
-                        className={`flex justify-between px-1 rounded ${String(liveDScore) === s.replace(" ★", "") ? "bg-blue-50 text-blue-600 font-semibold" : ""}`}
-                      >
-                        <span>{v}</span>
-                        <span>{s}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
-            )}
-          </div>
-          )}
-          {/* PLD scores — manual for STP; hidden entirely for Negotiation/Cash */}
-          {!isFlatType && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                PLD Scores
-              </p>
-              {isSourced && (
-                <p className="text-[10px] text-slate-400 text-right leading-relaxed">
-                  P &amp; L auto-calculated — set to override, clear to reset
-                </p>
-              )}
-            </div>
-            {isSourced && (
-              <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-[10.5px] text-blue-700 flex flex-wrap gap-3">
-                <span>
-                  Auto P: <strong>{_autoP ?? "—"}</strong>
-                </span>
-                <span>
-                  Auto L: <strong>{_autoL ?? "—"}</strong>
-                </span>
-                {(form.payback_score || form.lead_time_score) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      set("payback_score", "" as unknown as number);
-                      set("lead_time_score", "" as unknown as number);
-                    }}
-                    className="ml-auto text-blue-500 hover:text-blue-700 underline text-[10px]"
+              {/* Force priority override */}
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-[10.5px] font-semibold text-slate-500 shrink-0">
+                    Force priority:
+                  </span>
+                  <select
+                    className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
+                    value={form.forced_priority}
+                    onChange={(e) => set("forced_priority", e.target.value)}
                   >
-                    Reset P &amp; L to auto
-                  </button>
+                    <option value="">— auto (P×L×D) —</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+                {form.forced_priority ? (
+                  <p className="text-[10px] text-amber-600 flex items-center gap-1">
+                    <AlertTriangle size={10} /> Manual override active — PLD
+                    score ignored
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400">
+                    Auto: P×L×D ={" "}
+                    {pScore != null ? (
+                      <span className="font-semibold">{pScore}</span>
+                    ) : (
+                      "—"
+                    )}{" "}
+                    → <span className="font-semibold">{pCat ?? "—"}</span>
+                  </p>
                 )}
               </div>
-            )}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={label}>
-                  P — Pay-back
-                  <span className="ml-1 font-normal text-slate-400">
-                    (1 = quick)
-                  </span>
-                </label>
-                <select
-                  className={inp}
-                  value={form.payback_score ?? ""}
-                  onChange={(e) =>
-                    set("payback_score", e.target.value as unknown as number)
-                  }
-                >
-                  <option value="">— select —</option>
-                  <option value="1">1 — Immediate / &lt;1 mo.</option>
-                  <option value="2">2 — ≤2 months</option>
-                  <option value="3">3 — ≤4 months</option>
-                  <option value="4">4 — ≤12 months</option>
-                  <option value="5">5 — &gt;12 months</option>
-                </select>
-              </div>
-              <div>
-                <label className={label}>
-                  L — Lead-time
-                  <span className="ml-1 font-normal text-slate-400">
-                    (1 = fast)
-                  </span>
-                </label>
-                <select
-                  className={inp}
-                  value={form.lead_time_score ?? ""}
-                  onChange={(e) =>
-                    set("lead_time_score", e.target.value as unknown as number)
-                  }
-                >
-                  <option value="">— select —</option>
-                  <option value="1">1 — &lt;1 month</option>
-                  <option value="2">2 — &lt;2 months</option>
-                  <option value="3">3 — &lt;4 months</option>
-                  <option value="4">4 — &lt;6 months</option>
-                  <option value="5">5 — ≥6 months</option>
-                </select>
-              </div>
-              <div>
-                <label className={label}>
-                  D — Difficulty
-                  <span className="ml-1 font-normal text-slate-400">
-                    (1 = easy)
-                  </span>
-                </label>
-                <select
-                  className={inp}
-                  value={form.difficulty_score ?? ""}
-                  onChange={(e) =>
-                    set("difficulty_score", e.target.value as unknown as number)
-                  }
-                >
-                  <option value="">— select —</option>
-                  <option value="1">1 — Easy</option>
-                  <option value="2">2 — Relatively easy</option>
-                  <option value="3">3 — Moderately difficult</option>
-                  <option value="4">4 — Difficult</option>
-                  <option value="5">5 — Very Difficult</option>
-                </select>
-              </div>
             </div>
-            {/* Force priority override */}
-            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <span className="text-[10.5px] font-semibold text-slate-500 shrink-0">
-                  Force priority:
-                </span>
-                <select
-                  className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-300 bg-white"
-                  value={form.forced_priority}
-                  onChange={(e) => set("forced_priority", e.target.value)}
-                >
-                  <option value="">— auto (P×L×D) —</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-              </div>
-              {form.forced_priority ? (
-                <p className="text-[10px] text-amber-600 flex items-center gap-1">
-                  <AlertTriangle size={10} /> Manual override active — PLD score
-                  ignored
-                </p>
-              ) : (
-                <p className="text-[10px] text-slate-400">
-                  Auto: P×L×D ={" "}
-                  {pScore != null ? (
-                    <span className="font-semibold">{pScore}</span>
-                  ) : (
-                    "—"
-                  )}{" "}
-                  →{" "}
-                  <span className="font-semibold">{pCat ?? "—"}</span>
-                </p>
-              )}
-            </div>
-          </div>
           )}
           <div>
             <label className={label}>Comments</label>
@@ -3317,13 +3435,19 @@ function EditTab({
               </div>
 
               {/* Scope, customers, plants & annual quantities */}
-              <div className={`rounded-xl border bg-white p-3 space-y-3 ${gateHighlight && missingFlags.scope ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}>
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${gateHighlight && missingFlags.scope ? "text-rose-600" : "text-slate-400"}`}>
+              <div
+                className={`rounded-xl border bg-white p-3 space-y-3 ${gateHighlight && missingFlags.scope ? "border-2 border-rose-500 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]" : "border-slate-200"}`}
+              >
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-widest ${gateHighlight && missingFlags.scope ? "text-rose-600" : "text-slate-400"}`}
+                >
                   Scope &amp; Customers
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={hiLabel(missingFlags.scopeIn)}>Scope IN (part numbers)</label>
+                    <label className={hiLabel(missingFlags.scopeIn)}>
+                      Scope IN (part numbers)
+                    </label>
                     <input
                       disabled={locked}
                       className={`${hi(missingFlags.scopeIn)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
@@ -3343,7 +3467,9 @@ function EditTab({
                     />
                   </div>
                   <div>
-                    <label className={hiLabel(missingFlags.customers)}>Customers</label>
+                    <label className={hiLabel(missingFlags.customers)}>
+                      Customers
+                    </label>
                     <input
                       className={hi(missingFlags.customers)}
                       placeholder="Valeo, Multipe..."
@@ -3393,21 +3519,22 @@ function EditTab({
                         ["annual_quantity_n4", "N4"],
                       ] as [string, string][]
                     ).map(([k, lbl]) => {
-                      const isMissing = k === "annual_quantity_n1" && missingFlags.quantity;
+                      const isMissing =
+                        k === "annual_quantity_n1" && missingFlags.quantity;
                       return (
-                      <div key={k}>
-                        <label className={hiLabel(isMissing)}>{lbl}</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          disabled={locked}
-                          className={`${hi(isMissing)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
-                          value={fmtIntInput(
-                            form[k as keyof typeof form] as string,
-                          )}
-                          onChange={(e) => set(k, stripInt(e.target.value))}
-                        />
-                      </div>
+                        <div key={k}>
+                          <label className={hiLabel(isMissing)}>{lbl}</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            disabled={locked}
+                            className={`${hi(isMissing)} ${locked ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""}`}
+                            value={fmtIntInput(
+                              form[k as keyof typeof form] as string,
+                            )}
+                            onChange={(e) => set(k, stripInt(e.target.value))}
+                          />
+                        </div>
                       );
                     })}
                   </div>
@@ -3679,7 +3806,8 @@ function EditTab({
                             <td key={k} className="px-3 py-1.5">
                               <select
                                 className={hiCell(
-                                  k === "incoterms_before" && missingFlags.incoterms
+                                  k === "incoterms_before" &&
+                                    missingFlags.incoterms,
                                 )}
                                 value={form[k as keyof typeof form] as string}
                                 onChange={(e) => set(k, e.target.value)}
@@ -3692,7 +3820,7 @@ function EditTab({
                                 ))}
                               </select>
                             </td>
-                          )
+                          ),
                         )}
                       </tr>
                       {/* Place of Incoterms — free text (e.g. named port/place) */}
@@ -3749,27 +3877,27 @@ function EditTab({
                         const rowMissing =
                           kb === "incoterms_before" && missingFlags.incoterms;
                         return (
-                        <tr key={kb} className="border-t border-slate-100">
-                          <td className="px-3 py-1.5 font-semibold text-slate-500">
-                            {lbl}
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <input
-                              className={hiCell(rowMissing)}
-                              placeholder={ph1}
-                              value={form[kb as keyof typeof form] as string}
-                              onChange={(e) => set(kb, e.target.value)}
-                            />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <input
-                              className={hiCell(rowMissing)}
-                              placeholder={ph2}
-                              value={form[ka as keyof typeof form] as string}
-                              onChange={(e) => set(ka, e.target.value)}
-                            />
-                          </td>
-                        </tr>
+                          <tr key={kb} className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 font-semibold text-slate-500">
+                              {lbl}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <input
+                                className={hiCell(rowMissing)}
+                                placeholder={ph1}
+                                value={form[kb as keyof typeof form] as string}
+                                onChange={(e) => set(kb, e.target.value)}
+                              />
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <input
+                                className={hiCell(rowMissing)}
+                                placeholder={ph2}
+                                value={form[ka as keyof typeof form] as string}
+                                onChange={(e) => set(ka, e.target.value)}
+                              />
+                            </td>
+                          </tr>
                         );
                       })}
                       {/* Consignment — Yes/No selects (needed for inventory gap formula) */}
@@ -3828,39 +3956,41 @@ function EditTab({
                         const rowMissing =
                           kb === "current_price" && missingFlags.prices;
                         return (
-                        <tr key={ka} className="border-t border-slate-100">
-                          <td className="px-3 py-1.5 font-semibold text-slate-500">
-                            {lbl}
-                          </td>
-                          <td className="px-3 py-1.5">
-                            {kb ? (
+                          <tr key={ka} className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 font-semibold text-slate-500">
+                              {lbl}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              {kb ? (
+                                <input
+                                  type="number"
+                                  step="0.000001"
+                                  disabled={locked}
+                                  className={`${hiCell(rowMissing)} ${locked ? "bg-slate-100" : ""}`}
+                                  placeholder={ph1}
+                                  value={
+                                    form[kb as keyof typeof form] as string
+                                  }
+                                  onChange={(e) => set(kb, e.target.value)}
+                                />
+                              ) : (
+                                <span className="text-slate-300 text-[10px]">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5">
                               <input
                                 type="number"
                                 step="0.000001"
                                 disabled={locked}
                                 className={`${hiCell(rowMissing)} ${locked ? "bg-slate-100" : ""}`}
-                                placeholder={ph1}
-                                value={form[kb as keyof typeof form] as string}
-                                onChange={(e) => set(kb, e.target.value)}
+                                placeholder={ph2}
+                                value={form[ka as keyof typeof form] as string}
+                                onChange={(e) => set(ka, e.target.value)}
                               />
-                            ) : (
-                              <span className="text-slate-300 text-[10px]">
-                                —
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <input
-                              type="number"
-                              step="0.000001"
-                              disabled={locked}
-                              className={`${hiCell(rowMissing)} ${locked ? "bg-slate-100" : ""}`}
-                              placeholder={ph2}
-                              value={form[ka as keyof typeof form] as string}
-                              onChange={(e) => set(ka, e.target.value)}
-                            />
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
                         );
                       })}
                     </tbody>
@@ -3890,7 +4020,16 @@ function EditTab({
               </FormSection>
 
               {/* Risks */}
-              <FormSection title="Risks" highlight={gateHighlight && !(opp.stp_risks?.material_indexation_before && opp.stp_risks?.material_indexation_after)}>
+              <FormSection
+                title="Risks"
+                highlight={
+                  gateHighlight &&
+                  !(
+                    opp.stp_risks?.material_indexation_before &&
+                    opp.stp_risks?.material_indexation_after
+                  )
+                }
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs border-collapse">
                     <thead>
@@ -4026,7 +4165,13 @@ function EditTab({
               </FormSection>
 
               {/* Benefits */}
-              <FormSection title="Benefits" highlight={gateHighlight && !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not)}>
+              <FormSection
+                title="Benefits"
+                highlight={
+                  gateHighlight &&
+                  !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not)
+                }
+              >
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={label}>If we do</label>
@@ -4209,7 +4354,12 @@ function EditTab({
               </div>
 
               {/* Planning */}
-              <FormSection title="Estimated Planning (weeks)" highlight={gateHighlight && !(opp.phase1_weeks && opp.phase1_weeks > 0)}>
+              <FormSection
+                title="Estimated Planning (weeks)"
+                highlight={
+                  gateHighlight && !(opp.phase1_weeks && opp.phase1_weeks > 0)
+                }
+              >
                 <div>
                   <label className={label}>Phase 1 Starting Date</label>
                   <input
@@ -4419,8 +4569,8 @@ function EditTab({
                 <p className="text-xs text-slate-500">
                   Enter only the values you want to change — leave the rest
                   blank. They will be sent to the Purchasing Director and VP
-                  Conversion for approval; current figures remain active until
-                  a Director approves.
+                  Conversion for approval; current figures remain active until a
+                  Director approves.
                 </p>
 
                 {(() => {
@@ -4442,9 +4592,7 @@ function EditTab({
                         step="0.0001"
                         className={revInp}
                         placeholder={
-                          current != null
-                            ? `Current: ${current}`
-                            : "New value"
+                          current != null ? `Current: ${current}` : "New value"
                         }
                         value={stpRevForm[key]}
                         onChange={(e) => setRev(key, e.target.value)}
@@ -4463,9 +4611,7 @@ function EditTab({
                         step="1"
                         className={revInp}
                         placeholder={
-                          current != null
-                            ? `Current: ${current}`
-                            : "New value"
+                          current != null ? `Current: ${current}` : "New value"
                         }
                         value={stpRevForm[key]}
                         onChange={(e) => setRev(key, e.target.value)}
@@ -4749,7 +4895,12 @@ function GateTab({
   // picker (Negotiation single-approver + committee required-approver rows
   // for these two roles) is a select instead of a free-text email field.
   const [approverAccounts, setApproverAccounts] = useState<
-    { id_identity: number; full_name: string; email: string; access_profile: string }[]
+    {
+      id_identity: number;
+      full_name: string;
+      email: string;
+      access_profile: string;
+    }[]
   >([]);
   useEffect(() => {
     supplierAPI
@@ -4769,7 +4920,9 @@ function GateTab({
     );
   // Sourcing committee approval request (Phase 1-4)
   const [committeeLevel, setCommitteeLevel] = useState<CommitteeLevel | "">("");
-  const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
+  const [approverEmails, setApproverEmails] = useState<Record<string, string>>(
+    {},
+  );
   const [showOptionalApprovers, setShowOptionalApprovers] = useState(false);
   const [approvalRequests, setApprovalRequests] = useState<
     {
@@ -4922,11 +5075,18 @@ function GateTab({
         committeeLevel ||
         (opp.phase_status !== "Phase 1" ? "Light" : "");
       if (!tier) {
-        setApprovalError("Select a committee level (Light, Intermediate or Full).");
+        setApprovalError(
+          "Select a committee level (Light, Intermediate or Full).",
+        );
         return;
       }
-      const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier as CommitteeLevel);
-      const missing = mandatoryRoles.filter((r) => !(approverEmails[r] ?? "").trim());
+      const mandatoryRoles = mandatoryRolesForPhase(
+        opp.phase_status,
+        tier as CommitteeLevel,
+      );
+      const missing = mandatoryRoles.filter(
+        (r) => !(approverEmails[r] ?? "").trim(),
+      );
       if (missing.length) {
         setApprovalError(`Missing required approver(s): ${missing.join(", ")}`);
         return;
@@ -4991,7 +5151,13 @@ function GateTab({
     opp.phase_status === "Phase 0";
   const inp =
     "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
-  const GATE_ELIGIBLE_PHASES = ["Phase 0", "Phase 1", "Phase 2", "Phase 3", "Phase 4"];
+  const GATE_ELIGIBLE_PHASES = [
+    "Phase 0",
+    "Phase 1",
+    "Phase 2",
+    "Phase 3",
+    "Phase 4",
+  ];
   // Negotiation skips Phase 2 entirely — Phase 1 Go lands directly on Phase 3.
   const NEXT_GATE_PHASE: Record<string, string> = {
     "Phase 0": "Phase 1",
@@ -5241,7 +5407,8 @@ function GateTab({
               </span>
             )}
             <span className="text-[10px] text-amber-500">
-              Gate: {opp.phase_status} → {NEXT_GATE_PHASE[opp.phase_status ?? ""] ?? "next phase"}
+              Gate: {opp.phase_status} →{" "}
+              {NEXT_GATE_PHASE[opp.phase_status ?? ""] ?? "next phase"}
             </span>
           </div>
 
@@ -5252,7 +5419,8 @@ function GateTab({
               <div className="rounded-xl border border-amber-200 bg-white p-3 space-y-1.5">
                 <p className="text-[10.5px] font-bold text-amber-700 flex items-center gap-1.5">
                   <AlertTriangle size={11} /> {phase0Missing.length} item
-                  {phase0Missing.length > 1 ? "s" : ""} missing before submission:
+                  {phase0Missing.length > 1 ? "s" : ""} missing before
+                  submission:
                 </p>
                 {phase0Missing.map((c, i) => (
                   <p
@@ -5265,14 +5433,14 @@ function GateTab({
               </div>
             ) : (
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700 flex items-center gap-1.5">
-                <CheckCircle2 size={11} /> All checks passed — ready to submit to
-                PM
+                <CheckCircle2 size={11} /> All checks passed — ready to submit
+                to PM
               </div>
             )
           ) : (
             <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] text-emerald-700 flex items-center gap-1.5">
-              <CheckCircle2 size={11} /> Ready to request the {opp.phase_status}
-              {" "}gate approval.
+              <CheckCircle2 size={11} /> Ready to request the {opp.phase_status}{" "}
+              gate approval.
             </div>
           )}
 
@@ -5347,10 +5515,12 @@ function GateTab({
                   <>
                     <div>
                       <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                        Plant Manager email <span className="text-red-500">*</span>
+                        Plant Manager email{" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <p className="text-[10px] text-slate-400 mb-1">
-                        Will vote and designate the Project Manager upon approval.
+                        Will vote and designate the Project Manager upon
+                        approval.
                       </p>
                       <input
                         type="email"
@@ -5372,7 +5542,9 @@ function GateTab({
                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                         placeholder="purchasing@avocarbon.com, director@avocarbon.com"
                         value={purchasingManagerEmails}
-                        onChange={(e) => setPurchasingManagerEmails(e.target.value)}
+                        onChange={(e) =>
+                          setPurchasingManagerEmails(e.target.value)
+                        }
                       />
                     </div>
                   </>
@@ -5441,17 +5613,20 @@ function GateTab({
                         roles are mandatory there, see mandatoryRolesForPhase), so
                         we skip straight to Required approvers / Add optional
                         reviewers instead of showing the tier picker or badge again. */}
-                    {opp.phase_status === "Phase 1" && (
-                      opp.committee_level ? (
+                    {opp.phase_status === "Phase 1" &&
+                      (opp.committee_level ? (
                         <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
                           Committee level locked at{" "}
-                          <span className="font-bold text-slate-800">{opp.committee_level}</span>{" "}
+                          <span className="font-bold text-slate-800">
+                            {opp.committee_level}
+                          </span>{" "}
                           (chosen at Phase 1).
                         </div>
                       ) : (
                         <div>
                           <label className="mb-1 block text-[10.5px] font-semibold text-slate-600">
-                            Committee level <span className="text-red-500">*</span>
+                            Committee level{" "}
+                            <span className="text-red-500">*</span>
                           </label>
                           <div className="flex gap-2">
                             {COMMITTEE_LEVELS.map((lvl) => (
@@ -5470,8 +5645,7 @@ function GateTab({
                             ))}
                           </div>
                         </div>
-                      )
-                    )}
+                      ))}
 
                     {(() => {
                       // Phase 2-4 don't need a tier to determine mandatory roles
@@ -5485,7 +5659,10 @@ function GateTab({
                         | CommitteeLevel
                         | "";
                       if (!tier) return null;
-                      const mandatoryRoles = mandatoryRolesForPhase(opp.phase_status, tier);
+                      const mandatoryRoles = mandatoryRolesForPhase(
+                        opp.phase_status,
+                        tier,
+                      );
                       const optionalRoles = ALL_ROLES.filter(
                         (r) => !mandatoryRoles.includes(r),
                       );
@@ -5498,7 +5675,10 @@ function GateTab({
                                 : `Required approvers — ${opp.phase_status}`}
                             </p>
                             {mandatoryRoles.map((role) => (
-                              <div key={role} className="flex items-center gap-2">
+                              <div
+                                key={role}
+                                className="flex items-center gap-2"
+                              >
                                 <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
                                   {role} <span className="text-red-500">*</span>
                                 </span>
@@ -5507,12 +5687,18 @@ function GateTab({
                                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                     value={approverEmails[role] ?? ""}
                                     onChange={(e) =>
-                                      setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                      setApproverEmails((m) => ({
+                                        ...m,
+                                        [role]: e.target.value,
+                                      }))
                                     }
                                   >
                                     <option value="">— select {role} —</option>
                                     {accountsForRole(role).map((a) => (
-                                      <option key={a.id_identity} value={a.email}>
+                                      <option
+                                        key={a.id_identity}
+                                        value={a.email}
+                                      >
                                         {a.full_name} ({a.email})
                                       </option>
                                     ))}
@@ -5524,7 +5710,10 @@ function GateTab({
                                     placeholder="name@avocarbon.com"
                                     value={approverEmails[role] ?? ""}
                                     onChange={(e) =>
-                                      setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                      setApproverEmails((m) => ({
+                                        ...m,
+                                        [role]: e.target.value,
+                                      }))
                                     }
                                   />
                                 )}
@@ -5534,15 +5723,21 @@ function GateTab({
                           <div>
                             <button
                               type="button"
-                              onClick={() => setShowOptionalApprovers((s) => !s)}
+                              onClick={() =>
+                                setShowOptionalApprovers((s) => !s)
+                              }
                               className="text-[11px] font-semibold text-amber-600 hover:underline"
                             >
-                              {showOptionalApprovers ? "Hide" : "+ Add"} optional reviewers
+                              {showOptionalApprovers ? "Hide" : "+ Add"}{" "}
+                              optional reviewers
                             </button>
                             {showOptionalApprovers && (
                               <div className="mt-2 space-y-2">
                                 {optionalRoles.map((role) => (
-                                  <div key={role} className="flex items-center gap-2">
+                                  <div
+                                    key={role}
+                                    className="flex items-center gap-2"
+                                  >
                                     <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
                                       {role}
                                     </span>
@@ -5551,12 +5746,20 @@ function GateTab({
                                         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                         value={approverEmails[role] ?? ""}
                                         onChange={(e) =>
-                                          setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                          setApproverEmails((m) => ({
+                                            ...m,
+                                            [role]: e.target.value,
+                                          }))
                                         }
                                       >
-                                        <option value="">— select {role} (optional) —</option>
+                                        <option value="">
+                                          — select {role} (optional) —
+                                        </option>
                                         {accountsForRole(role).map((a) => (
-                                          <option key={a.id_identity} value={a.email}>
+                                          <option
+                                            key={a.id_identity}
+                                            value={a.email}
+                                          >
                                             {a.full_name} ({a.email})
                                           </option>
                                         ))}
@@ -5568,7 +5771,10 @@ function GateTab({
                                         placeholder="name@avocarbon.com (optional)"
                                         value={approverEmails[role] ?? ""}
                                         onChange={(e) =>
-                                          setApproverEmails((m) => ({ ...m, [role]: e.target.value }))
+                                          setApproverEmails((m) => ({
+                                            ...m,
+                                            [role]: e.target.value,
+                                          }))
                                         }
                                       />
                                     )}
@@ -5776,7 +5982,8 @@ function GateTab({
       {isAwaitingGate && allGateApproved && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs">
           <p className="font-bold flex items-center gap-1.5 text-emerald-700">
-            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply Gate
+            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply
+            Gate
           </p>
           <p className="mt-0.5 text-emerald-600">
             All reviewers have given their Go. Click{" "}
@@ -5804,7 +6011,8 @@ function GateTab({
       {isUnderCommittee && allGateApproved && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs">
           <p className="font-bold flex items-center gap-1.5 text-emerald-700">
-            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply Gate
+            <CheckCircle2 size={12} /> All Approvers Validated — Ready to Apply
+            Gate
           </p>
           <p className="mt-0.5 text-emerald-600">
             All reviewers have given their Go. Click{" "}
@@ -6706,7 +6914,9 @@ function FinancialTab({
                           step="0.0001"
                           className={revInp}
                           placeholder={
-                            current != null ? `Current: ${current}` : "New value"
+                            current != null
+                              ? `Current: ${current}`
+                              : "New value"
                           }
                           value={reviseForm[key]}
                           onChange={(e) => setRev(key, e.target.value)}
@@ -6725,7 +6935,9 @@ function FinancialTab({
                           step="1"
                           className={revInp}
                           placeholder={
-                            current != null ? `Current: ${current}` : "New value"
+                            current != null
+                              ? `Current: ${current}`
+                              : "New value"
                           }
                           value={reviseForm[key]}
                           onChange={(e) => setRev(key, e.target.value)}
@@ -6819,21 +7031,22 @@ function FinancialTab({
                         }))
                       }
                     />
-                    {reviseForm.revised_saving && line.expected_annual_saving && (
-                      <p
-                        className={`text-[10px] mt-0.5 ${parseFloat(reviseForm.revised_saving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
-                      >
-                        {parseFloat(reviseForm.revised_saving) <
-                        Number(line.expected_annual_saving)
-                          ? "▼"
-                          : "▲"}{" "}
-                        Change: €
-                        {Math.abs(
-                          parseFloat(reviseForm.revised_saving) -
-                            Number(line.expected_annual_saving),
-                        ).toLocaleString("en-GB")}
-                      </p>
-                    )}
+                    {reviseForm.revised_saving &&
+                      line.expected_annual_saving && (
+                        <p
+                          className={`text-[10px] mt-0.5 ${parseFloat(reviseForm.revised_saving) < Number(line.expected_annual_saving) ? "text-amber-600" : "text-emerald-600"}`}
+                        >
+                          {parseFloat(reviseForm.revised_saving) <
+                          Number(line.expected_annual_saving)
+                            ? "▼"
+                            : "▲"}{" "}
+                          Change: €
+                          {Math.abs(
+                            parseFloat(reviseForm.revised_saving) -
+                              Number(line.expected_annual_saving),
+                          ).toLocaleString("en-GB")}
+                        </p>
+                      )}
                   </div>
                 )}
                 <div>
@@ -6890,9 +7103,7 @@ function FinancialTab({
                   <div className="flex items-center justify-between text-slate-500">
                     <span>
                       {e.revised_at
-                        ? new Date(String(e.revised_at)).toLocaleString(
-                            "en-GB",
-                          )
+                        ? new Date(String(e.revised_at)).toLocaleString("en-GB")
                         : "—"}{" "}
                       · <strong>{String(e.revised_by ?? "unknown")}</strong>
                     </span>
@@ -6905,8 +7116,10 @@ function FinancialTab({
                     {Number(
                       prevComputed.expected_annual_saving ?? 0,
                     ).toLocaleString("en-GB")}{" "}
-                    → <strong>
-                      €{Number(
+                    →{" "}
+                    <strong>
+                      €
+                      {Number(
                         newComputed.expected_annual_saving ?? 0,
                       ).toLocaleString("en-GB")}
                     </strong>
@@ -7443,7 +7656,11 @@ function FinancialTab({
               <button
                 type="button"
                 onClick={() => {
-                  setCashAmount(cashRow.cash_actual?.toString() ?? cashRow.cash_expected?.toString() ?? "");
+                  setCashAmount(
+                    cashRow.cash_actual?.toString() ??
+                      cashRow.cash_expected?.toString() ??
+                      "",
+                  );
                   setShowCashEntry((s) => !s);
                 }}
                 className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
@@ -7491,9 +7708,9 @@ function FinancialTab({
             </form>
           )}
           <p className="mt-2 text-[10px] text-amber-500">
-            Exceptional case: if this cash is actually realized gradually
-            across several months instead of at once, edit the "Cash Act."
-            cell for each month directly in the table below.
+            Exceptional case: if this cash is actually realized gradually across
+            several months instead of at once, edit the "Cash Act." cell for
+            each month directly in the table below.
           </p>
         </div>
       )}
@@ -7772,15 +7989,23 @@ function FinancialTab({
                           <span>{row.comment}</span>
                           {(row.updated_by || row.updated_at) && (
                             <div className="text-[9.5px] text-slate-300">
-                              Last update {row.updated_by ? `by ${row.updated_by}` : "saved"}
-                              {row.updated_at ? ` | ${fmtDate(row.updated_at)}` : ""}
+                              Last update{" "}
+                              {row.updated_by
+                                ? `by ${row.updated_by}`
+                                : "saved"}
+                              {row.updated_at
+                                ? ` | ${fmtDate(row.updated_at)}`
+                                : ""}
                             </div>
                           )}
                         </div>
                       ) : row.updated_by || row.updated_at ? (
                         <span className="text-[9.5px] text-slate-300">
-                          Last update {row.updated_by ? `by ${row.updated_by}` : "saved"}
-                          {row.updated_at ? ` | ${fmtDate(row.updated_at)}` : ""}
+                          Last update{" "}
+                          {row.updated_by ? `by ${row.updated_by}` : "saved"}
+                          {row.updated_at
+                            ? ` | ${fmtDate(row.updated_at)}`
+                            : ""}
                         </span>
                       ) : (
                         <span className="text-slate-200">-</span>
@@ -8015,7 +8240,9 @@ function FilesTab({
                 </div>
                 {(doc.uploaded_by || doc.created_at) && (
                   <p className="mt-1 text-[10px] text-slate-400">
-                    {doc.uploaded_by ? `Uploaded by ${doc.uploaded_by}` : "Uploaded"}
+                    {doc.uploaded_by
+                      ? `Uploaded by ${doc.uploaded_by}`
+                      : "Uploaded"}
                     {doc.created_at ? ` | ${fmtDate(doc.created_at)}` : ""}
                   </p>
                 )}
@@ -9281,7 +9508,10 @@ function FullReportDownloadButton({
     setLoading(true);
     setError(false);
     try {
-      await supplierAPI.downloadFullReportPdf(opportunityId, oppName ?? undefined);
+      await supplierAPI.downloadFullReportPdf(
+        opportunityId,
+        oppName ?? undefined,
+      );
     } catch {
       setError(true);
       setTimeout(() => setError(false), 3000);
@@ -10092,7 +10322,9 @@ export default function PurchasingValuePage() {
   const [filterType, setFilterType] = useState(initialFilters.filterType);
   const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus);
   const [filterBudget, setFilterBudget] = useState(initialFilters.filterBudget);
-  const [filterPriority, setFilterPriority] = useState(initialFilters.filterPriority);
+  const [filterPriority, setFilterPriority] = useState(
+    initialFilters.filterPriority,
+  );
   const [filterPlant, setFilterPlant] = useState(initialFilters.filterPlant);
   const [filterPM, setFilterPM] = useState(initialFilters.filterPM);
   const [filterPurchasingOwner, setFilterPurchasingOwner] = useState(
@@ -10382,7 +10614,9 @@ export default function PurchasingValuePage() {
     setSelected(u);
   }
   function handleDeleted(opportunityId: number) {
-    setOpportunities((p) => p.filter((o) => o.opportunity_id !== opportunityId));
+    setOpportunities((p) =>
+      p.filter((o) => o.opportunity_id !== opportunityId),
+    );
     setSelected(null);
   }
   function handleDuplicated(o: Opp) {

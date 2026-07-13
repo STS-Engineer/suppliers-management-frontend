@@ -1670,6 +1670,7 @@ class SupplierOnboardingAPI {
     opportunity_name: string;
     opportunity_type: string;
     saving_nature?: string;
+    entry_mode?: string;
     idea_owner: string;
     description?: string;
     plant_id?: number;
@@ -1775,6 +1776,7 @@ class SupplierOnboardingAPI {
       // Core
       opportunity_name?: string;
       saving_nature?: string;
+      entry_mode?: string;
       description?: string;
       assumptions_summary?: string;
       comments?: string;
