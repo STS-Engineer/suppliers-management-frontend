@@ -1375,6 +1375,22 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async cancelRelationDevelopmentPlan(
+    relationId: number,
+    planId: number,
+    data?: { changed_by?: string; reason?: string },
+  ) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/development-plans/${planId}/cancel`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data || {}),
+      },
+      "Failed to cancel the supplier development plan.",
+    );
+  }
+
   async sendRelationDevelopmentPlanRequest(
     relationId: number,
     planId: number,
