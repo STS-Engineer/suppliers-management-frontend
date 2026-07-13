@@ -171,6 +171,7 @@ interface Opp {
   opportunity_id: number;
   opportunity_name?: string;
   opportunity_type?: string;
+  saving_nature?: string;
   description?: string;
   status?: string;
   phase_status?: string;
@@ -263,6 +264,10 @@ interface Opp {
   saving_year_n3?: number;
   // Calendar-year prorated estimate {"2026": 1234.56, ...} (start-date aware)
   saving_by_year?: Record<string, number>;
+  // Total multi-year gain (== period_saving) — the "value of opportunity"
+  value_of_opportunity?: number;
+  // Incremental year-over-year price drop per calendar year — what actually gets budgeted
+  saving_to_budget_by_year?: Record<string, number>;
   // Per-fiscal-year budget records (budgeting module)
   budget_years?: {
     id: number;
@@ -627,6 +632,7 @@ function CreateModal({
   const [form, setForm] = useState({
     opportunity_name: "",
     opportunity_type: "Sourcing",
+    saving_nature: "",
     idea_owner: userEmail,
     description: "",
     plant_id: "",
@@ -715,6 +721,20 @@ function CreateModal({
               {TYPES.map((t) => (
                 <option key={t}>{t}</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Saving nature
+            </label>
+            <select
+              className={inp}
+              value={form.saving_nature}
+              onChange={(e) => set("saving_nature", e.target.value)}
+            >
+              <option value="">— Not classified —</option>
+              <option value="Hard">Hard — cost reduction (P&amp;L / EBITDA impact)</option>
+              <option value="Soft">Soft — cost avoidance</option>
             </select>
           </div>
           {needsPlant && (
@@ -961,7 +981,7 @@ function OverviewTab({ opp }: { opp: Opp }) {
           )}
           {opp.period_saving != null && (
             <InfoRow
-              label="Period Saving (Years N to N+3)"
+              label="Value of Opportunity (total gain N→N+3)"
               value={`${fmt(Number(opp.period_saving), cur)}${opp.roi_period_percent != null ? ` (ROI: ${opp.roi_period_percent}%)` : ""}`}
             />
           )}
@@ -979,14 +999,16 @@ function OverviewTab({ opp }: { opp: Opp }) {
               />
             ) : null,
           )}
-          {opp.saving_by_year &&
-            Object.entries(opp.saving_by_year)
+          {/* Saving à budgéter — incremental year-over-year drop that actually gets
+              budgeted. "budget = Oui" when the year carries a non-zero increment. */}
+          {opp.saving_to_budget_by_year &&
+            Object.entries(opp.saving_to_budget_by_year)
               .sort(([a], [b]) => Number(a) - Number(b))
               .map(([yr, val]) => (
                 <InfoRow
-                  key={`cy-${yr}`}
-                  label={`Est. Saving Budget ${yr}`}
-                  value={fmt(Number(val), cur)}
+                  key={`stb-${yr}`}
+                  label={`Saving à budgéter ${yr}`}
+                  value={`${fmt(Number(val), cur)} — budget : ${Math.abs(Number(val)) >= 0.005 ? "Oui" : "Non (0)"}`}
                 />
               ))}
           {opp.budget_years && opp.budget_years.length > 0 && (
@@ -1347,6 +1369,7 @@ function EditTab({
 
   const [form, setForm] = useState({
     opportunity_name: opp.opportunity_name ?? "",
+    saving_nature: opp.saving_nature ?? "",
     description: opp.description ?? "",
     // Strip Python Decimal trailing zeros ("12.00"→"12", "2700.00"→"2700")
     // Prevents French locale browser rendering "12,00" in number inputs
@@ -1918,18 +1941,45 @@ function EditTab({
           if (!form.proposed_supplier_name) {
             missing.push("Proposed supplier name");
           }
-          if (
-            !form.annual_quantity_n1 ||
-            parseInt(form.annual_quantity_n1) <= 0
-          ) {
-            missing.push("Quantity (Year N)");
-          }
-          if (!form.current_price || parseFloat(form.current_price) <= 0) {
-            missing.push("Current Price");
-          }
-          if (!form.proposed_price || parseFloat(form.proposed_price) <= 0) {
-            missing.push("Proposed Price");
-          }
+          // All four years of quantity + current price + proposed price are required
+          // (Olivier, call 2026-07-10): the per-year saving and the "saving à budgéter"
+          // only make sense with every year filled in.
+          const yrLabels = ["N", "N+1", "N+2", "N+3"];
+          const qtyFields = [
+            form.annual_quantity_n1,
+            form.annual_quantity_n2,
+            form.annual_quantity_n3,
+            form.annual_quantity_n4,
+          ];
+          const currentPriceFields = [
+            form.current_price,
+            form.current_price_n1,
+            form.current_price_n2,
+            form.current_price_n3,
+          ];
+          const proposedPriceFields = [
+            form.proposed_price,
+            form.proposed_price_n1,
+            form.proposed_price_n2,
+            form.proposed_price_n3,
+          ];
+          yrLabels.forEach((lbl, i) => {
+            if (!qtyFields[i] || parseInt(qtyFields[i]) <= 0) {
+              missing.push(`Quantity (Year ${lbl})`);
+            }
+            if (
+              !currentPriceFields[i] ||
+              parseFloat(currentPriceFields[i]) <= 0
+            ) {
+              missing.push(`Current Price (Year ${lbl})`);
+            }
+            if (
+              !proposedPriceFields[i] ||
+              parseFloat(proposedPriceFields[i]) <= 0
+            ) {
+              missing.push(`Proposed Price (Year ${lbl})`);
+            }
+          });
         }
       }
 
@@ -1994,6 +2044,7 @@ function EditTab({
     try {
       const res = await supplierAPI.updateOpportunity(opp.opportunity_id, {
         opportunity_name: form.opportunity_name || undefined,
+        saving_nature: form.saving_nature || undefined,
         description: form.description || undefined,
         expected_annual_saving: form.expected_annual_saving
           ? parseFloat(form.expected_annual_saving)
@@ -2310,6 +2361,18 @@ function EditTab({
             onChange={(e) => set("description", e.target.value)}
           />
         </div>
+        <div className="order-3">
+          <label className={label}>Saving nature</label>
+          <select
+            className={inp}
+            value={form.saving_nature}
+            onChange={(e) => set("saving_nature", e.target.value)}
+          >
+            <option value="">— Not classified —</option>
+            <option value="Hard">Hard — cost reduction (P&amp;L / EBITDA impact)</option>
+            <option value="Soft">Soft — cost avoidance</option>
+          </select>
+        </div>
         {/* Other fields (baseline + alerts + PLD) — shown AFTER the STP study */}
         <div className="order-4 flex flex-col gap-4">
           {/* ---- FINANCIAL BASELINE (locked once Budgeted) ---- */}
@@ -2431,6 +2494,11 @@ function EditTab({
                     </span>
                   </p>
                 )}
+                <p className="mt-1 text-[10.5px] text-amber-600">
+                  For STP opportunities the duration is recomputed on save from the
+                  yearly prices (flat price → 12 months; each further year of price
+                  change → +12).
+                </p>
               </div>
               <div>
                 <label className={hiLabel(!opp.planned_start_date)}>

@@ -80,6 +80,13 @@ interface TypeRow {
   ytd_rate_pct: number | null;
   eoy_vs_expected_pct: number | null;
 }
+interface NatureRow {
+  saving_nature: string; opp_count: number; validated_count: number;
+  expected_annual: number; actual_ytd: number; expected_ytd: number;
+  delta_ytd: number; eoy_forecast: number;
+  ytd_rate_pct: number | null;
+  eoy_vs_expected_pct: number | null;
+}
 interface GateRate { phase: string; decided: number; go: number; no_go: number; rate: number | null; }
 interface YearSplit { year: number; expected: number; actual: number; ytd_rate_pct: number | null; }
 interface MissingUpdate { financial_line_id: number; line_name: string; opportunity_name: string; follower: string; missing_months: string[]; missing_count: number; }
@@ -105,7 +112,7 @@ interface KpiData {
   available_filters?: AvailableFilters;
   gate_go_rates?: GateRate[];
   kpis: Kpis; monthly_actuals: MonthlyPoint[];
-  by_plant: PlantRow[]; by_supplier: SupplierRow[]; by_type: TypeRow[]; by_buyer: BuyerRow[];
+  by_plant: PlantRow[]; by_supplier: SupplierRow[]; by_type: TypeRow[]; by_saving_nature: NatureRow[]; by_buyer: BuyerRow[];
   year_split: YearSplit[]; late_projects: LateProject[];
   missing_updates: MissingUpdate[]; escalated: EscalatedLine[];
 }
@@ -125,6 +132,12 @@ const C = {
 const TYPE_PALETTE: Record<string, typeof C.indigo> = {
   Negotiation: C.violet, Sourcing: C.sky,
   "Technical Productivity": C.emerald, Cash: C.amber,
+};
+
+// Hard = real cost reduction (P&L / EBITDA impact) → emerald; Soft = cost
+// avoidance → sky; Unclassified → amber (draws attention to classify).
+const NATURE_PALETTE: Record<string, typeof C.indigo> = {
+  Hard: C.emerald, Soft: C.sky, Unclassified: C.amber,
 };
 
 const fmt = (n?: number | null) =>
@@ -902,7 +915,7 @@ export default function PurchasingKpiPage() {
     categories: initialFilters.categories,
     buyers: initialFilters.buyers,
   });
-  const [tab, setTab] = useState<"monthly" | "plant" | "supplier" | "type" | "buyer" | "alerts">("monthly");
+  const [tab, setTab] = useState<"monthly" | "plant" | "supplier" | "type" | "nature" | "buyer" | "alerts">("monthly");
 
   useEffect(() => {
     savePersistedFilters<PersistedKpiFilters>(KPI_FILTERS_PAGE_KEY, userEmail, {
@@ -947,7 +960,7 @@ export default function PurchasingKpiPage() {
   );
   if (!data) return null;
 
-  const { kpis, monthly_actuals, by_plant, by_supplier, by_type, by_buyer, late_projects, missing_updates, escalated } = data;
+  const { kpis, monthly_actuals, by_plant, by_supplier, by_type, by_saving_nature, by_buyer, late_projects, missing_updates, escalated } = data;
   const avail = data.available_filters;
   const hasFilters = filters.plantIds.length > 0 || filters.categories.length > 0 || filters.buyers.length > 0;
   const totalAlerts = kpis.escalated_count + kpis.late_projects_count + kpis.missing_update_lines;
@@ -961,6 +974,7 @@ export default function PurchasingKpiPage() {
     { id: "plant"    as const, label: "By Plant",           icon: <FolderOpen size={13} /> },
     { id: "supplier" as const, label: `Top 10 Suppliers${by_supplier?.length > 0 ? ` (${by_supplier.length})` : ""}`, icon: <Package size={13} /> },
     { id: "type"     as const, label: "By Type",            icon: <Zap size={13} /> },
+    { id: "nature"   as const, label: "By Nature",          icon: <Banknote size={13} /> },
     { id: "buyer"    as const, label: `By Buyer${by_buyer?.length > 0 ? ` (${by_buyer.length})` : ""}`, icon: <Users size={13} /> },
     { id: "alerts"   as const, label: `Alerts${totalAlerts > 0 ? ` · ${totalAlerts}` : ""}`, icon: <AlertTriangle size={13} /> },
   ];
@@ -1648,6 +1662,89 @@ export default function PurchasingKpiPage() {
                         </table>
                       </div>
                     </details>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── BY SAVING NATURE (Hard / Soft) ── */}
+            {tab === "nature" && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Savings by Nature</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Hard = real cost reduction (P&amp;L / EBITDA) · Soft = cost avoidance · FY {data.year}
+                    </p>
+                  </div>
+                </div>
+
+                {by_saving_nature.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-slate-400">No data yet.</p>
+                ) : (
+                  <>
+                    {/* Headline split: Hard (P&L impact) vs Soft (cost avoidance) */}
+                    {(() => {
+                      const hard = by_saving_nature.find(n => n.saving_nature === "Hard");
+                      const soft = by_saving_nature.find(n => n.saving_nature === "Soft");
+                      const uncl = by_saving_nature.find(n => n.saving_nature === "Unclassified");
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                            <p className="text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">Hard · P&amp;L impact</p>
+                            <p className="text-2xl font-black text-emerald-700 tabular-nums mt-1">{fmt(hard?.expected_annual ?? 0)}</p>
+                            <p className="text-[10.5px] text-emerald-600/80 mt-0.5">{hard?.opp_count ?? 0} opps · EOY {fmt(hard?.eoy_forecast ?? 0)}</p>
+                          </div>
+                          <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+                            <p className="text-[10.5px] font-bold uppercase tracking-wide text-sky-700">Soft · cost avoidance</p>
+                            <p className="text-2xl font-black text-sky-700 tabular-nums mt-1">{fmt(soft?.expected_annual ?? 0)}</p>
+                            <p className="text-[10.5px] text-sky-600/80 mt-0.5">{soft?.opp_count ?? 0} opps · EOY {fmt(soft?.eoy_forecast ?? 0)}</p>
+                          </div>
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-[10.5px] font-bold uppercase tracking-wide text-amber-700">Unclassified</p>
+                            <p className="text-2xl font-black text-amber-700 tabular-nums mt-1">{fmt(uncl?.expected_annual ?? 0)}</p>
+                            <p className="text-[10.5px] text-amber-600/80 mt-0.5">{uncl?.opp_count ?? 0} opps · needs classification</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="space-y-2">
+                      {by_saving_nature.map((n, idx) => {
+                        const pal = NATURE_PALETTE[n.saving_nature] ?? C.indigo;
+                        const tok = pctToken(n.ytd_rate_pct);
+                        return (
+                          <CollapsibleCard key={n.saving_nature} defaultOpen={idx === 0}
+                            colorBar={pal.bg}
+                            header={
+                              <div className="flex items-center gap-2.5">
+                                <span className={`h-2.5 w-2.5 rounded-full ${pal.bg} shrink-0`} />
+                                <div>
+                                  <p className="text-sm font-bold text-slate-800">{n.saving_nature}</p>
+                                  <p className="text-[10px] text-slate-400">{n.opp_count} opps · {n.validated_count} validated · EOY {fmt(n.eoy_forecast)}</p>
+                                </div>
+                              </div>
+                            }
+                            badge={
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="text-[10.5px] text-slate-400">
+                                  Validation: <strong className={pctToken(_pct(n.validated_count, n.opp_count)).text}>{pctFmt(_pct(n.validated_count, n.opp_count))}</strong>
+                                </span>
+                                <span className={`text-sm font-black ${tok.text}`}>{pctFmt(n.ytd_rate_pct)}</span>
+                              </div>
+                            }
+                          >
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-x divide-slate-100 border-b border-slate-100">
+                              <Metric label="YTD On-Track"   value={pctFmt(n.ytd_rate_pct)}       sub="actual / expected"            token={tok}      bar={n.ytd_rate_pct} />
+                              <Metric label="Delta YTD"      value={(n.delta_ytd > 0 ? "+" : "") + fmt(n.delta_ytd)} sub="actual − expected" token={n.delta_ytd >= 0 ? C.emerald : C.rose} />
+                              <Metric label="Actual YTD"     value={n.actual_ytd > 0 ? fmt(n.actual_ytd) : "—"} sub={`exp. ${fmt(n.expected_ytd)}`} token={C.sky} />
+                              <Metric label="EOY Forecast"   value={n.eoy_forecast > 0 ? fmt(n.eoy_forecast) : "—"} sub={`vs annual ${fmt(n.expected_annual)}`} token={C.indigo} bar={n.eoy_vs_expected_pct} />
+                              <Metric label="Annual Pipeline" value={fmt(n.expected_annual)}       sub={`${n.opp_count} opp${n.opp_count !== 1 ? "s" : ""} total`} token={pal} />
+                            </div>
+                          </CollapsibleCard>
+                        );
+                      })}
+                    </div>
                   </>
                 )}
               </div>

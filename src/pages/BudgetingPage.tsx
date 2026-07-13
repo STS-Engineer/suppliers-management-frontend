@@ -29,6 +29,7 @@ interface BudgetYearItem {
   currency?: string | null;
   fx_rate_to_eur?: number | null;
   applicable_amount_eur?: number | null;
+  value_of_opportunity_eur?: number | null;
   portion_kind?: string | null;
   budget_status?: string | null;
   suggested_status?: string | null;
@@ -284,6 +285,17 @@ export default function BudgetingPage() {
   const baselineItems = items.filter((i) => !i.is_additional);
   const additionalItems = items.filter((i) => i.is_additional);
 
+  // Total "Value of Opportunity" = sum of each opportunity's full multi-year gain
+  // (dedup by opportunity_id — an opp can have several budget-year rows on this page).
+  const valueOfOpportunityTotal = (() => {
+    const seen = new Set<number>();
+    return items.reduce((s, i) => {
+      if (seen.has(i.opportunity_id)) return s;
+      seen.add(i.opportunity_id);
+      return s + (i.value_of_opportunity_eur ?? 0);
+    }, 0);
+  })();
+
   const baselineBudgetedCount = baselineItems.filter(
     (i) => decisions[i.opportunity_id] === "Budgeted",
   ).length;
@@ -440,6 +452,9 @@ export default function BudgetingPage() {
             </span>
           )}
         </td>
+        <td className="px-3 py-2.5 text-right text-slate-500">
+          {fmt(item.value_of_opportunity_eur)}
+        </td>
         <td className="px-3 py-2.5 text-right font-semibold text-slate-800">
           <div>
             {fmtCur(item.applicable_amount, item.currency)}
@@ -526,9 +541,15 @@ export default function BudgetingPage() {
           <th className={COL_HEADER}>Portion</th>
           <th
             className={`${COL_HEADER} text-right`}
-            title="Expected — pro-rata portion of annual saving allocated to this fiscal year. Actual — real saving recorded so far within this fiscal year."
+            title="Total multi-year gain of the opportunity (value of opportunity = sum of the per-year savings). Shown for context — it is NOT what gets budgeted this year."
           >
-            Saving FY {fiscalYear}
+            Value of Opp.
+          </th>
+          <th
+            className={`${COL_HEADER} text-right`}
+            title="À budgéter — the incremental year-over-year price drop allocated to this fiscal year (not the full annual saving reconducted). A flat price budgets the whole gain in the first year, then 0 the following years. Actual — real saving recorded so far within this fiscal year."
+          >
+            À budgéter FY {fiscalYear}
           </th>
           <th
             className={`${COL_HEADER} text-right`}
@@ -756,7 +777,7 @@ export default function BudgetingPage() {
 
       {/* ── 3 KPI Cards ── */}
       {summary && !selectMode && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {/* Card 1 — Initial Baseline */}
           <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
@@ -817,6 +838,20 @@ export default function BudgetingPage() {
               Baseline {fmt(summary.baseline_cash_expected_eur)} + Additional{" "}
               {fmt(summary.additional_cash_expected_eur)} · Actual{" "}
               {fmt(summary.total_cash_actual_eur)}
+            </p>
+          </div>
+
+          {/* Card 5 — Value of Opportunity (total multi-year gain) */}
+          <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Value of Opportunity {fiscalYear}
+            </p>
+            <p className="mt-1 text-2xl font-bold text-slate-700">
+              {fmt(valueOfOpportunityTotal)}
+            </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Total multi-year gain of opps active this year — context, not the
+              budgeted amount
             </p>
           </div>
         </div>
@@ -1047,9 +1082,14 @@ export default function BudgetingPage() {
       <p className="text-[11px] text-slate-400">
         Only <strong>Phase 3 / Phase 4 / Completed</strong> opportunities with a
         confirmed real start date, or <strong>Phase 2</strong> opportunities
-        with execution already started, appear here. Savings are split pro-rata
-        by actual days across calendar years (01 Jan – 31 Dec). Amounts in
-        transaction currency; KPI totals consolidated in <strong>EUR</strong>.
+        with execution already started, appear here. The budgeted amount is the{" "}
+        <strong>« à budgéter »</strong> — only the incremental year-over-year
+        price drop, not the full annual saving reconducted each year. So a flat
+        price budgets the whole gain in the first year and <strong>0</strong> the
+        following years, while the <em>Value of Opp.</em> column keeps showing the
+        total multi-year gain. Amounts are split pro-rata by actual days across
+        calendar years (01 Jan – 31 Dec), in transaction currency; KPI totals
+        consolidated in <strong>EUR</strong>.
       </p>
     </div>
   );

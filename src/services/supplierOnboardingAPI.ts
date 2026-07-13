@@ -1653,6 +1653,7 @@ class SupplierOnboardingAPI {
   async createOpportunity(data: {
     opportunity_name: string;
     opportunity_type: string;
+    saving_nature?: string;
     idea_owner: string;
     description?: string;
     plant_id?: number;
@@ -1757,6 +1758,7 @@ class SupplierOnboardingAPI {
     data: {
       // Core
       opportunity_name?: string;
+      saving_nature?: string;
       description?: string;
       assumptions_summary?: string;
       comments?: string;
