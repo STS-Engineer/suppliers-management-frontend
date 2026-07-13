@@ -73,6 +73,8 @@ interface ActionItem {
   last_escalated_at: string | null;
   last_escalated_to: string | null;
   last_escalated_by: string | null;
+  // Backend-computed: may this viewer close the action / delete its evidence?
+  can_manage?: boolean;
 }
 
 interface Attachment {
@@ -345,7 +347,13 @@ function EvidenceButton({
         {uploading ? "Uploading…" : "Add file"}
       </button>
       {error && <p className="mt-0.5 text-[9px] text-rose-500">{error}</p>}
-      <AttachmentsList item={item} onChanged={onChanged} canDelete />
+      {/* Deletion allowed only for authorized users AND while the action is open —
+          a closed action's evidence is frozen. */}
+      <AttachmentsList
+        item={item}
+        onChanged={onChanged}
+        canDelete={!!item.can_manage && item.action_status !== "closed"}
+      />
     </div>
   );
 }
@@ -600,16 +608,20 @@ function StatusCell({
         {cfg.label}
         {saving && <RefreshCw size={9} className="animate-spin ml-0.5" />}
       </div>
-      <select
-        value={item.action_status}
-        onChange={(e) => changeStatus(e.target.value)}
-        disabled={saving}
-        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 outline-none cursor-pointer hover:border-indigo-300 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 disabled:opacity-50 transition-colors"
-      >
-        <option value="open">→ Open</option>
-        <option value="closed">→ Closed</option>
-        <option value="blocked">→ Blocked</option>
-      </select>
+      {/* Changing status (incl. closing) is limited to the responsible person, a
+          manager, or a related owner. Others see the status read-only. */}
+      {item.can_manage && (
+        <select
+          value={item.action_status}
+          onChange={(e) => changeStatus(e.target.value)}
+          disabled={saving}
+          className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 outline-none cursor-pointer hover:border-indigo-300 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 disabled:opacity-50 transition-colors"
+        >
+          <option value="open">→ Open</option>
+          <option value="closed">→ Closed</option>
+          <option value="blocked">→ Blocked</option>
+        </select>
+      )}
       {item.action_status !== "closed" && item.responsible_email && (
         <button
           onClick={remind}
