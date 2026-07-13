@@ -17,7 +17,7 @@ import { SupplierOnboardingPage } from "./pages/SupplierOnboardingPage";
 import "./styles/global.css";
 import "./styles/onboarding.css";
 // import SuppliersPage from "./pages/SuppliersPage";
-import ActiveSitesPage from "./pages/ActiveSitesPage";
+import ActiveSuppliersPage from "./pages/ActiveSuppliersPage";
 import DevelopmentPlansPage from "./pages/DevelopmentPlansPage";
 import PurchasingValuePage from "./pages/PurchasingValuePage";
 import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
@@ -101,7 +101,7 @@ const router = createBrowserRouter([
     element: <ProtectedShell />,
     children: [
       { path: "/", element: <Navigate to="/suppliers" replace /> },
-      { path: "/suppliers", element: <ActiveSitesPage /> },
+      { path: "/suppliers", element: <ActiveSuppliersPage /> },
       {
         path: "/suppliers/sites-active",
         element: <Navigate to="/suppliers" replace />,
@@ -128,7 +128,10 @@ const router = createBrowserRouter([
       { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
       { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
       { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
-      { path: "/purchasing-value/action-plans", element: <PurchasingActionPlansPage /> },
+      {
+        path: "/purchasing-value/action-plans",
+        element: <PurchasingActionPlansPage />,
+      },
       { path: "/evaluations", element: <BatchEvaluationPage /> },
       {
         element: <RoleGuard roles={["vp_conversion"]} />,

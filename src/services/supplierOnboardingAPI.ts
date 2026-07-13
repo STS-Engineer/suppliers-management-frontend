@@ -2362,6 +2362,25 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async deleteActionEvidence(
+    opportunityId: number,
+    actionPlanId: number,
+    sujetIdx: number,
+    actionIdx: number,
+    blobName: string,
+  ) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+      blob_name: blobName,
+    });
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence?${q}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to delete evidence.",
+    );
+  }
+
   async updateActionItemStatus(
     planId: number,
     sujetIdx: number,
