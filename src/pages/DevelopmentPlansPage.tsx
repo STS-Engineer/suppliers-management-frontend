@@ -57,7 +57,7 @@ const PLAN_STATUSES = [
 
 type StatusGroup = "action" | "progress" | "closed";
 type StatusTab = "all" | StatusGroup;
-type ModalKey = "send" | "received" | "review" | "decision" | "revision" | "details";
+type ModalKey = "send" | "received" | "review" | "decision" | "revision" | "details" | "cancel";
 
 const DEV_PLANS_FILTERS_PAGE_KEY = "development-plans";
 
@@ -1550,6 +1550,100 @@ function ReviewDecisionModal({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+function CancelPlanModal({
+  item,
+  onClose,
+  onSuccess,
+}: {
+  item: DevelopmentPlanRegisterRow;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const plan = item.development_plan;
+  const [reason, setReason] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await supplierAPI.cancelRelationDevelopmentPlan(
+        item.relation.id_relation,
+        plan.id_development_plan,
+        {
+          reason: reason.trim() || undefined,
+        },
+      );
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to cancel the plan.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Cancel Development Plan"
+      subtitle="Mark this development plan as cancelled without deleting its history"
+      onClose={onClose}
+      size="sm"
+    >
+      <div className="space-y-5">
+        <SupplierBanner item={item} tone="amber" />
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-semibold">This will cancel the plan workflow.</p>
+              <p className="mt-1 text-xs text-amber-800">
+                The plan stays visible for traceability, but it will no longer be treated as an active development workflow.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {error && <ErrorMsg msg={error} />}
+
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">
+            Cancellation Reason <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            className={`${inputCls} resize-none`}
+            placeholder="Explain why this development plan is being cancelled..."
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Keep Plan
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+            {isSaving ? "Cancelling..." : "Cancel Plan"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Request Revision (after rejection)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2495,6 +2589,7 @@ function RemindModal({
 export default function DevelopmentPlansPage() {
   const { user } = useAuth();
   const isViewer = user?.access_profile === "viewer";
+  const isPlanCancelAdmin = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
   const userEmail = (user as { email?: string })?.email ?? "";
   // Restores whatever this user last had filtered — otherwise leaving this
   // page and coming back (or a reload) silently resets every filter.
@@ -2566,6 +2661,7 @@ export default function DevelopmentPlansPage() {
   const [revisionModal, setRevisionModal] = useState<DevelopmentPlanRegisterRow | null>(null);
   const [detailsModal, setDetailsModal] = useState<DevelopmentPlanRegisterRow | null>(null);
   const [remindModal, setRemindModal] = useState<DevelopmentPlanRegisterRow | null>(null);
+  const [cancelModal, setCancelModal] = useState<DevelopmentPlanRegisterRow | null>(null);
 
   const openModal = (item: DevelopmentPlanRegisterRow, modal: ModalKey) => {
     if (modal === "send") setSendModal(item);
@@ -2573,6 +2669,7 @@ export default function DevelopmentPlansPage() {
     else if (modal === "review") setReviewModal(item);
     else if (modal === "decision") setDecisionModal(item);
     else if (modal === "revision") setRevisionModal(item);
+    else if (modal === "cancel") setCancelModal(item);
     else setDetailsModal(item);
   };
 
@@ -2584,6 +2681,7 @@ export default function DevelopmentPlansPage() {
     setRevisionModal(null);
     setDetailsModal(null);
     setRemindModal(null);
+    setCancelModal(null);
   };
 
   useEffect(() => {
@@ -3308,6 +3406,16 @@ export default function DevelopmentPlansPage() {
                                     Remind
                                   </button>
                                 )}
+                                {isPlanCancelAdmin && !isClosedRow && sl !== "cancelled" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openModal(item, "cancel")}
+                                    className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+                                  >
+                                    <X className="h-3 w-3" />
+                                    Cancel Plan
+                                  </button>
+                                )}
                                 {action.modal !== "details" && (
                                   <button
                                     type="button"
@@ -3455,6 +3563,13 @@ export default function DevelopmentPlansPage() {
           item={remindModal}
           onClose={closeAll}
           onSuccess={() => onSuccess("Reminder sent to supplier.")}
+        />
+      )}
+      {cancelModal && (
+        <CancelPlanModal
+          item={cancelModal}
+          onClose={closeAll}
+          onSuccess={() => onSuccess("Development plan cancelled.")}
         />
       )}
     </div>
