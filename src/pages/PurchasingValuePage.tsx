@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleDot,
   Clock,
+  Copy,
   Download,
   FileText,
   FolderOpen,
@@ -333,6 +334,11 @@ interface Opp {
 // which filters by "has a cash_impact" instead of a Cash opportunity_type.
 const TYPES = ["Negotiation", "Sourcing", "Technical Productivity"];
 const FILTER_TYPES = [...TYPES, "Cash"];
+// Profiles allowed to create/duplicate opportunities (mirrors backend _NON_VIEWER).
+const EDITOR_PROFILES = [
+  "purchasing_manager", "vp_conversion", "purchasing_director",
+  "supplier_owner", "global_purchaser", "local_purchaser",
+];
 
 // ---------------------------------------------------------------------------
 // Filter persistence — remembered per logged-in user across navigation/reload
@@ -9716,6 +9722,7 @@ function OppCard({
   onClick,
   onRefresh,
   onDeleted,
+  onDuplicated,
   userEmail,
   compact = false,
 }: {
@@ -9723,19 +9730,36 @@ function OppCard({
   onClick: () => void;
   onRefresh?: (o: Opp) => void;
   onDeleted?: (opportunityId: number) => void;
+  onDuplicated?: (o: Opp) => void;
   userEmail?: string;
   compact?: boolean;
 }) {
   const { user } = useAuth();
   const canDelete = user?.access_profile === "vp_conversion";
+  const canDuplicate = EDITOR_PROFILES.includes(user?.access_profile ?? "");
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
 
   function openConfirm(e: React.MouseEvent) {
     e.stopPropagation();
     setDeleteError(null);
     setConfirmOpen(true);
+  }
+
+  async function handleDuplicate(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (duplicating) return;
+    setDuplicating(true);
+    try {
+      const res = await supplierAPI.duplicateOpportunity(opp.opportunity_id);
+      onDuplicated?.(res.data as Opp);
+    } catch {
+      // Non-blocking: a failed duplicate leaves the board unchanged.
+    } finally {
+      setDuplicating(false);
+    }
   }
 
   async function handleConfirmDelete() {
@@ -9802,6 +9826,16 @@ function OppCard({
                   ? "Rework"
                   : opp.status}
         </span>
+        {canDuplicate && (
+          <button
+            onClick={handleDuplicate}
+            disabled={duplicating}
+            title="Duplicate opportunity"
+            className="shrink-0 rounded p-1 text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-500 dark:hover:bg-blue-500/10 dark:hover:text-blue-400"
+          >
+            <Copy size={12} />
+          </button>
+        )}
         {canDelete && (
           <button
             onClick={openConfirm}
@@ -9820,8 +9854,18 @@ function OppCard({
   return (
     <div
       onClick={onClick}
-      className={`group relative cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]${canDelete ? " pb-9" : ""}`}
+      className={`group relative cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]${canDelete || canDuplicate ? " pb-9" : ""}`}
     >
+      {canDuplicate && (
+        <button
+          onClick={handleDuplicate}
+          disabled={duplicating}
+          title="Duplicate opportunity"
+          className={`absolute bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-600 dark:hover:bg-blue-500/10 dark:hover:text-blue-400 ${canDelete ? "right-9" : "right-2"}`}
+        >
+          <Copy size={12} />
+        </button>
+      )}
       {canDelete && (
         <button
           onClick={openConfirm}
@@ -9928,6 +9972,7 @@ function PhaseColumn({
   onSelect,
   onRefresh,
   onDeleted,
+  onDuplicated,
   userEmail,
   compact = false,
 }: {
@@ -9936,6 +9981,7 @@ function PhaseColumn({
   onSelect: (o: Opp) => void;
   onRefresh?: (o: Opp) => void;
   onDeleted?: (opportunityId: number) => void;
+  onDuplicated?: (o: Opp) => void;
   userEmail?: string;
   compact?: boolean;
 }) {
@@ -9969,6 +10015,7 @@ function PhaseColumn({
               onClick={() => onSelect(o)}
               onRefresh={onRefresh}
               onDeleted={onDeleted}
+              onDuplicated={onDuplicated}
               userEmail={userEmail}
               compact={compact}
             />
@@ -10338,6 +10385,11 @@ export default function PurchasingValuePage() {
     setOpportunities((p) => p.filter((o) => o.opportunity_id !== opportunityId));
     setSelected(null);
   }
+  function handleDuplicated(o: Opp) {
+    // Prepend the new draft and open it so the buyer can re-scope it immediately.
+    setOpportunities((p) => [o, ...p]);
+    setSelected(o);
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#f0f7ff_0,#f8fafc_50%,#f0f4f8_100%)] dark:bg-[radial-gradient(circle_at_top_left,#0f1e35_0,#0b1829_50%,#0a1525_100%)]">
@@ -10640,6 +10692,7 @@ export default function PurchasingValuePage() {
                   onSelect={setSelected}
                   onRefresh={handleRefresh}
                   onDeleted={handleDeleted}
+                  onDuplicated={handleDuplicated}
                   userEmail={userEmail}
                   compact={compact}
                 />

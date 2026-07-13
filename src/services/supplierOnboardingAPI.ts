@@ -1891,6 +1891,17 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async duplicateOpportunity(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/duplicate`,
+      {
+        method: "POST",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to duplicate opportunity.",
+    );
+  }
+
   async updateMonthlyActual(
     monthId: number,
     data: {
