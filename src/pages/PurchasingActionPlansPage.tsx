@@ -34,6 +34,7 @@ import {
   Paperclip,
   RefreshCw,
   Table2,
+  Trash2,
   Upload,
   User,
   XCircle,
@@ -211,6 +212,84 @@ function initials(email: string | null, name: string | null) {
 // ---------------------------------------------------------------------------
 // Evidence button
 // ---------------------------------------------------------------------------
+function AttachmentsList({
+  item,
+  onChanged,
+  canDelete = false,
+}: {
+  item: ActionItem;
+  onChanged?: () => void;
+  canDelete?: boolean;
+}) {
+  const [deletingBlob, setDeletingBlob] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (item.attachments.length === 0) return null;
+
+  const handleDelete = async (attachment: Attachment) => {
+    if (!canDelete || !onChanged) return;
+    setDeletingBlob(attachment.blob_name);
+    setError(null);
+    try {
+      await supplierAPI.deleteActionEvidence(
+        item.opportunity_id,
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        attachment.blob_name,
+      );
+      onChanged();
+    } catch (e: any) {
+      setError(e?.message ?? "Delete failed");
+    } finally {
+      setDeletingBlob(null);
+    }
+  };
+
+  return (
+    <div className="mt-1 space-y-1">
+      <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+        {item.attachments.map((a, ai) => {
+          const isDeleting = deletingBlob === a.blob_name;
+          return (
+            <div
+              key={`${a.blob_name}-${ai}`}
+              className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 transition-colors"
+            >
+              <a
+                href={a.file_url}
+                target="_blank"
+                rel="noreferrer"
+                title={a.filename}
+                className="inline-flex items-center gap-0.5 hover:text-indigo-700"
+              >
+                <Paperclip size={8} />
+                <span className="max-w-[110px] truncate">{a.filename}</span>
+              </a>
+              {canDelete && onChanged && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(a)}
+                  disabled={isDeleting}
+                  title="Delete file"
+                  className="rounded p-0.5 text-rose-500 hover:bg-rose-100 hover:text-rose-600 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <RefreshCw size={8} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={8} />
+                  )}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {error && <p className="text-[9px] text-rose-500">{error}</p>}
+    </div>
+  );
+}
+
 function EvidenceButton({
   item,
   onChanged,
@@ -236,8 +315,8 @@ function EvidenceButton({
         file,
       );
       onChanged();
-    } catch {
-      setError("Upload failed");
+    } catch (e: any) {
+      setError(e?.message ?? "Upload failed");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -266,23 +345,7 @@ function EvidenceButton({
         {uploading ? "Uploading…" : "Add file"}
       </button>
       {error && <p className="mt-0.5 text-[9px] text-rose-500">{error}</p>}
-      {item.attachments.length > 0 && (
-        <div className="mt-1 flex max-h-24 flex-wrap gap-1 overflow-y-auto">
-          {item.attachments.map((a, ai) => (
-            <a
-              key={ai}
-              href={a.file_url}
-              target="_blank"
-              rel="noreferrer"
-              title={a.filename}
-              className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
-            >
-              <Paperclip size={8} />
-              <span className="max-w-[110px] truncate">{a.filename}</span>
-            </a>
-          ))}
-        </div>
-      )}
+      <AttachmentsList item={item} onChanged={onChanged} canDelete />
     </div>
   );
 }
@@ -459,8 +522,6 @@ function StatusCell({
   const [reminding, setReminding] = useState(false);
   const [reminded, setReminded] = useState(false);
 
-  const hasAttachment = item.attachments.length > 0;
-
   const changeStatus = async (newStatus: string) => {
     if (newStatus === "closed" && item.action_status !== "closed") {
       setError(null);
@@ -487,10 +548,6 @@ function StatusCell({
   const confirmClose = async () => {
     if (!implDate) {
       setError("Implementation date is required.");
-      return;
-    }
-    if (!hasAttachment) {
-      setError("Attach at least one file before closing (see \"Add file\" above).");
       return;
     }
     setSaving(true);
@@ -532,7 +589,7 @@ function StatusCell({
   };
 
   const cfg = STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
-  const canConfirmClose = !!implDate && hasAttachment;
+  const canConfirmClose = !!implDate;
 
   return (
     <div className="space-y-1.5 w-full min-w-[160px]">
@@ -597,22 +654,18 @@ function StatusCell({
             onChange={(e) => setImplDate(e.target.value)}
             className="w-full rounded-lg border border-emerald-300 bg-white px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-emerald-500"
           />
-          <p
-            className={`flex items-start gap-1 text-[9px] font-semibold leading-snug ${hasAttachment ? "text-emerald-600" : "text-rose-500"}`}
-          >
+          <p className="flex items-start gap-1 text-[9px] font-semibold leading-snug text-slate-500">
             <Paperclip size={9} className="mt-0.5 shrink-0" />
-            {hasAttachment
+            {item.attachments.length > 0
               ? `${item.attachments.length} file${item.attachments.length !== 1 ? "s" : ""} attached`
-              : "File attachment required (see Add file)"}
+              : "No file attached"}
           </p>
           <div className="flex gap-1.5">
             <button
               onClick={confirmClose}
               disabled={saving || !canConfirmClose}
               title={
-                !canConfirmClose
-                  ? "Requires an implementation date and at least one attachment"
-                  : undefined
+                !canConfirmClose ? "Requires an implementation date" : undefined
               }
               className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-emerald-500 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -668,111 +721,100 @@ function ActionCard({
       )}
 
       <div className="flex gap-4 p-4">
-      {/* Left: opp + subject */}
-      <div className="w-52 shrink-0 space-y-2 border-r border-slate-100 pr-4">
-        <div>
-          <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
-            {item.opportunity_name}
-          </p>
-          {item.opp_phase && (
-            <span
-              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
-            >
-              {item.opp_phase}
-            </span>
-          )}
-        </div>
-        <div className="space-y-0.5">
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
-            Subject
-          </p>
-          <p className="text-[10px] text-slate-600 font-medium line-clamp-2">
-            {item.sujet_titre ?? "—"}
-          </p>
-        </div>
-        <div className="text-[9px] text-slate-400 space-y-0.5">
-          <div>Created {fmtDateShort(item.plan_created_at)}</div>
-          {(item.plan_created_by || item.plan_updated_at) && (
-            <div>
-              {item.plan_created_by ? `By ${item.plan_created_by}` : "Plan audit metadata available"}
-              {item.plan_updated_at ? ` ? Updated ${fmtDateShort(item.plan_updated_at)}` : ""}
-              {item.plan_updated_by ? ` by ${item.plan_updated_by}` : ""}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Middle: action title + description */}
-      <div className="flex-1 space-y-2 min-w-0">
-        <div>
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-0.5">
-            Action
-          </p>
-          <p className="text-[12px] font-bold text-slate-800 leading-snug">
-            {item.action_titre ?? "—"}
-          </p>
-        </div>
-        {item.description && (
-          <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
-            <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-3">
-              {item.description}
+        {/* Left: opp + subject */}
+        <div className="w-52 shrink-0 space-y-2 border-r border-slate-100 pr-4">
+          <div>
+            <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
+              {item.opportunity_name}
+            </p>
+            {item.opp_phase && (
+              <span
+                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
+              >
+                {item.opp_phase}
+              </span>
+            )}
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+              Subject
+            </p>
+            <p className="text-[10px] text-slate-600 font-medium line-clamp-2">
+              {item.sujet_titre ?? "—"}
             </p>
           </div>
-        )}
-        <div className="flex items-center gap-3 flex-wrap">
-          {dueFmt && (
-            <span
-              className={`flex items-center gap-1 text-[10px] font-semibold ${overdue ? "text-rose-600" : "text-slate-500"}`}
-            >
-              <Clock size={10} />
-              {dueFmt}
-            </span>
+          <div className="text-[9px] text-slate-400 space-y-0.5">
+            <div>Created {fmtDateShort(item.plan_created_at)}</div>
+            {(item.plan_created_by || item.plan_updated_at) && (
+              <div>
+                {item.plan_created_by
+                  ? `By ${item.plan_created_by}`
+                  : "Plan audit metadata available"}
+                {item.plan_updated_at
+                  ? ` - Updated ${fmtDateShort(item.plan_updated_at)}`
+                  : ""}
+                {item.plan_updated_by ? ` by ${item.plan_updated_by}` : ""}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Middle: action title + description */}
+        <div className="flex-1 space-y-2 min-w-0">
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-0.5">
+              Action
+            </p>
+            <p className="text-[12px] font-bold text-slate-800 leading-snug">
+              {item.action_titre ?? "—"}
+            </p>
+          </div>
+          {item.description && (
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-3">
+                {item.description}
+              </p>
+            </div>
           )}
-          {!dueFmt && (
-            <span className="text-[10px] text-slate-300">No due date</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            {dueFmt && (
+              <span
+                className={`flex items-center gap-1 text-[10px] font-semibold ${overdue ? "text-rose-600" : "text-slate-500"}`}
+              >
+                <Clock size={10} />
+                {dueFmt}
+              </span>
+            )}
+            {!dueFmt && (
+              <span className="text-[10px] text-slate-300">No due date</span>
+            )}
+          </div>
+          {!isViewer && <EvidenceButton item={item} onChanged={onChanged} />}
+          {isViewer && <AttachmentsList item={item} />}
+        </div>
+
+        {/* Right: status */}
+        <div className="w-60 shrink-0 border-l border-slate-100 pl-4">
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
+            Status
+          </p>
+          {isViewer ? (
+            (() => {
+              const cfg =
+                STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
+              return (
+                <div
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}
+                >
+                  {cfg.icon}
+                  {cfg.label}
+                </div>
+              );
+            })()
+          ) : (
+            <StatusCell item={item} onChanged={onChanged} />
           )}
         </div>
-        {!isViewer && <EvidenceButton item={item} onChanged={onChanged} />}
-        {isViewer && item.attachments.length > 0 && (
-          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
-            {item.attachments.map((a, ai) => (
-              <a
-                key={ai}
-                href={a.file_url}
-                target="_blank"
-                rel="noreferrer"
-                title={a.filename}
-                className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
-              >
-                <Paperclip size={8} />
-                <span className="max-w-[110px] truncate">{a.filename}</span>
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Right: status */}
-      <div className="w-60 shrink-0 border-l border-slate-100 pl-4">
-        <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
-          Status
-        </p>
-        {isViewer ? (
-          (() => {
-            const cfg = STATUS_CONFIG[item.action_status] ?? STATUS_CONFIG.open;
-            return (
-              <div
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.text}`}
-              >
-                {cfg.icon}
-                {cfg.label}
-              </div>
-            );
-          })()
-        ) : (
-          <StatusCell item={item} onChanged={onChanged} />
-        )}
-      </div>
       </div>
 
       {/* Audit trail */}
@@ -829,6 +871,8 @@ function historyLabel(h: HistoryEntry): string {
       return `Escalated to ${h.to}${h.subject ? ` — "${h.subject}"` : ""}`;
     case "attachment_added":
       return `File attached: ${h.filename ?? "unnamed"}`;
+    case "attachment_removed":
+      return `File deleted: ${h.filename ?? "unnamed"}`;
     default:
       return h.event;
   }
@@ -1151,23 +1195,7 @@ function ActionItemsTable({
                             Files
                           </p>
                           {item.attachments.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {item.attachments.map((a, ai) => (
-                                <a
-                                  key={ai}
-                                  href={a.file_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  title={a.filename}
-                                  className="inline-flex items-center gap-0.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-100"
-                                >
-                                  <Paperclip size={8} />
-                                  <span className="max-w-[110px] truncate">
-                                    {a.filename}
-                                  </span>
-                                </a>
-                              ))}
-                            </div>
+                            <AttachmentsList item={item} />
                           ) : (
                             "—"
                           )}
@@ -1223,10 +1251,16 @@ export default function PurchasingActionPlansPage() {
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>(initialFilters.filterStatus);
-  const [filterPerson, setFilterPerson] = useState<string>(initialFilters.filterPerson);
+  const [filterStatus, setFilterStatus] = useState<string>(
+    initialFilters.filterStatus,
+  );
+  const [filterPerson, setFilterPerson] = useState<string>(
+    initialFilters.filterPerson,
+  );
   const [filterOpp, setFilterOpp] = useState<string>(initialFilters.filterOpp);
-  const [viewMode, setViewMode] = useState<"cards" | "table">(initialFilters.viewMode);
+  const [viewMode, setViewMode] = useState<"cards" | "table">(
+    initialFilters.viewMode,
+  );
 
   useEffect(() => {
     savePersistedFilters(ACTION_PLANS_FILTERS_PAGE_KEY, userEmail, {
@@ -1248,7 +1282,9 @@ export default function PurchasingActionPlansPage() {
       setItems((res as { data: ActionItem[] }).data ?? []);
     } catch (e: unknown) {
       if (!silent) {
-        setError(e instanceof Error ? e.message : "Failed to load action items");
+        setError(
+          e instanceof Error ? e.message : "Failed to load action items",
+        );
       }
     } finally {
       if (!silent) setLoading(false);
