@@ -2585,13 +2585,13 @@ function EditTab({
                     <option value="" disabled>
                       Select duration
                     </option>
-                    {[1, 12, 24, 36, 48].map((m) => (
+                    {[1, 12].map((m) => (
                       <option key={m} value={m}>
                         {m} {m === 1 ? "month" : "months"}
                       </option>
                     ))}
                     {form.duration_months &&
-                      ![1, 12, 24, 36, 48].includes(
+                      ![1, 12].includes(
                         Number(form.duration_months),
                       ) && (
                         <option value={form.duration_months}>
@@ -10961,3 +10961,4 @@ export default function PurchasingValuePage() {
     </div>
   );
 }
+
