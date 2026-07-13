@@ -92,6 +92,11 @@ const STATUS_GROUP: Record<string, StatusGroup> = {
   rejected: "closed",
   closed: "closed",
   cancelled: "closed",
+  // SB22-imported statuses (from the Monday "Status" column)
+  requested: "progress",
+  "stuck/late": "progress",
+  done: "closed",
+  cancel: "closed",
 };
 
 const getStatusGroup = (s?: string | null): StatusGroup =>
@@ -170,6 +175,27 @@ const STATUS_CFG: Record<string, {
     bg: "bg-indigo-100", text: "text-indigo-800", border: "border-indigo-200",
     Icon: (p) => <Eye {...p} />,
   },
+  // SB22-imported statuses (from the Monday "Status" column)
+  requested: {
+    tone: "brand", label: "Requested",
+    bg: "bg-sky-100", text: "text-sky-800", border: "border-sky-200",
+    Icon: (p) => <Send {...p} />,
+  },
+  "stuck/late": {
+    tone: "warning", label: "Stuck / Late",
+    bg: "bg-amber-100", text: "text-amber-800", border: "border-amber-200",
+    Icon: (p) => <AlertTriangle {...p} />,
+  },
+  done: {
+    tone: "success", label: "Done",
+    bg: "bg-emerald-500", text: "text-white", border: "border-transparent",
+    Icon: (p) => <CheckCircle2 {...p} />,
+  },
+  cancel: {
+    tone: "neutral", label: "Cancelled",
+    bg: "bg-slate-100", text: "text-slate-500", border: "border-slate-200",
+    Icon: (p) => <X {...p} />,
+  },
   approved: {
     tone: "success", label: "Approved",
     bg: "bg-emerald-500", text: "text-white", border: "border-transparent",
@@ -239,6 +265,20 @@ const ACTION_CFG: Record<string, { label: string; modal: ModalKey; bg: string; t
     Icon: (p) => <Mail {...p} />,
   },
   "request sent": {
+    label: "Mark Received", modal: "received",
+    bg: "bg-sky-600 hover:bg-sky-700 active:bg-sky-800",
+    text: "text-white",
+    Icon: (p) => <MailCheck {...p} />,
+  },
+  // SB22-imported "waiting for supplier plan" states → same next action as "request sent".
+  // Stuck/late is the same state, just overdue (the overdue badge already conveys the lateness).
+  requested: {
+    label: "Mark Received", modal: "received",
+    bg: "bg-sky-600 hover:bg-sky-700 active:bg-sky-800",
+    text: "text-white",
+    Icon: (p) => <MailCheck {...p} />,
+  },
+  "stuck/late": {
     label: "Mark Received", modal: "received",
     bg: "bg-sky-600 hover:bg-sky-700 active:bg-sky-800",
     text: "text-white",
@@ -1961,7 +2001,7 @@ function ViewDetailsModal({
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
 
-  const isClosed = ["approved", "closed", "cancelled"].includes(
+  const isClosed = ["approved", "closed", "cancelled", "done", "cancel"].includes(
     (plan.plan_status ?? "").toLowerCase(),
   );
 
@@ -2084,20 +2124,6 @@ function ViewDetailsModal({
                 </select>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">Decision (SB22)</label>
-                <input value={form.decision} onChange={(e) => setField("decision", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. Approved" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">Commodity</label>
-                <input value={form.commodity} onChange={(e) => setField("commodity", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. Casting" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">Plant</label>
-                <input value={form.plant} onChange={(e) => setField("plant", e.target.value)} className={inputCls} disabled={isClosed} placeholder="e.g. FR01" />
-              </div>
-            </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Internal Notes</label>
               <textarea value={form.internal_comments} onChange={(e) => setField("internal_comments", e.target.value)} rows={4} className={`${inputCls} resize-none`} disabled={isClosed} placeholder="Internal team notes…" />
@@ -3180,7 +3206,7 @@ export default function DevelopmentPlansPage() {
                     const statusCfg = getStatusCfg(dp.plan_status);
                     const action = getAction(dp.plan_status);
                     const sl = (dp.plan_status ?? "").toLowerCase();
-                    const isClosedRow = ["approved", "closed", "cancelled"].includes(sl);
+                    const isClosedRow = ["approved", "closed", "cancelled", "done", "cancel"].includes(sl);
 
                     // Left-border accent class
                     const accentBorder =
@@ -3265,25 +3291,6 @@ export default function DevelopmentPlansPage() {
                             )}
                           </div>
                           {dp.plan_title && <PlanTitleTooltip title={dp.plan_title} />}
-                          {(dp.decision || dp.commodity || dp.plant) && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {dp.decision && (
-                                <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                                  {dp.decision}
-                                </span>
-                              )}
-                              {dp.commodity && (
-                                <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                                  {dp.commodity}
-                                </span>
-                              )}
-                              {dp.plant && (
-                                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                  {dp.plant}
-                                </span>
-                              )}
-                            </div>
-                          )}
                           {dp.approved_by && (
                             <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
                               <CheckCircle2 className="h-3 w-3" /> {dp.approved_by}
