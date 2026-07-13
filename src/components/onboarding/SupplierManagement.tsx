@@ -1065,6 +1065,11 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
             onOverrideStatus={openOverrideModal}
             onUnlink={handleRelationUnlink}
             onRelinkSuccess={() => shared.selectedUnit && loadRelationsForUnit(shared.selectedUnit.id_supplier_unit)}
+            onRelationActiveToggled={async () => {
+              if (shared.selectedUnit)
+                await loadRelationsForUnit(shared.selectedUnit.id_supplier_unit);
+              await loadUnits();
+            }}
             activeDevelopmentPlanRelationId={autoPlanRelationId}
             activeDetailsRelationId={activeDetailsRelationId}
           />

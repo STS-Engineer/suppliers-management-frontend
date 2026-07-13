@@ -31,6 +31,8 @@ interface Props {
   onOverrideStatus: (relation: SupplierSiteRelation) => void;
   onUnlink: (r: SupplierSiteRelation) => void;
   onRelinkSuccess: () => void;
+  /** Reload relations after a relation is activated / deactivated */
+  onRelationActiveToggled?: () => void;
   activeDevelopmentPlanRelationId?: number | null;
   activeDetailsRelationId?: number | null;
   /** Triggered when the user clicks "Assign to Plant" inside this panel */
@@ -68,6 +70,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
   activeDetailsRelationId,
   onAssignToPlant,
   assignActive,
+  onRelationActiveToggled,
 }) => {
   // Most-recent spend per relation: relationId → latest SpendEntry
   const [latestSpend, setLatestSpend] = useState<Record<number, SpendEntry | null>>({});
@@ -214,6 +217,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
                   onDevelopmentPlan={() => onManageDevelopmentPlan(rel)}
                   onViewDetails={() => onViewRelationDetails(rel)}
                   onOverride={() => onOverrideStatus(rel)}
+                  onActiveToggled={onRelationActiveToggled}
                   isSendingDevelopmentPlan={
                     activeDevelopmentPlanRelationId === rel.id_relation
                   }
@@ -245,14 +249,36 @@ interface RelCardProps {
   onDevelopmentPlan: () => void;
   onViewDetails: () => void;
   onOverride: () => void;
+  onActiveToggled?: () => void;
   isSendingDevelopmentPlan?: boolean;
   isLoadingDetails?: boolean;
 }
 
 const RelationCard: React.FC<RelCardProps> = ({
   relation, unitName, siteName, siteLocation, scope, grade, fmt, latestSpend,
-  onEvaluate, onDevelopmentPlan, onViewDetails, onOverride, isSendingDevelopmentPlan = false, isLoadingDetails = false,
-}) => (
+  onEvaluate, onDevelopmentPlan, onViewDetails, onOverride, onActiveToggled,
+  isSendingDevelopmentPlan = false, isLoadingDetails = false,
+}) => {
+  const isActive = relation.is_active ?? true;
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  const doToggle = async () => {
+    setBusy(true);
+    setToggleError(null);
+    try {
+      await supplierAPI.patchRelation(relation.id_relation, { is_active: !isActive });
+      setConfirming(false);
+      onActiveToggled?.();
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : "Failed to update relation.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
     {/* Card header: Unit → Plant */}
     <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4">
@@ -345,9 +371,52 @@ const RelationCard: React.FC<RelCardProps> = ({
         className="rounded-lg border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] transition hover:bg-[#062B49]/5">
         Override Status
       </button>
+
+      {/* Activate / Deactivate relation */}
+      {!confirming ? (
+        <button
+          onClick={() => { setConfirming(true); setToggleError(null); }}
+          className={`ml-auto rounded-lg border px-4 py-2 text-xs font-semibold transition ${
+            isActive
+              ? "border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
+              : "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
+          }`}
+        >
+          {isActive ? "Deactivate Relation" : "Activate Relation"}
+        </button>
+      ) : (
+        <span className="ml-auto inline-flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-600">
+            {isActive ? "Deactivate this relation?" : "Activate this relation?"}
+          </span>
+          <button
+            onClick={doToggle}
+            disabled={busy}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60 ${
+              isActive ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {busy ? "Saving…" : isActive ? "Yes, deactivate" : "Yes, activate"}
+          </button>
+          <button
+            onClick={() => setConfirming(false)}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </span>
+      )}
     </div>
+
+    {toggleError && (
+      <div className="border-t border-rose-100 bg-rose-50 px-5 py-2 text-xs font-medium text-rose-700">
+        {toggleError}
+      </div>
+    )}
   </div>
-);
+  );
+};
 
 const Meta: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
