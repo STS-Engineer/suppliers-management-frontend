@@ -1989,7 +1989,12 @@ function EditTab({
       const missing: string[] = [];
 
       if (["Phase 0", "Phase 1"].includes(phase)) {
-        if (!form.duration_months || parseInt(form.duration_months) <= 0) {
+        // Direct-gain (Bonus/Rework) duration is fixed at 1 month and the field
+        // is read-only — don't require the user to fill it.
+        if (
+          !isDirectGain &&
+          (!form.duration_months || parseInt(form.duration_months) <= 0)
+        ) {
           missing.push("Duration (months)");
         }
         if (
@@ -2121,9 +2126,13 @@ function EditTab({
         cash_impact: form.cash_impact
           ? parseFloat(form.cash_impact)
           : undefined,
-        duration_months: form.duration_months
-          ? parseInt(form.duration_months)
-          : undefined,
+        // Bonus/Rework are a single one-time gain — always 1 month, regardless
+        // of the (read-only) form value.
+        duration_months: isDirectGain
+          ? 1
+          : form.duration_months
+            ? parseInt(form.duration_months)
+            : undefined,
         planned_start_date: form.planned_start_date || undefined,
         execution_start_date: form.execution_start_date || undefined,
         real_start_date: form.real_start_date || undefined,
@@ -2636,7 +2645,8 @@ function EditTab({
                     </span>
                   </p>
                 )}
-                {recommendedSavingsStart &&
+                {!isDirectGain &&
+                  recommendedSavingsStart &&
                   recommendedSavingsStart.iso !== form.planned_start_date && (
                     <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-blue-600">
                       <span>
