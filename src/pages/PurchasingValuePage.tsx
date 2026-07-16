@@ -10344,6 +10344,9 @@ export default function PurchasingValuePage() {
     userEmail,
     PV_FILTERS_DEFAULT,
   );
+  // Free-text search across opportunity name, type, plant, supplier and owners.
+  // Kept transient (not persisted) — a stale search box on return is confusing.
+  const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState(initialFilters.filterType);
   const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus);
   const [filterBudget, setFilterBudget] = useState(initialFilters.filterBudget);
@@ -10478,7 +10481,25 @@ export default function PurchasingValuePage() {
     "Stuck",
   ];
 
+  const searchTerm = search.trim().toLowerCase();
   const filtered = opportunities.filter((o) => {
+    if (searchTerm) {
+      const haystack = [
+        o.opportunity_name,
+        o.opportunity_type,
+        o.plant_name,
+        o.plant_city,
+        o.project_owner,
+        o.purchasing_owner,
+        o.conversion_owner,
+        o.idea_owner,
+        String(o.opportunity_id),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
     if (filterType === "Cash") {
       if (o.cash_impact == null) return false;
     } else if (filterType !== "All" && o.opportunity_type !== filterType) {
@@ -10538,6 +10559,7 @@ export default function PurchasingValuePage() {
     ].filter((f) => f !== "All").length + (filterEscalated ? 1 : 0);
 
   function resetFilters() {
+    setSearch("");
     setFilterType("All");
     setFilterStatus("All");
     setFilterBudget("All");
@@ -10765,6 +10787,49 @@ export default function PurchasingValuePage() {
               {t}
             </button>
           ))}
+          <div className="relative ml-auto">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search opportunities…"
+              className="w-56 rounded-xl border border-slate-200 bg-white/80 py-1 pl-8 pr-7 text-xs text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-slate-200 dark:placeholder:text-slate-500"
+            />
+            <svg
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-4.35-4.35m1.35-5.4a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z"
+              />
+            </svg>
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Row 2 — Status, Validation, Priority, Gate, Plant */}
