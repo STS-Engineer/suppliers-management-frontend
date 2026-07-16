@@ -78,6 +78,7 @@ interface FinLine {
   duration_months?: number;
   cumulated_real_saving?: number;
   delta_vs_expected_ytd?: number;
+  pacing_status?: string;
   status?: string;
   follower?: string;
   forecast_eoy_current?: number;
@@ -7291,6 +7292,20 @@ function FinancialTab({
             {fmtC(line.delta_vs_expected_ytd)}
           </p>
         </div>
+        {line.pacing_status && (
+          <div>
+            <span className="block font-semibold text-slate-400">Pacing</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                line.pacing_status === "Late"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {line.pacing_status}
+            </span>
+          </div>
+        )}
         <div>
           <span className="block font-semibold text-slate-400">
             Conversion Rate

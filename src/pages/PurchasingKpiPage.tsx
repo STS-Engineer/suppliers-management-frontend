@@ -53,6 +53,9 @@ interface Kpis {
   phase0_go_count?: number;
   phase0_decided_count?: number;
   project_on_time_rate_pct: number | null;
+  pacing_on_time_pct: number | null;
+  pacing_late_count: number;
+  pacing_on_time_count: number;
   monthly_update_pct: number | null;
   avg_priority_score: number | null;
   active_lines_count: number;
@@ -428,6 +431,14 @@ function ExecSummaryBar({
           ? `${kpis.missing_update_lines} lines missing`
           : "Fully up to date",
       trend: kpis.monthly_update_pct,
+    },
+    {
+      icon: <Clock size={13} />,
+      token: pctToken(kpis.pacing_on_time_pct),
+      label: "On-time Pacing",
+      value: pctFmt(kpis.pacing_on_time_pct),
+      sub: `${kpis.pacing_late_count} late · ${kpis.pacing_on_time_count} on time`,
+      trend: kpis.pacing_on_time_pct,
     },
   ];
 
