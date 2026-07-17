@@ -690,6 +690,7 @@ const EDITOR_PROFILES = [
 // See utils/persistedFilters.ts — the same helper is reused by other
 // filter-heavy pages (KPI dashboard, SB1 supplier panel, etc).
 // ---------------------------------------------------------------------------
+const OPPORTUNITY_DELETE_PROFILES = ["vp_conversion", "purchasing_director"];
 const PV_FILTERS_PAGE_KEY = "purchasing-value";
 
 interface PvFilters {
@@ -4088,7 +4089,7 @@ function EditTab({
                   </div>
                 </div>
                 {/* Logistics: Before / After table */}
-                <div className="overflow-x-auto">
+                <div className="scroll-x-visible">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-50">
@@ -4379,7 +4380,7 @@ function EditTab({
                   )
                 }
               >
-                <div className="overflow-x-auto">
+                <div className="scroll-x-visible">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-50">
@@ -8080,7 +8081,7 @@ function FinancialTab({
 
       {/* Monthly table — Phase 2+ only */}
       {phaseCtx.showActuals && (
-        <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <div className="scroll-x-visible rounded-xl border border-slate-100">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 text-left text-slate-500">
@@ -9924,7 +9925,9 @@ function DetailDrawer({
   userEmail: string;
 }) {
   const { user } = useAuth();
-  const canDelete = user?.access_profile === "vp_conversion";
+  const canDelete = OPPORTUNITY_DELETE_PROFILES.includes(
+    user?.access_profile ?? "",
+  );
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -10328,7 +10331,9 @@ function OppCard({
   compact?: boolean;
 }) {
   const { user } = useAuth();
-  const canDelete = user?.access_profile === "vp_conversion";
+  const canDelete = OPPORTUNITY_DELETE_PROFILES.includes(
+    user?.access_profile ?? "",
+  );
   const canDuplicate = EDITOR_PROFILES.includes(user?.access_profile ?? "");
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -11394,7 +11399,7 @@ export default function PurchasingValuePage() {
           </p>
         )}
         {!loading && !error && (
-          <div className="flex gap-4 overflow-x-auto pb-6">
+          <div className="scroll-x-bar flex gap-4 pb-6">
             {visiblePhases.map((ph, i) => (
               <div key={ph} className="flex items-start gap-4">
                 <PhaseColumn
@@ -11438,4 +11443,7 @@ export default function PurchasingValuePage() {
     </div>
   );
 }
+
+
+
 
