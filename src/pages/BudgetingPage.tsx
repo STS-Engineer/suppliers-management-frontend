@@ -9,10 +9,16 @@ import {
   TrendingDown,
   TrendingUp,
   Lock,
+  Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import {
+  loadPersistedFilters,
+  savePersistedFilters,
+} from "../utils/persistedFilters";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -80,6 +86,200 @@ interface Summary {
   total_validated: number;
 }
 
+// ─── Excel export ────────────────────────────────────────────────────────────
+// One row per budget-year item, EUR-consolidated (the page's reporting currency),
+// with the native amount + FX kept for traceability. Ordered [header, accessor].
+const BUDGET_EXPORT_COLUMNS: [string, (i: BudgetYearItem) => unknown][] = [
+  ["Fiscal Year", (i) => i.fiscal_year],
+  ["Section", (i) => (i.is_additional ? "Additional" : "Baseline")],
+  ["Opp ID", (i) => i.opportunity_id],
+  ["Opportunity", (i) => i.opportunity_name],
+  ["Type", (i) => i.opportunity_type],
+  ["Plant", (i) => i.plant_name],
+  ["Purchasing Owner", (i) => i.purchasing_owner],
+  ["Phase", (i) => i.phase_status],
+  ["Budget Status", (i) => i.budget_status],
+  ["Additional", (i) => (i.is_additional ? "Yes" : "No")],
+  ["Portion", (i) => i.portion_kind],
+  ["Currency", (i) => i.currency ?? "EUR"],
+  ["FX to EUR", (i) => i.fx_rate_to_eur],
+  ["Applicable Amount (native)", (i) => i.applicable_amount],
+  ["Applicable Amount EUR", (i) => i.applicable_amount_eur],
+  ["Value of Opportunity EUR", (i) => i.value_of_opportunity_eur],
+  ["Expected Annual Saving EUR", (i) => i.expected_annual_saving_eur],
+  ["EOY Forecast EUR", (i) => i.eoy_forecast_eur],
+  ["Actual YTD EUR", (i) => i.actual_ytd_eur],
+  ["Delta YTD EUR", (i) => i.delta_ytd_eur],
+  ["Delta EOY-Budget EUR", (i) => i.delta_eoy_budget],
+  ["Cash Expected EUR", (i) => i.cash_expected_eur],
+  ["Cash Actual EUR", (i) => i.cash_actual_eur],
+  ["Real Start", (i) => i.real_start_date],
+  ["Planned Start", (i) => i.planned_start_date],
+  ["Duration (months)", (i) => i.duration_months],
+  ["Locked At", (i) => i.status_locked_at],
+  ["Locked By", (i) => i.status_locked_by],
+];
+
+function exportBudgetToExcel(
+  items: BudgetYearItem[],
+  summary: Summary | null,
+  fiscalYear: number,
+): void {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — items (baseline first, then additional), matching the page order
+  const ordered = [
+    ...items.filter((i) => !i.is_additional),
+    ...items.filter((i) => i.is_additional),
+  ];
+  const rows = ordered.map((i) => {
+    const row: Record<string, unknown> = {};
+    for (const [header, accessor] of BUDGET_EXPORT_COLUMNS) {
+      const v = accessor(i);
+      row[header] = v == null ? "" : v;
+    }
+    return row;
+  });
+  const headers = BUDGET_EXPORT_COLUMNS.map(([h]) => h);
+  const ws =
+    rows.length > 0
+      ? XLSX.utils.json_to_sheet(rows, { header: headers })
+      : XLSX.utils.aoa_to_sheet([headers]);
+  XLSX.utils.book_append_sheet(wb, ws, `Budget FY${fiscalYear}`);
+
+  // Sheet 2 — summary totals (EUR)
+  if (summary) {
+    const s: [string, unknown][] = [
+      ["Fiscal Year", fiscalYear],
+      ["Baseline opportunities", summary.total_baseline],
+      ["Additional opportunities", summary.total_additional],
+      ["Baseline budgeted (EUR)", summary.baseline_budgeted_eur],
+      ["Additional accepted (EUR)", summary.additional_accepted_eur],
+      ["Total budget (EUR)", summary.total_budget_eur],
+      ["Baseline cash expected (EUR)", summary.baseline_cash_expected_eur],
+      ["Additional cash expected (EUR)", summary.additional_cash_expected_eur],
+      ["Total cash expected (EUR)", summary.total_cash_expected_eur],
+      ["Total cash actual (EUR)", summary.total_cash_actual_eur],
+    ];
+    const wsS = XLSX.utils.aoa_to_sheet([["Metric", "Value"], ...s]);
+    XLSX.utils.book_append_sheet(wb, wsS, "Summary");
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `budgeting-FY${fiscalYear}-${stamp}.xlsx`);
+}
+
+// ─── Filtering + client-side summary ─────────────────────────────────────────
+// Deployment start = the confirmed savings/deployment anchor (real start, else
+// execution start, else planned start).
+const deploymentStartOf = (i: BudgetYearItem): string | null =>
+  i.real_start_date ?? i.execution_start_date ?? i.planned_start_date ?? null;
+// Month bucket key ("2026-07") used both as the filter value and to build options.
+const monthKeyOf = (d?: string | null): string => (d ? d.slice(0, 7) : "");
+const monthLabelOf = (key: string): string =>
+  key
+    ? new Date(`${key}-01T00:00:00`).toLocaleDateString("en-GB", {
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+
+// Recompute the summary KPIs from a (filtered) item set, mirroring the backend
+// (router.list_budget_years) so the cards react to the active filters. EUR totals
+// use applicable_amount_eur (non-EUR rows with no FX contribute 0, as backend).
+function computeSummary(rows: BudgetYearItem[]): Summary {
+  const eur = (i: BudgetYearItem) => i.applicable_amount_eur ?? 0;
+  const cashExp = (i: BudgetYearItem) => i.cash_expected_eur ?? 0;
+  const cashAct = (i: BudgetYearItem) => i.cash_actual_eur ?? 0;
+  const sum = (arr: BudgetYearItem[], f: (i: BudgetYearItem) => number) =>
+    arr.reduce((s, i) => s + f(i), 0);
+
+  const baseline = rows.filter((i) => !i.is_additional);
+  const additional = rows.filter((i) => i.is_additional);
+  const bBud = baseline.filter((i) => i.budget_status === "Budgeted");
+  const aBud = additional.filter((i) => i.budget_status === "Budgeted");
+
+  const baseline_budgeted_eur = sum(bBud, eur);
+  const additional_accepted_eur = sum(aBud, eur);
+  const baseline_cash_expected_eur = sum(bBud, cashExp);
+  const additional_cash_expected_eur = sum(aBud, cashExp);
+  const baseline_cash_actual_eur = sum(bBud, cashAct);
+  const additional_cash_actual_eur = sum(aBud, cashAct);
+
+  return {
+    total: rows.length,
+    total_baseline: baseline.length,
+    total_additional: additional.length,
+    baseline_budgeted_eur,
+    additional_accepted_eur,
+    total_budget_eur: baseline_budgeted_eur + additional_accepted_eur,
+    baseline_cash_expected_eur,
+    additional_cash_expected_eur,
+    total_cash_expected_eur:
+      baseline_cash_expected_eur + additional_cash_expected_eur,
+    baseline_cash_actual_eur,
+    additional_cash_actual_eur,
+    total_cash_actual_eur: baseline_cash_actual_eur + additional_cash_actual_eur,
+    additional_pending: additional.filter((i) => i.budget_status === "Opportunity")
+      .length,
+    additional_accepted: aBud.length,
+    additional_rejected: additional.filter((i) => i.budget_status === "Empty")
+      .length,
+    total_applicable: sum(rows, eur),
+    total_budgeted: sum(
+      rows.filter((i) => i.budget_status === "Budgeted"),
+      eur,
+    ),
+    total_opportunity: sum(
+      rows.filter((i) => i.budget_status === "Opportunity"),
+      eur,
+    ),
+    total_empty: sum(
+      rows.filter((i) => i.budget_status === "Empty"),
+      eur,
+    ),
+    total_validated: sum(
+      rows.filter((i) => i.suggested_status === "Validate"),
+      eur,
+    ),
+  };
+}
+
+// Small labelled dropdown used in the filter toolbar.
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  format,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  format?: (v: string) => string;
+}) {
+  return (
+    <label className="flex items-center gap-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-slate-200"
+      >
+        <option value="All">All</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {format ? format(o) : o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n?: number | null) =>
@@ -138,6 +338,15 @@ const PORTION_COLORS: Record<string, string> = {
 
 const _CY = new Date().getFullYear();
 const YEARS = Array.from({ length: 10 }, (_, i) => _CY - 2 + i);
+
+// Persisted per-user filter preset (search stays transient — see PurchasingValuePage).
+const BUDGET_FILTERS_PAGE_KEY = "budgeting";
+const BUDGET_FILTERS_DEFAULT = {
+  filterType: "All",
+  filterPlant: "All",
+  filterPortion: "All",
+  filterStart: "All",
+};
 
 function budgetYearWindowLabel(year: number) {
   return `01 Jan ${year} – 31 Dec ${year}`;
@@ -214,6 +423,22 @@ export default function BudgetingPage() {
   >({});
   const [savingAdditional, setSavingAdditional] = useState(false);
 
+  // ── Search + filters (normal mode only) ──────────────────────────────────
+  // Dropdown filters persist per user (localStorage); search stays transient so
+  // a stale search box never surprises you on return.
+  const initialFilters = loadPersistedFilters(
+    BUDGET_FILTERS_PAGE_KEY,
+    userEmail,
+    BUDGET_FILTERS_DEFAULT,
+  );
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState(initialFilters.filterType);
+  const [filterPlant, setFilterPlant] = useState(initialFilters.filterPlant);
+  const [filterPortion, setFilterPortion] = useState(
+    initialFilters.filterPortion,
+  );
+  const [filterStart, setFilterStart] = useState(initialFilters.filterStart); // deployment-start month key
+
   const loadRequestRef = useRef(0);
 
   async function load(year: number) {
@@ -280,16 +505,91 @@ export default function BudgetingPage() {
     setSelectMode(false);
   }, [fiscalYear]);
 
+  // Persist the dropdown filters per user on every change.
+  useEffect(() => {
+    savePersistedFilters(BUDGET_FILTERS_PAGE_KEY, userEmail, {
+      filterType,
+      filterPlant,
+      filterPortion,
+      filterStart,
+    });
+  }, [userEmail, filterType, filterPlant, filterPortion, filterStart]);
+
   // ── Create Budget (baseline only) ─────────────────────────────────────────
 
+  // Unfiltered — used for Create Budget mode, saving, and the live counters so a
+  // filter never changes what gets committed.
   const baselineItems = items.filter((i) => !i.is_additional);
   const additionalItems = items.filter((i) => i.is_additional);
+
+  // ── Filter options (from the full item set) ──────────────────────────────
+  const typeOptions = [
+    ...new Set(items.map((i) => i.opportunity_type).filter(Boolean) as string[]),
+  ].sort();
+  const plantOptions = [
+    ...new Set(items.map((i) => i.plant_name).filter(Boolean) as string[]),
+  ].sort();
+  const portionOptions = [
+    ...new Set(items.map((i) => i.portion_kind).filter(Boolean) as string[]),
+  ].sort();
+  const startOptions = [
+    ...new Set(
+      items.map((i) => monthKeyOf(deploymentStartOf(i))).filter(Boolean),
+    ),
+  ].sort();
+
+  const matchesFilters = (i: BudgetYearItem): boolean => {
+    if (search.trim()) {
+      const hay = [
+        i.opportunity_name,
+        i.opportunity_type,
+        i.plant_name,
+        i.purchasing_owner,
+        String(i.opportunity_id),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!hay.includes(search.trim().toLowerCase())) return false;
+    }
+    if (filterType !== "All" && i.opportunity_type !== filterType) return false;
+    if (filterPlant !== "All" && (i.plant_name ?? "") !== filterPlant)
+      return false;
+    if (filterPortion !== "All" && (i.portion_kind ?? "") !== filterPortion)
+      return false;
+    if (
+      filterStart !== "All" &&
+      monthKeyOf(deploymentStartOf(i)) !== filterStart
+    )
+      return false;
+    return true;
+  };
+
+  const activeFilterCount =
+    [filterType, filterPlant, filterPortion, filterStart].filter(
+      (f) => f !== "All",
+    ).length + (search.trim() ? 1 : 0);
+
+  // Filtered sets drive the DISPLAY tables and the KPI cards (normal mode).
+  const filteredItems = items.filter(matchesFilters);
+  const displayBaseline = filteredItems.filter((i) => !i.is_additional);
+  const displayAdditional = filteredItems.filter((i) => i.is_additional);
+  // KPIs recomputed from the filtered set so the cards react to filters.
+  const viewSummary = computeSummary(filteredItems);
+
+  function resetFilters() {
+    setSearch("");
+    setFilterType("All");
+    setFilterPlant("All");
+    setFilterPortion("All");
+    setFilterStart("All");
+  }
 
   // Total "Value of Opportunity" = sum of each opportunity's full multi-year gain
   // (dedup by opportunity_id — an opp can have several budget-year rows on this page).
   const valueOfOpportunityTotal = (() => {
     const seen = new Set<number>();
-    return items.reduce((s, i) => {
+    return filteredItems.reduce((s, i) => {
       if (seen.has(i.opportunity_id)) return s;
       seen.add(i.opportunity_id);
       return s + (i.value_of_opportunity_eur ?? 0);
@@ -594,6 +894,16 @@ export default function BudgetingPage() {
           {!selectMode ? (
             <>
               <button
+                onClick={() =>
+                  exportBudgetToExcel(filteredItems, viewSummary, fiscalYear)
+                }
+                disabled={loading || filteredItems.length === 0}
+                title="Export the current fiscal year's budget (items + summary) to Excel"
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Download size={12} /> Export Excel
+              </button>
+              <button
                 onClick={() => load(fiscalYear)}
                 disabled={loading}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
@@ -775,6 +1085,82 @@ export default function BudgetingPage() {
         </div>
       )}
 
+      {/* ── Search + Filters (normal mode) ── */}
+      {!selectMode && !loading && items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2.5">
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search opportunity, plant, owner…"
+              className="w-64 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs text-slate-700 placeholder:text-slate-400 outline-none focus:border-blue-400"
+            />
+            <svg
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-4.35-4.35m1.35-5.4a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z"
+              />
+            </svg>
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <FilterSelect
+            label="Type"
+            value={filterType}
+            onChange={setFilterType}
+            options={typeOptions}
+          />
+          <FilterSelect
+            label="Plant"
+            value={filterPlant}
+            onChange={setFilterPlant}
+            options={plantOptions}
+          />
+          <FilterSelect
+            label="Deployment start"
+            value={filterStart}
+            onChange={setFilterStart}
+            options={startOptions}
+            format={monthLabelOf}
+          />
+          <FilterSelect
+            label="Portion"
+            value={filterPortion}
+            onChange={setFilterPortion}
+            options={portionOptions}
+          />
+          <div className="ml-auto flex items-center gap-3 text-xs text-slate-400">
+            <span>
+              <strong className="text-slate-600">{filteredItems.length}</strong>{" "}
+              / {items.length}
+            </span>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={resetFilters}
+                className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <X size={12} /> Reset ({activeFilterCount})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── 3 KPI Cards ── */}
       {summary && !selectMode && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -784,31 +1170,31 @@ export default function BudgetingPage() {
               Initial Baseline Budget
             </p>
             <p className="mt-1 text-2xl font-bold text-blue-700">
-              {fmt(summary.baseline_budgeted_eur)}
+              {fmt(viewSummary.baseline_budgeted_eur)}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              {summary.total_baseline} opportunit
-              {summary.total_baseline !== 1 ? "ies" : "y"} · Budgeted &amp;
+              {viewSummary.total_baseline} opportunit
+              {viewSummary.total_baseline !== 1 ? "ies" : "y"} · Budgeted &amp;
               locked at closure
             </p>
           </div>
 
           {/* Card 2 — Additional */}
           <div
-            className={`rounded-xl border p-4 shadow-sm ${summary.total_additional > 0 ? "border-violet-100 bg-violet-50/40" : "border-slate-100 bg-white"}`}
+            className={`rounded-xl border p-4 shadow-sm ${viewSummary.total_additional > 0 ? "border-violet-100 bg-violet-50/40" : "border-slate-100 bg-white"}`}
           >
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
               Additional (post-closure)
             </p>
             <p
-              className={`mt-1 text-2xl font-bold ${summary.total_additional > 0 ? "text-violet-700" : "text-slate-300"}`}
+              className={`mt-1 text-2xl font-bold ${viewSummary.total_additional > 0 ? "text-violet-700" : "text-slate-300"}`}
             >
-              {fmt(summary.additional_accepted_eur)}
+              {fmt(viewSummary.additional_accepted_eur)}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              {summary.additional_accepted} Accepted ·{" "}
-              {summary.additional_pending + summary.additional_rejected} Not
-              considered
+              {viewSummary.additional_accepted} Accepted ·{" "}
+              {viewSummary.additional_pending + viewSummary.additional_rejected}{" "}
+              Not considered
             </p>
           </div>
 
@@ -818,11 +1204,11 @@ export default function BudgetingPage() {
               Total Budget (Saving) {fiscalYear}
             </p>
             <p className="mt-1 text-2xl font-bold text-white">
-              {fmt(summary.total_budget_eur)}
+              {fmt(viewSummary.total_budget_eur)}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              Baseline {fmt(summary.baseline_budgeted_eur)} + Additional{" "}
-              {fmt(summary.additional_accepted_eur)}
+              Baseline {fmt(viewSummary.baseline_budgeted_eur)} + Additional{" "}
+              {fmt(viewSummary.additional_accepted_eur)}
             </p>
           </div>
 
@@ -832,12 +1218,12 @@ export default function BudgetingPage() {
               Total Budget (Cash) {fiscalYear}
             </p>
             <p className="mt-1 text-2xl font-bold text-white">
-              {fmt(summary.total_cash_expected_eur)}
+              {fmt(viewSummary.total_cash_expected_eur)}
             </p>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              Baseline {fmt(summary.baseline_cash_expected_eur)} + Additional{" "}
-              {fmt(summary.additional_cash_expected_eur)} · Actual{" "}
-              {fmt(summary.total_cash_actual_eur)}
+              Baseline {fmt(viewSummary.baseline_cash_expected_eur)} + Additional{" "}
+              {fmt(viewSummary.additional_cash_expected_eur)} · Actual{" "}
+              {fmt(viewSummary.total_cash_actual_eur)}
             </p>
           </div>
 
@@ -899,15 +1285,18 @@ export default function BudgetingPage() {
             </span>
             {closure && <Lock size={10} className="text-slate-300" />}
             <span className="text-[11px] text-slate-400">
-              — {baselineItems.length} opportunit
-              {baselineItems.length !== 1 ? "ies" : "y"}
+              — {(selectMode ? baselineItems : displayBaseline).length}{" "}
+              opportunit
+              {(selectMode ? baselineItems : displayBaseline).length !== 1
+                ? "ies"
+                : "y"}
             </span>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
+          <div className="scroll-x-visible rounded-xl border border-slate-100 bg-white shadow-sm">
             <table className="w-full text-left text-xs">
               <TableHead showDecisionCol={selectMode} />
               <tbody className="divide-y divide-slate-50">
-                {baselineItems.map((item) => (
+                {(selectMode ? baselineItems : displayBaseline).map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/60">
                     {selectMode && (
                       <td className="px-3 py-2.5">
@@ -977,21 +1366,25 @@ export default function BudgetingPage() {
               </span>
               {additionalItems.length > 0 ? (
                 <span className="text-[11px] text-slate-400">
-                  — {additionalItems.length} opportunit
-                  {additionalItems.length !== 1 ? "ies" : "y"} added after
-                  budget closure or manually marked Additional
+                  — {(selectMode ? additionalItems : displayAdditional).length}{" "}
+                  opportunit
+                  {(selectMode ? additionalItems : displayAdditional).length !==
+                  1
+                    ? "ies"
+                    : "y"}{" "}
+                  added after budget closure or manually marked Additional
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-400">— none yet</span>
               )}
-              {summary &&
-                summary.additional_pending + summary.additional_rejected >
-                  0 && (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                    {summary.additional_pending + summary.additional_rejected}{" "}
-                    not considered
-                  </span>
-                )}
+              {viewSummary.additional_pending + viewSummary.additional_rejected >
+                0 && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  {viewSummary.additional_pending +
+                    viewSummary.additional_rejected}{" "}
+                  not considered
+                </span>
+              )}
             </div>
             {additionalChanged && isPrivileged && (
               <button
@@ -1022,11 +1415,12 @@ export default function BudgetingPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-violet-100 bg-white shadow-sm">
+            <div className="scroll-x-visible rounded-xl border border-violet-100 bg-white shadow-sm">
               <table className="w-full text-left text-xs">
                 <TableHead showDecisionCol={false} />
                 <tbody className="divide-y divide-slate-50">
-                  {additionalItems.map((item) => (
+                  {(selectMode ? additionalItems : displayAdditional).map(
+                    (item) => (
                     <tr key={item.id} className="hover:bg-violet-50/30">
                       <OppNameCell item={item} />
                       <CommonCells item={item} />

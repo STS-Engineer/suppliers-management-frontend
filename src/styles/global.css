@@ -1421,3 +1421,89 @@ th { color: var(--text-soft); font-weight: 600; }
 .dark .supplier-card__header--between .supplier-step { color: rgba(148, 163, 184, 0.8); }
 .dark .progress-track { background: rgba(255, 255, 255, 0.1); }
 .dark .progress-item__bar { background: rgba(255, 255, 255, 0.1); }
+
+/* ── Always-visible, styled horizontal scrollbar (wide tables) ─────────────── */
+/* The table can be tall, so a bottom-anchored horizontal scrollbar would sit far
+   down the page — you'd have to scroll past every row to reach it. Cap the height
+   and scroll BOTH axes inside the box: the horizontal bar then stays visible at
+   the bottom of the viewport-sized box, and the header is pinned (sticky) so it
+   never scrolls away. */
+.scroll-x-visible {
+  overflow-x: scroll;                          /* always show the horizontal bar */
+  overflow-y: auto;
+  max-height: 70vh;
+  scrollbar-width: thin;                       /* Firefox */
+  scrollbar-color: #94a3b8 #e2e8f0;            /* Firefox: thumb / track */
+}
+/* Pin the header row while scrolling vertically. */
+.scroll-x-visible thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+}
+.dark .scroll-x-visible thead th {
+  background: #0a1120;
+}
+.scroll-x-visible::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.scroll-x-visible::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+.scroll-x-visible::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e2e8f0;
+}
+.scroll-x-visible::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+.dark .scroll-x-visible {
+  scrollbar-color: rgba(148, 163, 184, 0.6) rgba(255, 255, 255, 0.08);
+}
+.dark .scroll-x-visible::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+}
+.dark .scroll-x-visible::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Kanban board scroll — visible horizontal bar without scrolling to the very
+   bottom of the columns. Caps the board height (scrolls vertically inside), so
+   the horizontal scrollbar stays in view. No sticky header (no thead here). ── */
+.scroll-x-bar {
+  overflow: auto;
+  max-height: 78vh;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+.scroll-x-bar::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.scroll-x-bar::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+.scroll-x-bar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e2e8f0;
+}
+.scroll-x-bar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+.dark .scroll-x-bar {
+  scrollbar-color: rgba(148, 163, 184, 0.6) rgba(255, 255, 255, 0.08);
+}
+.dark .scroll-x-bar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+}
+.dark .scroll-x-bar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-color: rgba(255, 255, 255, 0.06);
+}
