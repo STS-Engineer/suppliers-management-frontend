@@ -2459,7 +2459,10 @@ function EditTab({
         saving_nature: form.saving_nature || undefined,
         // "" → "Standard" so a user can switch a Bonus/Rework back to standard STP.
         entry_mode: form.entry_mode || "Standard",
-        description: form.description || undefined,
+        // Send "" (not undefined) so clearing the field actually erases the
+        // description — undefined is dropped by JSON.stringify, so the backend
+        // would never receive the change and nothing would happen.
+        description: form.description ?? "",
         expected_annual_saving: form.expected_annual_saving
           ? parseFloat(form.expected_annual_saving)
           : undefined,
