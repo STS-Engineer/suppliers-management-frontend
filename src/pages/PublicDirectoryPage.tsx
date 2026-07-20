@@ -22,6 +22,7 @@ interface PlantEntry {
   final_grade?: string | null;
   supplier_status?: string | null;
   supplier_scope?: string | null;
+  strategic_mention?: string | null;
   last_evaluation_date?: string | null;
   annual_spend_value?: number | null;
   // 11 criteria
@@ -98,6 +99,38 @@ function GradeBadge({ grade, size = "md" }: { grade?: string | null; size?: "sm"
     <span className={`inline-flex shrink-0 items-center justify-center rounded-full font-bold text-white ${bg} ${sz}`}>
       {grade}
     </span>
+  );
+}
+
+// Relation-level strategic mention → colored pill(s). Value may be comma-combined
+// (e.g. "monopolistic,strategic"); "rfq only" = can be sent RFQs, not awarded.
+const MENTION_CLS: Record<string, string> = {
+  strategic: "bg-violet-100 text-violet-700",
+  monopolistic: "bg-orange-100 text-orange-700",
+  "rfq only": "bg-sky-100 text-sky-700",
+  exit: "bg-rose-100 text-rose-700",
+  "need group validation": "bg-amber-100 text-amber-700",
+};
+
+function StrategicBadges({ mention }: { mention?: string | null }) {
+  const tokens = (mention ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tokens.map((t) => (
+        <span
+          key={t}
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+            MENTION_CLS[t.toLowerCase()] ?? "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {t}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -301,6 +334,7 @@ function PlantDetail({ p }: { p: PlantEntry }) {
           {p.supplier_scope && (
             <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold capitalize text-slate-500">{p.supplier_scope}</span>
           )}
+          <StrategicBadges mention={p.strategic_mention} />
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {p.class_score != null && (
