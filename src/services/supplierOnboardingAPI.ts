@@ -2009,6 +2009,18 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async getSupplierDashboard(fiscalYear?: number, expiringDays = 90) {
+    const p = new URLSearchParams();
+    if (fiscalYear) p.set("fiscal_year", String(fiscalYear));
+    if (expiringDays) p.set("expiring_days", String(expiringDays));
+    const q = p.toString() ? `?${p.toString()}` : "";
+    return this.request(
+      `${this.baseUrl}/suppliers/dashboard${q}`,
+      { method: "GET", headers: this.getAuthHeaders(), cache: "no-store" },
+      "Failed to load supplier dashboard.",
+    );
+  }
+
   async getCurrentSupplierEvaluation(opportunityId: number) {
     return this.request(
       `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/current-supplier-evaluation`,
@@ -2746,6 +2758,39 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async deleteCertification(
+    unitId: number,
+    certId: number,
+  ): Promise<{
+    status: string;
+    affected_evaluations: Array<{
+      relation_id: number;
+      previous_quality_cert: string | null;
+      new_quality_cert: string | null;
+      new_class_score: number | null;
+      new_class_value: number | null;
+    }>;
+    message: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}/certifications/${certId}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to delete certification.",
+    );
+  }
+
+  async deleteCertificationFile(
+    unitId: number,
+    certId: number,
+    documentId: number,
+  ): Promise<{ status: string; message: string }> {
+    return this.request(
+      `${this.baseUrl}/suppliers/units/${unitId}/certifications/${certId}/file/${documentId}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to remove certification file.",
+    );
+  }
+
   async getCertificationsSummary(params?: {
     standard_type?: string;
     q?: string;
@@ -2962,6 +3007,25 @@ class SupplierOnboardingAPI {
         }),
       },
       "Failed to submit committee vote.",
+    );
+  }
+
+  async getSupplierMonitoringOverview(filters?: {
+    country?: string;
+    commodity?: string;
+    groupId?: number;
+    q?: string;
+  }) {
+    const p = new URLSearchParams();
+    if (filters?.country) p.set("country", filters.country);
+    if (filters?.commodity) p.set("commodity", filters.commodity);
+    if (filters?.groupId != null) p.set("group_id", String(filters.groupId));
+    if (filters?.q) p.set("q", filters.q);
+    const q = p.toString() ? `?${p.toString()}` : "";
+    return this.request(
+      `${this.baseUrl}/supplier-monitoring/overview${q}`,
+      { method: "GET", headers: this.getAuthHeaders(), cache: "no-store" },
+      "Failed to load supplier monitoring overview.",
     );
   }
 }

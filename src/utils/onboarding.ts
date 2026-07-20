@@ -389,10 +389,10 @@ export const getPldOnboardingOptions = () => ({
 /** Standard categories for certifications (standard_type field) */
 export const CERTIFICATION_STANDARD_TYPE_OPTIONS = [
   { value: 'quality', label: 'Quality' },
-  // { value: 'environmental', label: 'Environmental' },
-  // { value: 'safety', label: 'Safety & Health' },
-  // { value: 'energy', label: 'Energy' },
-  // { value: 'other', label: 'Other' },
+  { value: 'environmental', label: 'Environmental' },
+  { value: 'safety', label: 'Safety & Health' },
+  { value: 'energy', label: 'Energy' },
+  { value: 'other', label: 'Other' },
 ] as const;
 
 /** Certification names per standard category (drives the cascading select) */

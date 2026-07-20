@@ -7,7 +7,7 @@
  * Tab 4 — Decision & Impact   : 6 impact questions + panel decision
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
@@ -521,6 +521,24 @@ interface WorkspaceExtra {
     certificate_name?: string;
     start_date?: string;
     end_date?: string;
+    file_name?: string;
+    file_url?: string;
+    files?: Array<{
+      id_document: number;
+      document_name: string;
+      original_file_name?: string;
+      mime_type?: string;
+      file_url?: string;
+      uploaded_at?: string;
+    }>;
+  }>;
+  unit_certificate_documents?: Array<{
+    id_document: number;
+    document_name: string;
+    original_file_name?: string;
+    mime_type?: string;
+    file_url?: string;
+    uploaded_at?: string;
   }>;
   evaluation_documents?: Array<{
     id_document: number;
@@ -1608,6 +1626,8 @@ export default function RelationEvaluationPage() {
                 unitId={relation?.id_supplier_unit ?? 0}
                 unitName={unitName}
                 certs={extra.unit_certifications ?? []}
+                unitDocuments={extra.unit_certificate_documents ?? []}
+                canManage={isPrivileged}
                 onRefresh={load}
               />
             )}
@@ -4372,6 +4392,8 @@ function CertificationsTab({
   unitId,
   unitName,
   certs,
+  unitDocuments,
+  canManage,
   onRefresh,
 }: {
   unitId: number;
@@ -4383,14 +4405,38 @@ function CertificationsTab({
     certificate_name?: string;
     start_date?: string;
     end_date?: string;
+    file_name?: string;
+    file_url?: string;
+    files?: Array<{
+      id_document: number;
+      document_name: string;
+      original_file_name?: string;
+      mime_type?: string;
+      file_url?: string;
+      uploaded_at?: string;
+    }>;
   }>;
+  unitDocuments: Array<{
+    id_document: number;
+    document_name: string;
+    original_file_name?: string;
+    mime_type?: string;
+    file_url?: string;
+    uploaded_at?: string;
+  }>;
+  canManage: boolean;
   onRefresh: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<CertRow>({ ...EMPTY_CERT_ROW });
   const [submitting, setSubmitting] = useState(false);
+  const [busyCertId, setBusyCertId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; mime?: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileTargetRef = useRef<number | null>(null);
 
   const today = new Date().toISOString().slice(0, 10);
   const isQualityStandard = QUALITY_STANDARDS.has(form.standard_type);
@@ -4407,6 +4453,36 @@ function CertificationsTab({
     }));
   };
 
+  const resetForm = () => {
+    setForm({ ...EMPTY_CERT_ROW });
+    setShowForm(false);
+    setEditId(null);
+    setError(null);
+  };
+
+  const beginAdd = () => {
+    setForm({ ...EMPTY_CERT_ROW });
+    setEditId(null);
+    setShowForm(true);
+    setSuccess(null);
+    setError(null);
+  };
+
+  const beginEdit = (c: (typeof certs)[number]) => {
+    setForm({
+      standard_type: c.standard_type ?? "",
+      certification_type: c.certification_type ?? "",
+      certificate_name: c.certificate_name ?? "",
+      start_date: c.start_date ?? "",
+      end_date: c.end_date ?? "",
+      comments: "",
+    });
+    setEditId(c.id_certification);
+    setShowForm(true);
+    setSuccess(null);
+    setError(null);
+  };
+
   const handleSubmit = async () => {
     if (!form.standard_type || !form.certification_type) {
       setError("Standard type and certification are required.");
@@ -4420,27 +4496,107 @@ function CertificationsTab({
     setError(null);
     setSuccess(null);
     try {
-      await supplierAPI.addCertificationToUnit(unitId, {
-        standard_type: form.standard_type,
-        certification_type: form.certification_type,
-        certificate_name: form.certificate_name || undefined,
-        start_date: form.start_date || undefined,
-        end_date: form.end_date || undefined,
-        comments: form.comments || undefined,
-      });
-      setForm({ ...EMPTY_CERT_ROW });
-      setShowForm(false);
-      setSuccess(
-        isQualityStandard
-          ? "Certification added. The Quality Certification score in Class Evaluation has been updated automatically."
-          : "Certification added successfully.",
-      );
+      if (editId != null) {
+        await supplierAPI.patchCertification(unitId, editId, {
+          standard_type: form.standard_type,
+          certification_type: form.certification_type,
+          certificate_name: form.certificate_name || null,
+          start_date: form.start_date || null,
+          end_date: form.end_date || null,
+          comments: form.comments || null,
+        });
+        setSuccess(
+          isQualityStandard
+            ? "Certification updated. The Quality Certification score in Class Evaluation has been recomputed."
+            : "Certification updated successfully.",
+        );
+      } else {
+        await supplierAPI.addCertificationToUnit(unitId, {
+          standard_type: form.standard_type,
+          certification_type: form.certification_type,
+          certificate_name: form.certificate_name || undefined,
+          start_date: form.start_date || undefined,
+          end_date: form.end_date || undefined,
+          comments: form.comments || undefined,
+        });
+        setSuccess(
+          isQualityStandard
+            ? "Certification added. The Quality Certification score in Class Evaluation has been updated automatically."
+            : "Certification added successfully.",
+        );
+      }
+      resetForm();
       onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add certification.");
+      setError(err instanceof Error ? err.message : "Failed to save certification.");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleDelete = async (certId: number) => {
+    if (!window.confirm("Delete this certification? This cannot be undone. If it is a quality cert, the Class Evaluation score will be recomputed.")) {
+      return;
+    }
+    setBusyCertId(certId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await supplierAPI.deleteCertification(unitId, certId);
+      setSuccess("Certification removed.");
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete certification.");
+    } finally {
+      setBusyCertId(null);
+    }
+  };
+
+  const pickFileFor = (certId: number) => {
+    fileTargetRef.current = certId;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const certId = fileTargetRef.current;
+    e.target.value = "";
+    if (!file || certId == null) return;
+    setBusyCertId(certId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await supplierAPI.uploadCertificationFile(unitId, certId, file);
+      setSuccess("Certificate file uploaded.");
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload file.");
+    } finally {
+      setBusyCertId(null);
+      fileTargetRef.current = null;
+    }
+  };
+
+  const handleDeleteFile = async (certId: number, documentId: number) => {
+    if (!window.confirm("Remove this file from the certification? Older files stay as history; this one will be removed.")) return;
+    setBusyCertId(certId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await supplierAPI.deleteCertificationFile(unitId, certId, documentId);
+      setSuccess("Certificate file removed.");
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove file.");
+    } finally {
+      setBusyCertId(null);
+    }
+  };
+
+  const isPreviewable = (mime?: string, name?: string) => {
+    const n = (name || "").toLowerCase();
+    return (mime || "").includes("pdf") || (mime || "").startsWith("image/") ||
+      n.endsWith(".pdf") || /\.(png|jpe?g|gif|webp)$/.test(n);
   };
 
   return (
@@ -4456,10 +4612,10 @@ function CertificationsTab({
             {" "}— certifications are attached to the supplier unit, not the relation.
           </p>
         </div>
-        {!showForm && (
+        {canManage && !showForm && (
           <button
             type="button"
-            onClick={() => { setShowForm(true); setSuccess(null); }}
+            onClick={beginAdd}
             className="inline-flex items-center gap-1.5 rounded-xl bg-[#062B49] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381]"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4469,6 +4625,21 @@ function CertificationsTab({
           </button>
         )}
       </div>
+
+      {/* Hidden file input reused for all upload/replace actions */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
+      {!canManage && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-400">
+          You have read-only access to certifications. Only VP Conversion and Purchasing Director can add, edit, or remove them.
+        </div>
+      )}
 
       {/* Success notice */}
       {success && (
@@ -4480,11 +4651,11 @@ function CertificationsTab({
         </div>
       )}
 
-      {/* Add form */}
-      {showForm && (
+      {/* Add / edit form */}
+      {canManage && showForm && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/[0.08] dark:bg-[#0d1929]">
           <h4 className="mb-4 text-sm font-bold text-slate-900 dark:text-slate-100">
-            New certification
+            {editId != null ? "Edit certification" : "New certification"}
           </h4>
 
           {/* Quality cert info banner */}
@@ -4582,7 +4753,7 @@ function CertificationsTab({
           <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-4 dark:border-white/[0.06]">
             <button
               type="button"
-              onClick={() => { setShowForm(false); setForm({ ...EMPTY_CERT_ROW }); setError(null); }}
+              onClick={resetForm}
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]"
             >
               Cancel
@@ -4593,7 +4764,7 @@ function CertificationsTab({
               disabled={submitting}
               className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] disabled:opacity-50"
             >
-              {submitting ? "Saving…" : "Save certification"}
+              {submitting ? "Saving…" : editId != null ? "Update certification" : "Save certification"}
             </button>
           </div>
         </div>
@@ -4668,10 +4839,123 @@ function CertificationsTab({
                       </span>
                     )}
                   </div>
+
+                  {/* Certificate files (renewal history) */}
+                  {(() => {
+                    const files =
+                      c.files && c.files.length > 0
+                        ? c.files
+                        : c.file_url
+                          ? [{ id_document: 0, document_name: c.file_name || "Current file", original_file_name: c.file_name, file_url: c.file_url, mime_type: undefined, uploaded_at: undefined }]
+                          : [];
+                    return (
+                      <div className="mt-2 space-y-1">
+                        {files.length === 0 && (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">No file attached.</p>
+                        )}
+                        {files.map((f, idx) => {
+                          const label = f.original_file_name || f.document_name;
+                          return (
+                            <div key={f.id_document || `cur-${idx}`} className="flex flex-wrap items-center gap-2 text-[11px]">
+                              <svg className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                              <span className="max-w-[240px] truncate font-medium text-slate-700 dark:text-slate-300">{label}</span>
+                              {files.length > 1 && idx === 0 && (
+                                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400">Latest</span>
+                              )}
+                              {idx > 0 && (
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">Superseded</span>
+                              )}
+                              {f.file_url && isPreviewable(f.mime_type, label) && (
+                                <button type="button" onClick={() => setPreview({ url: f.file_url!, name: label, mime: f.mime_type })} className="font-semibold text-sky-600 hover:underline dark:text-sky-400">Preview</button>
+                              )}
+                              {f.file_url && (
+                                <a href={f.file_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-500 hover:underline dark:text-slate-400">Download</a>
+                              )}
+                              {canManage && f.id_document > 0 && (
+                                <button type="button" onClick={() => handleDeleteFile(c.id_certification, f.id_document)} disabled={busyCertId === c.id_certification} className="font-semibold text-red-500 hover:underline disabled:opacity-50">Delete</button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {canManage && (
+                          <button type="button" onClick={() => pickFileFor(c.id_certification)} disabled={busyCertId === c.id_certification} className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-slate-400 hover:text-slate-700 disabled:opacity-50 dark:border-white/[0.12] dark:text-slate-400">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                            {busyCertId === c.id_certification ? "Uploading…" : files.length ? "Add / renew file" : "Upload file"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
+
+                {/* Row actions */}
+                {canManage && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => beginEdit(c)} disabled={busyCertId === c.id_certification} title="Edit certification" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-white/[0.06] dark:hover:text-slate-200">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </button>
+                    <button type="button" onClick={() => handleDelete(c.id_certification)} disabled={busyCertId === c.id_certification} title="Delete certification" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Unit-level certificate documents (imported files not linked to a specific cert) */}
+      {unitDocuments.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Unit certificate documents</h4>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Certificate files stored on this unit that aren't linked to a specific certification above (mostly migrated files).
+          </p>
+          <div className="mt-3 space-y-2">
+            {unitDocuments.map((d) => (
+              <div key={d.id_document} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 dark:border-white/[0.08] dark:bg-[#0d1929]">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">{d.document_name || d.original_file_name || `Document ${d.id_document}`}</span>
+                </div>
+                {d.file_url ? (
+                  <div className="flex shrink-0 items-center gap-3 text-[11px] font-semibold">
+                    {isPreviewable(d.mime_type, d.original_file_name || d.document_name) && (
+                      <button type="button" onClick={() => setPreview({ url: d.file_url!, name: d.original_file_name || d.document_name, mime: d.mime_type })} className="text-sky-600 hover:underline dark:text-sky-400">Preview</button>
+                    )}
+                    <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:underline dark:text-slate-400">Download</a>
+                  </div>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-slate-400">Link unavailable</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Inline preview modal */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreview(null)}>
+          <div className="flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#0d1929]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+              <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-200">{preview.name}</span>
+              <div className="flex items-center gap-3">
+                <a href={preview.url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-600 hover:underline dark:text-sky-400">Open in new tab</a>
+                <button type="button" onClick={() => setPreview(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/[0.06]">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 dark:bg-black/30">
+              {(preview.mime || "").startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(preview.name) ? (
+                <img src={preview.url} alt={preview.name} className="mx-auto max-h-full max-w-full object-contain" />
+              ) : (
+                <iframe title={preview.name} src={preview.url} className="h-full w-full" />
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
