@@ -24,6 +24,7 @@ import PurchasingRecoveryPage from "./pages/PurchasingRecoveryPage";
 import BudgetingPage from "./pages/BudgetingPage";
 import MonthlyFollowUpPage from "./pages/MonthlyFollowUpPage";
 import PurchasingKpiPage from "./pages/PurchasingKpiPage";
+import SupplierMonitoringPage from "./pages/SupplierMonitoringPage";
 import PurchasingActionPlansPage from "./pages/PurchasingActionPlansPage";
 import BatchEvaluationPage from "./pages/BatchEvaluationPage";
 import GateApprovalPage from "./pages/GateApprovalPage";
@@ -128,6 +129,7 @@ const router = createBrowserRouter([
       { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
       { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
       { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
+      { path: "/suppliers/monitoring", element: <SupplierMonitoringPage /> },
       {
         path: "/purchasing-value/action-plans",
         element: <PurchasingActionPlansPage />,

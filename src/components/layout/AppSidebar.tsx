@@ -50,6 +50,7 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Building2,
     subItems: [
       { name: "Supplier Panel (SB1)", path: "/suppliers" },
+      { name: "Supplier Monitoring", path: "/suppliers/monitoring" },
       {
         name: "Development Plans (SB22)",
         path: "/suppliers/development-plans",

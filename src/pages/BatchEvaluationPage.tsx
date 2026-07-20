@@ -45,11 +45,12 @@ interface DueItem {
   next_evaluation_date?: string;
   days_overdue?: number;
   days_until_due?: number;
-  eval_status: "NEVER_EVALUATED" | "OVERDUE" | "DUE_SOON" | "UP_TO_DATE";
+  eval_status: "NEVER_EVALUATED" | "MISSING_DATE" | "OVERDUE" | "DUE_SOON" | "UP_TO_DATE";
 }
 
 interface DueSummary {
   NEVER_EVALUATED: number;
+  MISSING_DATE: number;
   OVERDUE: number;
   DUE_SOON: number;
   UP_TO_DATE: number;
@@ -95,6 +96,7 @@ interface UploadResult {
 
 const STATUS_CFG = {
   NEVER_EVALUATED: { label: "Never evaluated", dot: "bg-slate-400",  badge: "bg-slate-100 text-slate-600 ring-slate-200"  },
+  MISSING_DATE:    { label: "Missing date",     dot: "bg-cyan-500",   badge: "bg-cyan-50 text-cyan-700 ring-cyan-200"      },
   OVERDUE:         { label: "Overdue",          dot: "bg-red-500",    badge: "bg-red-50 text-red-700 ring-red-200"         },
   DUE_SOON:        { label: "Due soon",          dot: "bg-amber-500",  badge: "bg-amber-50 text-amber-700 ring-amber-200"   },
   UP_TO_DATE:      { label: "Up to date",        dot: "bg-emerald-500",badge: "bg-emerald-50 text-emerald-700 ring-emerald-200"},
@@ -255,8 +257,8 @@ function EvaluationDashboard() {
     <div className="space-y-5">
       {/* Summary cards */}
       {summary && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-4">
-          {(["OVERDUE", "NEVER_EVALUATED", "DUE_SOON", "UP_TO_DATE"] as const).map((key) => {
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+          {(["OVERDUE", "NEVER_EVALUATED", "MISSING_DATE", "DUE_SOON", "UP_TO_DATE"] as const).map((key) => {
             const cfg = STATUS_CFG[key];
             const count = summary[key];
             const active = activeFilter === key;

@@ -13,6 +13,7 @@ type Crumb = { section: string; page: string };
 const CRUMBS: Record<string, Crumb> = {
   "/dashboard": { section: "Overview", page: "Dashboard" },
   "/suppliers": { section: "Portfolio", page: "Supplier Panel" },
+  "/suppliers/monitoring": { section: "Portfolio", page: "Supplier Monitoring" },
   // "/suppliers/sites-active":           { section: "Portfolio",          page: "Active Sites" },
   "/suppliers/development-plans": {
     section: "Lifecycle",
