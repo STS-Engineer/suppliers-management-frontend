@@ -5668,6 +5668,23 @@ function GateTab({
           },
         ]
       : []),
+    // Purchasing Owner + Conversion Owner become mandatory from Phase 2: the
+    // Purchasing Owner receives tracking/escalation alerts and the Conversion
+    // Owner enters the monthly actuals that start flowing in execution — the
+    // opportunity can't be tracked past Phase 2 without them. Applies to every
+    // opportunity type. Mirrors the backend committee-request guard.
+    ...(["Phase 2", "Phase 3", "Phase 4"].includes(opp.phase_status ?? "")
+      ? [
+          {
+            ok: !!opp.purchasing_owner,
+            label: "Purchasing Owner is required",
+          },
+          {
+            ok: !!opp.conversion_owner,
+            label: "Conversion Owner is required",
+          },
+        ]
+      : []),
     ...(!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")
       ? [
           {
@@ -5675,10 +5692,19 @@ function GateTab({
             label: "Plant selected (Sourcing / Technical)",
           },
           { ok: !!opp.scope_in, label: "Scope IN required (part number)" },
-          {
-            ok: !!opp.proposed_supplier_name,
-            label: "Proposed supplier name required",
-          },
+          // "Proposed New Supplier — After" only becomes mandatory from Phase 1:
+          // Phase 0 is an exploratory study (free-text candidate is optional), and
+          // from Phase 1 the field is a panel dropdown that writes
+          // proposed_supplier_id (NOT proposed_supplier_name), so the gate must
+          // validate the id — matching the missingFlags.supplierName highlight.
+          ...((opp.phase_status ?? "") === "Phase 0"
+            ? []
+            : [
+                {
+                  ok: !!opp.proposed_supplier_id,
+                  label: "Proposed New Supplier — After (from panel) required",
+                },
+              ]),
           {
             ok: !!opp.current_price && !!opp.proposed_price,
             label: "Before/After unit prices required",
