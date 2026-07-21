@@ -1305,6 +1305,23 @@ export default function RelationEvaluationPage() {
 
   const statusCfg = status ? STATUS_FROM_GRADE[status] : null;
 
+  // Stored (backend) grade + status — what is actually persisted on the relation
+  // record, as opposed to `fg`/`status` which are recomputed live from the
+  // current (possibly unsaved) form state. Shown side-by-side so a divergence
+  // between the live preview and the saved record is visible.
+  const storedFg = relation?.final_grade ?? null;
+  const storedStatusRaw = relation?.supplier_status ?? null;
+  const storedStatusCfg =
+    (storedStatusRaw && STATUS_FROM_GRADE[storedStatusRaw]) ||
+    (storedFg ? STATUS_FROM_GRADE[deriveStatus(storedFg) ?? ""] : null) ||
+    (storedStatusRaw
+      ? {
+          label: storedStatusRaw,
+          color: "bg-slate-100 text-slate-700 ring-slate-200",
+        }
+      : null);
+  const gradeDiverges = !!storedFg && !!fg && storedFg !== fg;
+
   return (
     <div className="flex flex-col gap-0">
       {/* ── Hero header ── */}
@@ -1362,22 +1379,67 @@ export default function RelationEvaluationPage() {
               </p>
             </div>
 
-            {/* Grade + status chips */}
-            <div className="flex flex-wrap items-center gap-2">
-              {fg && (
-                <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-sm">
-                  <span className="text-[11px] font-semibold text-blue-300">
-                    Grade
-                  </span>
-                  <span className="text-xl font-bold text-white">{fg}</span>
-                </div>
-              )}
-              {statusCfg && (
-                <span
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 ${statusCfg.color}`}
-                >
-                  {statusCfg.label}
+            {/* Grade + status chips — Live (computed) vs On record (backend) */}
+            <div className="flex flex-col items-end gap-2">
+              {/* Live: recomputed from the current form state */}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-300/70">
+                  Live
                 </span>
+                {fg ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-sm">
+                    <span className="text-[11px] font-semibold text-blue-300">
+                      Grade
+                    </span>
+                    <span className="text-xl font-bold text-white">{fg}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-blue-300/60">—</span>
+                )}
+                {statusCfg && (
+                  <span
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 ${statusCfg.color}`}
+                  >
+                    {statusCfg.label}
+                  </span>
+                )}
+              </div>
+
+              {/* On record: the value persisted on the relation in the backend */}
+              {(storedFg || storedStatusCfg) && (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-300/70">
+                    On record
+                  </span>
+                  {storedFg && (
+                    <div
+                      className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
+                        gradeDiverges
+                          ? "border-amber-400/50 bg-amber-400/10"
+                          : "border-white/15 bg-white/5"
+                      }`}
+                    >
+                      <span className="text-[11px] font-semibold text-blue-300">
+                        Grade
+                      </span>
+                      <span className="text-xl font-bold text-white">
+                        {storedFg}
+                      </span>
+                    </div>
+                  )}
+                  {storedStatusCfg && (
+                    <span
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 ${storedStatusCfg.color}`}
+                    >
+                      {storedStatusCfg.label}
+                    </span>
+                  )}
+                  {gradeDiverges && (
+                    <span className="text-[10px] font-medium text-amber-300/90">
+                      differs from live — save to update
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
