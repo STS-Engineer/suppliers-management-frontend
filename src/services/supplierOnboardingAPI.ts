@@ -2723,6 +2723,37 @@ class SupplierOnboardingAPI {
     );
   }
 
+  /**
+   * Attach the certificate documents captured during onboarding to their
+   * freshly-created certification rows.
+   *
+   * `createdCerts` must be in the same order as `files` (index i of one pairs
+   * with index i of the other). Upload failures are collected and returned
+   * rather than thrown, so a document error never discards an already-created
+   * supplier master / unit — the caller can surface the failed file names.
+   */
+  async uploadOnboardingCertificationFiles(
+    unitId: number,
+    createdCerts: Array<{ id_certification: number }>,
+    files: Array<File | null | undefined>,
+  ): Promise<string[]> {
+    const failed: string[] = [];
+    for (let i = 0; i < createdCerts.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+      try {
+        await this.uploadCertificationFile(
+          unitId,
+          createdCerts[i].id_certification,
+          file,
+        );
+      } catch {
+        failed.push(file.name);
+      }
+    }
+    return failed;
+  }
+
   async patchCertification(
     unitId: number,
     certId: number,

@@ -551,7 +551,13 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     try {
       const { unit_contacts } = formData.unit;
 
-      const cleanedCertifications = formData.certifications.map(
+      // Keep the rows that will actually be created so their uploaded files stay
+      // aligned (by index) with the certification rows the API returns.
+      const certificationsToCreate = formData.certifications.filter((c) =>
+        c.standard_type?.trim(),
+      );
+
+      const cleanedCertifications = certificationsToCreate.map(
         ({ file, ...cert }) => ({
           ...cert,
           amount_value: cert.amount_value ? cert.amount_value : null,
@@ -567,9 +573,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         unit: cleanedUnitPayload(formData.unit),
         unit_contacts: unit_contacts.filter(hasMeaningfulContactData),
         contacts: formData.contacts,
-        certifications: cleanedCertifications.filter((c) =>
-          c.standard_type?.trim(),
-        ),
+        certifications: cleanedCertifications,
         annual_spend_value: formData.annual_spend_value || undefined,
       };
 
@@ -579,6 +583,27 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
         supplier_scope: formData.group.supplier_scope,
         supplier_owner: formData.group.supplier_owner,
       });
+
+      // Attach the uploaded certificate documents to the freshly created rows.
+      // `details.certifications` comes back in the same order we submitted them.
+      const unitId = response.data?.unit_id;
+      const createdCerts = (response.details?.certifications ?? []) as Array<{
+        id_certification: number;
+      }>;
+      if (unitId && createdCerts.length > 0) {
+        const failedUploads = await supplierAPI.uploadOnboardingCertificationFiles(
+          unitId,
+          createdCerts,
+          certificationsToCreate.map((c) => c.file),
+        );
+        if (failedUploads.length > 0) {
+          console.warn(
+            "Some certificate documents could not be uploaded:",
+            failedUploads,
+          );
+        }
+      }
+
       setMasterResponse(response);
     } catch (error) {
       if (

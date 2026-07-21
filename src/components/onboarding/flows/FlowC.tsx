@@ -235,16 +235,20 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
         });
       }
 
-      const certifications = certs
-        .filter((c) => c.standard_type || c.certification_type || c.certificate_name)
-        .map(({ file: _file, ...rest }) => ({
-          ...rest,
-          start_date: rest.start_date || undefined,
-          end_date: rest.end_date || undefined,
-          comments: rest.comments || undefined,
-        }));
+      // Keep the rows that will actually be created so their uploaded files stay
+      // aligned (by index) with the certification rows the API returns.
+      const certsToCreate = certs.filter(
+        (c) => c.standard_type || c.certification_type || c.certificate_name,
+      );
 
-      await supplierAPI.createUnitComplete(groupId, {
+      const certifications = certsToCreate.map(({ file: _file, ...rest }) => ({
+        ...rest,
+        start_date: rest.start_date || undefined,
+        end_date: rest.end_date || undefined,
+        comments: rest.comments || undefined,
+      }));
+
+      const res = await supplierAPI.createUnitComplete(groupId, {
         unit: {
           supplier_name:         unitData.supplier_name,
           address_line:          unitData.address_line          || undefined,
@@ -263,6 +267,26 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
         contacts,
         certifications,
       });
+
+      // Attach the uploaded certificate documents to the freshly created rows.
+      // `data.certifications` comes back in the same order we submitted them.
+      const unitId = res?.data?.unit?.id_supplier_unit;
+      const createdCerts = (res?.data?.certifications ?? []) as Array<{
+        id_certification: number;
+      }>;
+      if (unitId && createdCerts.length > 0) {
+        const failedUploads = await supplierAPI.uploadOnboardingCertificationFiles(
+          unitId,
+          createdCerts,
+          certsToCreate.map((c) => c.file),
+        );
+        if (failedUploads.length > 0) {
+          console.warn(
+            "Some certificate documents could not be uploaded:",
+            failedUploads,
+          );
+        }
+      }
 
       onSuccess();
     } catch (err) {
