@@ -1716,7 +1716,9 @@ function EditTab({
       opp.stp_risks?.material_indexation_after
     ),
     benefits: !(opp.stp_benefits?.if_we_do || opp.stp_benefits?.if_not),
-    planning: !(opp.phase1_weeks && opp.phase1_weeks > 0),
+    // Negotiation may leave the STP phase weeks at 0 (no planning ramp), so the
+    // Phase 1 weeks are only "missing" for the other types.
+    planning: !isNegotiation && !(opp.phase1_weeks && opp.phase1_weeks > 0),
     executionStartDate:
       !isNegotiation &&
       (isSourced
@@ -1943,7 +1945,33 @@ function EditTab({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Non-blocking "still needed before you can request approval" notice, shown
+  // after a successful save. Saving is intentionally permissive (the user can
+  // fill fields incrementally); these fields are only *enforced* at the gate.
+  const [saveNotice, setSaveNotice] = useState<string[] | null>(null);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Negotiation opportunities usually keep the SAME supplier — it's a
+  // renegotiated price, not a re-source. Default the proposed/new supplier to
+  // the current supplier so the user doesn't have to re-enter it. Only fills
+  // when the proposed fields are still empty, so it stays fully editable and a
+  // deliberate change is never overwritten.
+  useEffect(() => {
+    if (!isNegotiation) return;
+    const currentId = form.supplier_id;
+    if (!currentId) return;
+    const current = suppliersForPlant.find(
+      (s) => String(s.id_supplier_unit) === String(currentId),
+    );
+    setForm((f) => {
+      const patch: Record<string, string> = {};
+      if (!f.proposed_supplier_id) patch.proposed_supplier_id = String(currentId);
+      if (!f.proposed_supplier_name && current?.supplier_name)
+        patch.proposed_supplier_name = current.supplier_name;
+      return Object.keys(patch).length ? { ...f, ...patch } : f;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNegotiation, form.supplier_id, suppliersForPlant]);
 
   // STP revision request modal (Phase 2/3) — inputs here are the NEW proposed
   // values, independent of the (disabled) main STP form. Left blank = unchanged.
@@ -2321,12 +2349,14 @@ function EditTab({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Required-field guard — from Phase 0 onward, the core baseline (duration,
-    // saving, quantities, prices, etc.) must be filled before it can be saved,
-    // rather than left incomplete until the gate/committee submission check.
+    // Required-field completeness is ADVISORY at save time — the user can save a
+    // partially-filled opportunity and finish the rest later. The same list is
+    // surfaced as a non-blocking notice after saving (setSaveNotice) and is
+    // ENFORCED (blocking) only at the gate/committee request. This replaces the
+    // old behaviour where saving was blocked until every field was filled.
+    const missing: string[] = [];
     {
       const phase = opp.phase_status ?? "";
-      const missing: string[] = [];
 
       if (["Phase 0", "Phase 1"].includes(phase)) {
         // Direct-gain (Bonus/Rework) duration is fixed at 1 month and the field
@@ -2426,16 +2456,12 @@ function EditTab({
           missing.push("Deployment Start Date (Real Savings Start)");
         }
       }
-
-      if (missing.length) {
-        setError(
-          `Please fill in the following required fields before saving: ${missing.join(", ")}.`,
-        );
-        return;
-      }
     }
 
     // Client-side FX guard — catch the obvious case before hitting the API.
+    // This one STAYS blocking: the backend rejects a non-EUR opportunity saved
+    // without a conversion rate (service.py FX final-state guard), so allowing
+    // the save would just fail server-side.
     if (form.currency && form.currency !== "EUR") {
       const rate = parseFloat(form.fx_rate_to_eur ?? "0");
       if (!rate || rate <= 0) {
@@ -2450,6 +2476,7 @@ function EditTab({
 
     setLoading(true);
     setError(null);
+    setSaveNotice(null);
 
     // Budget status / year are derived from validation — nothing to validate here.
 
@@ -2634,6 +2661,9 @@ function EditTab({
       } catch {
         onRefresh(res.data as Opp);
       }
+      // Saved successfully — surface (without blocking) any fields still needed
+      // before this opportunity can be sent for gate/committee approval.
+      setSaveNotice(missing.length ? missing : null);
     } catch (err: unknown) {
       // Request Revision creation is disabled (see the DISABLED block below) —
       // a non-privileged user hitting STP_REQUIRES_APPROVAL just gets the plain
@@ -2759,6 +2789,19 @@ function EditTab({
           <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
             {error}
           </p>
+        )}
+        {saveNotice && saveNotice.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+            <p className="font-semibold">
+              Saved. These fields are still required before you can request
+              approval:
+            </p>
+            <ul className="mt-1 list-disc pl-5">
+              {saveNotice.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
         )}
         {phaseNote[opp.phase_status ?? ""] && (
           <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-700">
@@ -2960,11 +3003,13 @@ function EditTab({
                     </span>
                   </p>
                 )}
-                <p className="mt-1 text-[10.5px] text-amber-600">
-                  For STP opportunities the duration is recomputed on save from
-                  the yearly prices (flat price → 12 months; each further year
-                  of price change → +12).
-                </p>
+                {!isDirectGain && (
+                  <p className="mt-1 text-[10.5px] text-amber-600">
+                    For STP opportunities the duration is recomputed on save from
+                    the yearly prices (flat price → 12 months; each further year
+                    of price change → +12).
+                  </p>
+                )}
               </div>
               <div>
                 <label className={hiLabel(!opp.planned_start_date)}>
@@ -4710,7 +4755,9 @@ function EditTab({
               <FormSection
                 title="Estimated Planning (weeks)"
                 highlight={
-                  gateHighlight && !(opp.phase1_weeks && opp.phase1_weeks > 0)
+                  gateHighlight &&
+                  !isNegotiation &&
+                  !(opp.phase1_weeks && opp.phase1_weeks > 0)
                 }
               >
                 <div>
@@ -4814,7 +4861,10 @@ function EditTab({
               },
               {
                 label: "Planning",
-                ok: !!(form.phase1_weeks && parseInt(form.phase1_weeks) > 0),
+                // Negotiation may leave the phase weeks at 0 — not required.
+                ok:
+                  isNegotiation ||
+                  !!(form.phase1_weeks && parseInt(form.phase1_weeks) > 0),
               },
             ];
             const done = stpSections.filter((s) => s.ok).length;
@@ -5222,6 +5272,15 @@ function GateTab({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  // The per-reviewer approval/validation links (and the "Send Approval Links"
+  // action) are only exposed to the Purchasing Director and the Conversion
+  // owner (vp_conversion access profile) — same privileged pair used for STP
+  // revision decisions. Everyone else still sees request status, just not the
+  // copyable approval links.
+  const canSeeApprovalLinks =
+    user?.access_profile === "purchasing_director" ||
+    user?.access_profile === "vp_conversion";
   // Start study
   const [showStart, setShowStart] = useState(false);
   // Gate decision
@@ -5583,6 +5642,32 @@ function GateTab({
         (!!opp.fx_rate_to_eur && opp.fx_rate_to_eur > 0),
       label: `FX rate to EUR required — opportunity uses ${opp.currency ?? "EUR"} with no conversion rate set`,
     },
+    // Phase 3/4: the real deployment start must be recorded before a review can
+    // be requested — savings are flowing, so the timing must be firm. (It can
+    // also be entered from the Budgeting page for opportunities that reached
+    // Phase 3 without it.) Mirrors the backend committee-request guard.
+    ...(["Phase 3", "Phase 4"].includes(opp.phase_status ?? "")
+      ? [
+          {
+            ok: !!opp.real_start_date,
+            label: "Deployment Start Date (Real Savings Start) is required",
+          },
+        ]
+      : []),
+    // Execution start date: required for non-Negotiation types from the first
+    // committee phase (Phase 1) onward — Negotiation has no execution/tooling
+    // phase so it never needs one. Mirrors the backend committee-request guard.
+    ...(!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "") &&
+    ["Phase 1", "Phase 2", "Phase 3", "Phase 4"].includes(
+      opp.phase_status ?? "",
+    )
+      ? [
+          {
+            ok: !!opp.execution_start_date,
+            label: "Execution Start Date is required",
+          },
+        ]
+      : []),
     ...(!["Negotiation", "Cash"].includes(opp.opportunity_type ?? "")
       ? [
           {
@@ -6263,7 +6348,7 @@ function GateTab({
                               <span className="text-slate-400 italic">
                                 Pending…
                               </span>
-                              {v.access_token && (
+                              {v.access_token && canSeeApprovalLinks && (
                                 <button
                                   onClick={() =>
                                     navigator.clipboard.writeText(
@@ -6638,7 +6723,7 @@ function GateTab({
                             <span className="text-slate-400 italic">
                               Pending…
                             </span>
-                            {v.access_token && (
+                            {v.access_token && canSeeApprovalLinks && (
                               <button
                                 onClick={() =>
                                   navigator.clipboard.writeText(
