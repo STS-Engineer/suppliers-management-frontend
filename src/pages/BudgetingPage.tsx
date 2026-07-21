@@ -652,6 +652,41 @@ export default function BudgetingPage() {
       normalizeBudgetStatus(i.budget_status),
   );
 
+  // Inline "real deployment start" entry — an opportunity can reach Phase 3
+  // before its real deployment start is known; it still shows here (see the
+  // backend eligibility rule) so a director/conversion owner can fill the date
+  // directly, without reopening the opportunity form.
+  const [realStartEdits, setRealStartEdits] = useState<Record<number, string>>(
+    {},
+  );
+  const [savingRealStartId, setSavingRealStartId] = useState<number | null>(
+    null,
+  );
+  async function saveRealStart(opportunityId: number) {
+    const value = realStartEdits[opportunityId];
+    if (!value) return;
+    setSavingRealStartId(opportunityId);
+    setError(null);
+    try {
+      await supplierAPI.updateOpportunity(opportunityId, {
+        real_start_date: value,
+        changed_by: userEmail,
+      });
+      await load(fiscalYear);
+      setRealStartEdits((p) => {
+        const n = { ...p };
+        delete n[opportunityId];
+        return n;
+      });
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to set deployment start",
+      );
+    } finally {
+      setSavingRealStartId(null);
+    }
+  }
+
   async function saveAdditionalDecisions() {
     setSavingAdditional(true);
     setError(null);
@@ -738,7 +773,43 @@ export default function BudgetingPage() {
           {fmtDate(item.execution_start_date)}
         </td>
         <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-          {fmtDate(item.real_start_date)}
+          {(() => {
+            const canEditRealStart =
+              isPrivileged &&
+              !item.real_start_date &&
+              !item.status_locked_at &&
+              ["Phase 3", "Phase 4", "Closed"].includes(
+                item.phase_status ?? "",
+              );
+            if (!canEditRealStart) return fmtDate(item.real_start_date);
+            const val = realStartEdits[item.opportunity_id] ?? "";
+            const busy = savingRealStartId === item.opportunity_id;
+            return (
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={val}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setRealStartEdits((p) => ({
+                      ...p,
+                      [item.opportunity_id]: e.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-violet-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-violet-400"
+                />
+                <button
+                  type="button"
+                  disabled={!val || busy}
+                  onClick={() => saveRealStart(item.opportunity_id)}
+                  className="rounded-lg bg-violet-500 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+                  title="Set the real deployment start date"
+                >
+                  {busy ? "…" : "Set"}
+                </button>
+              </div>
+            );
+          })()}
         </td>
         <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
           {fmtDuration(item.duration_months)}
@@ -874,7 +945,7 @@ export default function BudgetingPage() {
           <p className="mt-0.5 text-sm text-slate-500">
             {selectMode
               ? `Create Budget ${fiscalYear} — set Budgeted / Not considered for each baseline opportunity.`
-              : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ confirmed opps, or Phase 2 with execution started`}
+              : `FY ${fiscalYear} · ${budgetYearWindowLabel(fiscalYear)} · Phase 3+ opps (real start optional — enter it here), or Phase 2 with execution started`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1031,8 +1102,8 @@ export default function BudgetingPage() {
                 <strong>locked</strong> — the baseline cannot change.
               </li>
               <li>
-                Any new Phase 3+ opp with real_start_date in {fiscalYear} (or
-                Phase 2 opp with execution started) will appear as{" "}
+                Any new Phase 3+ opp landing in {fiscalYear} (or Phase 2 opp with
+                execution started) will appear as{" "}
                 <strong className="text-violet-700">Additional</strong>.
               </li>
               <li>
@@ -1271,8 +1342,8 @@ export default function BudgetingPage() {
 
       {!loading && items.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          No Phase 3+ opportunities with confirmed real start date (or Phase 2
-          with execution started) in FY {fiscalYear}.
+          No Phase 3+ opportunities (or Phase 2 with execution started) in FY{" "}
+          {fiscalYear}.
         </div>
       )}
 
@@ -1407,9 +1478,9 @@ export default function BudgetingPage() {
                 No additional opportunities yet
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                When a Phase 3+ opportunity with a {fiscalYear} real start date
-                (or a Phase 2 opportunity with execution started) becomes
-                eligible after budget closure, it will appear here
+                When a Phase 3+ opportunity landing in {fiscalYear} (or a Phase 2
+                opportunity with execution started) becomes eligible after
+                budget closure, it will appear here
                 automatically. You can also mark any baseline opportunity as
                 Additional manually from the Create Budget screen.
               </p>
