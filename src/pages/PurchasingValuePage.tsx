@@ -215,6 +215,9 @@ interface Opp {
   priority_locked?: boolean;
   comments?: string;
   validation_request_sent_at?: string;
+  // Reminder aggregate for the open gate request (computed on the backend)
+  reminders_sent?: number;
+  pending_approvers?: number;
   created_at?: string;
   created_by?: string;
   updated_at?: string;
@@ -843,6 +846,17 @@ const fmtDate = (s?: string | null) =>
         month: "short",
         year: "numeric",
         day: "numeric",
+      })
+    : "-";
+
+// Date + time, e.g. "12 Jul, 14:30" — used for reminder timestamps.
+const fmtDateTime = (s?: string | null) =>
+  s
+    ? new Date(s).toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
       })
     : "-";
 
@@ -5302,9 +5316,9 @@ function GateTab({
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-  // Reminder to pending approvers (re-sends the existing approval link)
-  const [reminding, setReminding] = useState(false);
-  const [reminderMsg, setReminderMsg] = useState<string | null>(null);
+  // Reminder to pending approvers (re-sends the existing approval link) — the
+  // confirmation + result is handled by RemindModal.
+  const [remindOpen, setRemindOpen] = useState(false);
   // Negotiation: single approver (Purchasing Director or VP Conversion) —
   // used for both the Phase 0 request and every Phase 1-4 committee request,
   // replacing the Plant Manager/committee-tier flow for this opportunity type.
@@ -5541,28 +5555,14 @@ function GateTab({
     }
   }
 
-  // Re-send the approval link to approvers who haven't decided yet. Reuses
-  // their existing token, so the email carries the same /approve/{token} link
-  // and anyone who already voted is skipped by the backend.
-  async function sendReminder() {
-    setReminding(true);
-    setReminderMsg(null);
+  // After a reminder is sent from the modal, refresh the request so the
+  // "reminded N× · date" counts update in place.
+  async function refreshApprovalStatus() {
     try {
-      const res = await supplierAPI.remindGateApproval(opp.opportunity_id);
-      const n = (res?.count as number) ?? 0;
-      setReminderMsg(
-        n > 0
-          ? `Reminder sent to ${n} pending approver${n === 1 ? "" : "s"}.`
-          : "No pending approvers to remind.",
-      );
       const st = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
       setApprovalRequests(st.data ?? []);
-    } catch (e: unknown) {
-      setReminderMsg(
-        e instanceof Error ? e.message : "Failed to send reminder.",
-      );
-    } finally {
-      setReminding(false);
+    } catch {
+      /* non-blocking */
     }
   }
 
@@ -6787,15 +6787,14 @@ function GateTab({
                               Pending…
                             </span>
                             {(v.reminder_count ?? 0) > 0 && (
-                              <span
-                                className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700"
-                                title={
-                                  v.last_reminded_at
-                                    ? `Last reminded ${fmtDate(v.last_reminded_at)}`
-                                    : undefined
-                                }
-                              >
-                                reminded {v.reminder_count}×
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                                <Bell size={9} />
+                                {v.reminder_count}×
+                                {v.last_reminded_at && (
+                                  <span className="font-medium text-amber-600/80">
+                                    · {fmtDateTime(v.last_reminded_at)}
+                                  </span>
+                                )}
                               </span>
                             )}
                             {v.access_token && canSeeApprovalLinks && (
@@ -6837,29 +6836,55 @@ function GateTab({
                 {req.status === "Pending" &&
                   req.votes.some((v) => !v.decision) &&
                   canRemindApprovers && (
-                    <div className="border-t border-slate-200 pt-2">
-                      <button
-                        onClick={sendReminder}
-                        disabled={reminding}
-                        title="Re-send the approval link to approvers who haven't decided yet"
-                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                      >
-                        <Bell size={12} />
-                        {reminding
-                          ? "Sending…"
-                          : "Send reminder to pending approvers"}
-                      </button>
-                      {reminderMsg && (
-                        <p className="mt-1.5 text-[10.5px] text-slate-500">
-                          {reminderMsg}
+                    <div className="space-y-1.5 border-t border-slate-200 pt-2">
+                      {req.votes.some((v) => (v.reminder_count ?? 0) > 0) && (
+                        <p className="flex items-center gap-1.5 text-[10.5px] text-slate-500">
+                          <Bell size={11} className="text-amber-500" />
+                          {req.votes.reduce(
+                            (s, v) => s + (v.reminder_count ?? 0),
+                            0,
+                          )}{" "}
+                          reminder
+                          {req.votes.reduce(
+                            (s, v) => s + (v.reminder_count ?? 0),
+                            0,
+                          ) === 1
+                            ? ""
+                            : "s"}{" "}
+                          sent
+                          {(() => {
+                            const last = req.votes
+                              .map((v) => v.last_reminded_at)
+                              .filter(Boolean)
+                              .sort()
+                              .pop();
+                            return last ? ` · last ${fmtDateTime(last)}` : "";
+                          })()}
                         </p>
                       )}
+                      <button
+                        onClick={() => setRemindOpen(true)}
+                        title="Re-send the approval link to approvers who haven't decided yet"
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                      >
+                        <Bell size={12} />
+                        Send reminder to pending approvers
+                      </button>
                     </div>
                   )}
               </div>
             ))}
           </div>
         )}
+
+      {remindOpen && (
+        <RemindModal
+          oppName={opp.opportunity_name ?? `#${opp.opportunity_id}`}
+          opportunityId={opp.opportunity_id}
+          onClose={() => setRemindOpen(false)}
+          onSent={refreshApprovalStatus}
+        />
+      )}
 
       {/* Audit trail from comments */}
       {opp.comments && opp.comments.includes("[") && (
@@ -10505,6 +10530,135 @@ function DeleteOpportunityModal({
 }
 
 // ---------------------------------------------------------------------------
+// Reminder confirmation modal — confirm → send → clear result, no double-send
+// ---------------------------------------------------------------------------
+function RemindModal({
+  oppName,
+  opportunityId,
+  onClose,
+  onSent,
+}: {
+  oppName: string;
+  opportunityId: number;
+  onClose: () => void;
+  onSent?: (count: number) => void;
+}) {
+  const [phase, setPhase] = useState<"confirm" | "sending" | "sent" | "error">(
+    "confirm",
+  );
+  const [count, setCount] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const sending = phase === "sending";
+
+  async function send() {
+    setPhase("sending");
+    setErrorMsg(null);
+    try {
+      const res = await supplierAPI.remindGateApproval(opportunityId);
+      const n = (res?.count as number) ?? 0;
+      setCount(n);
+      setPhase("sent");
+      onSent?.(n);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : "Failed to send reminder.",
+      );
+      setPhase("error");
+    }
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      onClick={sending ? undefined : onClose}
+    >
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 dark:border-white/[0.08] dark:bg-[#0f1e30]"
+      >
+        {phase === "sent" ? (
+          <>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
+                <CheckCircle2 size={18} />
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  Reminder sent
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-snug text-slate-500 dark:text-slate-400">
+                  {count > 0
+                    ? `A reminder email was sent to ${count} pending approver${
+                        count === 1 ? "" : "s"
+                      }.`
+                    : "Everyone has already recorded their decision — no reminders were sent."}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={onClose}
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
+                <Bell size={18} />
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  Send reminder?
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-snug text-slate-500 dark:text-slate-400">
+                  Re-send the approval link to approvers on{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {oppName}
+                  </span>{" "}
+                  who haven't voted yet. Anyone who already decided is skipped.
+                </p>
+              </div>
+            </div>
+            {phase === "error" && errorMsg && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[11.5px] font-medium text-red-600 dark:bg-red-500/10 dark:text-red-300">
+                {errorMsg}
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={onClose}
+                disabled={sending}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={send}
+                disabled={sending}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
+              >
+                {sending && <RefreshCw size={12} className="animate-spin" />}
+                {phase === "error"
+                  ? "Retry"
+                  : sending
+                    ? "Sending…"
+                    : "Send reminder"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Opportunity Card
 // ---------------------------------------------------------------------------
 function OppCard({
@@ -10577,30 +10731,25 @@ function OppCard({
     (opp.status === "Awaiting Validation" ||
       opp.status === "Under Committee Review") &&
     EDITOR_PROFILES.includes(user?.access_profile ?? "");
-  const [reminding, setReminding] = useState(false);
-  const [reminderState, setReminderState] = useState<"idle" | "sent" | "error">(
-    "idle",
-  );
-  const reminderTitle =
-    reminderState === "sent"
-      ? "Reminder sent to pending approvers"
-      : reminderState === "error"
-        ? "Failed to send reminder — click to retry"
-        : "Send reminder to approvers who haven't decided yet";
-
-  async function handleRemind(e: React.MouseEvent) {
+  const [remindOpen, setRemindOpen] = useState(false);
+  // Locally bump the sent count so the badge updates instantly after sending,
+  // without waiting for the next board reload. send_reminders returns exactly
+  // how many approvers were reminded this action.
+  const [reminderBump, setReminderBump] = useState(0);
+  const remindersSent = (opp.reminders_sent ?? 0) + reminderBump;
+  const pendingApprovers = opp.pending_approvers ?? 0;
+  function openRemind(e: React.MouseEvent) {
     e.stopPropagation();
-    if (reminding) return;
-    setReminding(true);
-    try {
-      await supplierAPI.remindGateApproval(opp.opportunity_id);
-      setReminderState("sent");
-    } catch {
-      setReminderState("error");
-    } finally {
-      setReminding(false);
-    }
+    setRemindOpen(true);
   }
+  const remindModal = remindOpen && canRemind && (
+    <RemindModal
+      oppName={opp.opportunity_name ?? `#${opp.opportunity_id}`}
+      opportunityId={opp.opportunity_id}
+      onClose={() => setRemindOpen(false)}
+      onSent={(n) => setReminderBump((b) => b + n)}
+    />
+  );
 
   const deleteModal = confirmOpen && (
     <DeleteOpportunityModal
@@ -10652,16 +10801,18 @@ function OppCard({
         </span>
         {canRemind && (
           <button
-            onClick={handleRemind}
-            disabled={reminding}
-            title={reminderTitle}
-            className={`shrink-0 rounded p-1 disabled:opacity-50 ${
-              reminderState === "sent"
-                ? "text-emerald-500"
-                : "text-amber-500 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10"
-            }`}
+            onClick={openRemind}
+            title={`${remindersSent} reminder${
+              remindersSent === 1 ? "" : "s"
+            } sent · ${pendingApprovers} approver${
+              pendingApprovers === 1 ? "" : "s"
+            } pending`}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-1 text-amber-500 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10"
           >
             <Bell size={12} />
+            <span className="text-[9px] font-bold leading-none">
+              {remindersSent}
+            </span>
           </button>
         )}
         {canDuplicate && (
@@ -10685,6 +10836,7 @@ function OppCard({
           </button>
         )}
         {deleteModal}
+        {remindModal}
       </div>
     );
   }
@@ -10696,22 +10848,26 @@ function OppCard({
     >
       {canRemind && (
         <button
-          onClick={handleRemind}
-          disabled={reminding}
-          title={reminderTitle}
-          className={`absolute bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
+          onClick={openRemind}
+          title={`${remindersSent} reminder${
+            remindersSent === 1 ? "" : "s"
+          } sent · ${pendingApprovers} approver${
+            pendingApprovers === 1 ? "" : "s"
+          } pending`}
+          className={`absolute bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full text-amber-400 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:text-amber-500 dark:hover:bg-amber-500/10 ${
             canDuplicate && canDelete
               ? "right-16"
               : canDuplicate || canDelete
                 ? "right-9"
                 : "right-2"
-          } ${
-            reminderState === "sent"
-              ? "text-emerald-500"
-              : "text-amber-400 hover:bg-amber-50 hover:text-amber-600 dark:text-amber-500 dark:hover:bg-amber-500/10"
           }`}
         >
           <Bell size={12} />
+          {remindersSent > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-amber-500 px-1 text-[8px] font-bold leading-none text-white">
+              {remindersSent}
+            </span>
+          )}
         </button>
       )}
       {canDuplicate && (
@@ -10817,6 +10973,7 @@ function OppCard({
         </div>
       )}
       {deleteModal}
+      {remindModal}
     </div>
   );
 }
