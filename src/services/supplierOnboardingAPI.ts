@@ -2291,6 +2291,15 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // Re-send the approval link to approvers who have not yet decided.
+  async remindGateApproval(opportunityId: number) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/remind`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" } },
+      "Failed to send reminder emails.",
+    );
+  }
+
   // Public — no auth
   async getVoteForm(token: string) {
     const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`);

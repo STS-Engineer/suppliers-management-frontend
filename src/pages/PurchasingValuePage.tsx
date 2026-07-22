@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   Banknote,
   BarChart2,
+  Bell,
   CheckCircle2,
   ChevronRight,
   CircleDot,
@@ -5281,6 +5282,12 @@ function GateTab({
   const canSeeApprovalLinks =
     user?.access_profile === "purchasing_director" ||
     user?.access_profile === "vp_conversion";
+  // Reminders only re-send an approver their own existing link (never expose it
+  // to the clicker), so they're open to any editor — broader than the copyable
+  // approval links above.
+  const canRemindApprovers = EDITOR_PROFILES.includes(
+    user?.access_profile ?? "",
+  );
   // Start study
   const [showStart, setShowStart] = useState(false);
   // Gate decision
@@ -5295,6 +5302,9 @@ function GateTab({
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  // Reminder to pending approvers (re-sends the existing approval link)
+  const [reminding, setReminding] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState<string | null>(null);
   // Negotiation: single approver (Purchasing Director or VP Conversion) —
   // used for both the Phase 0 request and every Phase 1-4 committee request,
   // replacing the Plant Manager/committee-tier flow for this opportunity type.
@@ -5355,6 +5365,8 @@ function GateTab({
         decided_at: string | null;
         comment: string | null;
         project_manager_email: string | null;
+        reminder_count?: number;
+        last_reminded_at?: string | null;
       }[];
     }[]
   >([]);
@@ -5526,6 +5538,31 @@ function GateTab({
       setApprovalError(e instanceof Error ? e.message : "Failed");
     } finally {
       setApprovalSubmitting(false);
+    }
+  }
+
+  // Re-send the approval link to approvers who haven't decided yet. Reuses
+  // their existing token, so the email carries the same /approve/{token} link
+  // and anyone who already voted is skipped by the backend.
+  async function sendReminder() {
+    setReminding(true);
+    setReminderMsg(null);
+    try {
+      const res = await supplierAPI.remindGateApproval(opp.opportunity_id);
+      const n = (res?.count as number) ?? 0;
+      setReminderMsg(
+        n > 0
+          ? `Reminder sent to ${n} pending approver${n === 1 ? "" : "s"}.`
+          : "No pending approvers to remind.",
+      );
+      const st = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
+      setApprovalRequests(st.data ?? []);
+    } catch (e: unknown) {
+      setReminderMsg(
+        e instanceof Error ? e.message : "Failed to send reminder.",
+      );
+    } finally {
+      setReminding(false);
     }
   }
 
@@ -6749,6 +6786,18 @@ function GateTab({
                             <span className="text-slate-400 italic">
                               Pending…
                             </span>
+                            {(v.reminder_count ?? 0) > 0 && (
+                              <span
+                                className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700"
+                                title={
+                                  v.last_reminded_at
+                                    ? `Last reminded ${fmtDate(v.last_reminded_at)}`
+                                    : undefined
+                                }
+                              >
+                                reminded {v.reminder_count}×
+                              </span>
+                            )}
                             {v.access_token && canSeeApprovalLinks && (
                               <button
                                 onClick={() =>
@@ -6781,6 +6830,32 @@ function GateTab({
                       ))}
                   </div>
                 )}
+                {/* Reminder — still-open request with at least one undecided
+                    approver, restricted to the same privileged pair that can
+                    send approval links. Re-sends each pending approver their
+                    existing link; anyone who already voted is skipped. */}
+                {req.status === "Pending" &&
+                  req.votes.some((v) => !v.decision) &&
+                  canRemindApprovers && (
+                    <div className="border-t border-slate-200 pt-2">
+                      <button
+                        onClick={sendReminder}
+                        disabled={reminding}
+                        title="Re-send the approval link to approvers who haven't decided yet"
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        <Bell size={12} />
+                        {reminding
+                          ? "Sending…"
+                          : "Send reminder to pending approvers"}
+                      </button>
+                      {reminderMsg && (
+                        <p className="mt-1.5 text-[10.5px] text-slate-500">
+                          {reminderMsg}
+                        </p>
+                      )}
+                    </div>
+                  )}
               </div>
             ))}
           </div>
@@ -10490,6 +10565,38 @@ function OppCard({
     }
   }
 
+  // Remind pending approvers straight from the card. Only meaningful while the
+  // opportunity is awaiting a gate decision — the backend re-sends each pending
+  // approver their existing link and skips anyone who already voted.
+  const canRemind =
+    (opp.status === "Awaiting Validation" ||
+      opp.status === "Under Committee Review") &&
+    EDITOR_PROFILES.includes(user?.access_profile ?? "");
+  const [reminding, setReminding] = useState(false);
+  const [reminderState, setReminderState] = useState<"idle" | "sent" | "error">(
+    "idle",
+  );
+  const reminderTitle =
+    reminderState === "sent"
+      ? "Reminder sent to pending approvers"
+      : reminderState === "error"
+        ? "Failed to send reminder — click to retry"
+        : "Send reminder to approvers who haven't decided yet";
+
+  async function handleRemind(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (reminding) return;
+    setReminding(true);
+    try {
+      await supplierAPI.remindGateApproval(opp.opportunity_id);
+      setReminderState("sent");
+    } catch {
+      setReminderState("error");
+    } finally {
+      setReminding(false);
+    }
+  }
+
   const deleteModal = confirmOpen && (
     <DeleteOpportunityModal
       oppName={opp.opportunity_name ?? `#${opp.opportunity_id}`}
@@ -10538,6 +10645,20 @@ function OppCard({
                   ? "Rework"
                   : opp.status}
         </span>
+        {canRemind && (
+          <button
+            onClick={handleRemind}
+            disabled={reminding}
+            title={reminderTitle}
+            className={`shrink-0 rounded p-1 disabled:opacity-50 ${
+              reminderState === "sent"
+                ? "text-emerald-500"
+                : "text-amber-500 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10"
+            }`}
+          >
+            <Bell size={12} />
+          </button>
+        )}
         {canDuplicate && (
           <button
             onClick={handleDuplicate}
@@ -10566,8 +10687,28 @@ function OppCard({
   return (
     <div
       onClick={onClick}
-      className={`group relative cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]${canDelete || canDuplicate ? " pb-9" : ""}`}
+      className={`group relative cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md dark:border-white/[0.08] dark:bg-[#111e30] dark:hover:border-blue-500/30 dark:hover:bg-[#152035]${canDelete || canDuplicate || canRemind ? " pb-9" : ""}`}
     >
+      {canRemind && (
+        <button
+          onClick={handleRemind}
+          disabled={reminding}
+          title={reminderTitle}
+          className={`absolute bottom-2 z-10 flex h-6 w-6 items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
+            canDuplicate && canDelete
+              ? "right-16"
+              : canDuplicate || canDelete
+                ? "right-9"
+                : "right-2"
+          } ${
+            reminderState === "sent"
+              ? "text-emerald-500"
+              : "text-amber-400 hover:bg-amber-50 hover:text-amber-600 dark:text-amber-500 dark:hover:bg-amber-500/10"
+          }`}
+        >
+          <Bell size={12} />
+        </button>
+      )}
       {canDuplicate && (
         <button
           onClick={handleDuplicate}
