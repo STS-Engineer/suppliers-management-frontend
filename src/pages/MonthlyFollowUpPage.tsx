@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   RefreshCw,
   Save,
@@ -9,6 +16,7 @@ import {
   CalendarDays,
   ListChecks,
   LayoutGrid,
+  Search,
 } from "lucide-react";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
@@ -112,6 +120,66 @@ const num = (s: string) => (s.trim() === "" ? undefined : parseFloat(s) || 0);
 // API serialises Decimals as strings — coerce safely for arithmetic
 const n = (v: unknown) => (v == null ? 0 : Number(v) || 0);
 
+// Add thousands separators to a raw numeric string for display in an input,
+// keeping any decimal being typed intact. The stored value stays separator-free
+// (see the input onChange), so num()/n() keep working.
+const groupNumStr = (s: string): string => {
+  if (!s || s === "-") return s ?? "";
+  const neg = s.startsWith("-");
+  const body = neg ? s.slice(1) : s;
+  const [intPart, decPart] = body.split(".");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-" : "") + grouped + (decPart !== undefined ? "." + decPart : "");
+};
+
+// Wide-table wrapper: a horizontal scrollbar mirrored ABOVE the table (synced
+// with the body) plus the always-visible bottom bar / sticky header & footer
+// from .scroll-x-visible. Freeze a column by adding the `sticky-col` class.
+function ScrollTable({ children }: { children: ReactNode }) {
+  const topRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+
+  // Re-measure the table width on every render (data changes) — only setState
+  // when it actually changed, so this never loops.
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (el && el.scrollWidth !== w) setW(el.scrollWidth);
+  });
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.scrollWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <>
+      <div
+        ref={topRef}
+        className="scroll-x-top"
+        onScroll={() => {
+          if (bodyRef.current && topRef.current)
+            bodyRef.current.scrollLeft = topRef.current.scrollLeft;
+        }}
+      >
+        <div style={{ width: w, height: 1 }} />
+      </div>
+      <div
+        ref={bodyRef}
+        className="scroll-x-visible"
+        onScroll={() => {
+          if (bodyRef.current && topRef.current)
+            topRef.current.scrollLeft = bodyRef.current.scrollLeft;
+        }}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
 function BudgetTag({ status }: { status?: string }) {
   if (status === "Budgeted")
     return (
@@ -165,6 +233,7 @@ export default function MonthlyFollowUpPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const [owner, setOwner] = useState<string>("");
+  const [query, setQuery] = useState(""); // free-text search: opp name, plant, owner…
   const [month, setMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   // Tabs: monthly entry grid vs. current-year per-opportunity overview
@@ -275,7 +344,21 @@ export default function MonthlyFollowUpPage() {
   // mid-typing. Reporting-late = a past month with no actual entered; performance
   // (delta) = actual vs expected once an actual exists.
   const filteredRows = useMemo<GridRow[]>(() => {
+    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
+      if (q) {
+        const hay = [
+          r.oppName,
+          r.plantName,
+          r.conversionOwner,
+          r.oppType,
+          r.line.component_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       const hasActual = r.month.actual_saving != null;
       if (filterMissing && hasActual) return false;
       if (filterOutcome !== "All" && (r.month.monthly_outcome ?? "") !== filterOutcome)
@@ -290,7 +373,7 @@ export default function MonthlyFollowUpPage() {
       if (filterReporting === "On time" && !hasActual) return false;
       return true;
     });
-  }, [rows, filterMissing, filterOutcome, filterDelta, filterReporting, monthIsPast]);
+  }, [rows, query, filterMissing, filterOutcome, filterDelta, filterReporting, monthIsPast]);
 
   useEffect(() => {
     const seed: Record<number, Edit> = {};
@@ -418,6 +501,31 @@ export default function MonthlyFollowUpPage() {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Search</label>
+            <div className="relative">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Opportunity, plant, owner, type…"
+                className={`${selectCls} min-w-[260px] pl-9 pr-8`}
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  title="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
           </div>
           {/* Month + extra filters — monthly entry tab only (Year overview has its own Year filter) */}
           {tab === "monthly" && (
@@ -553,11 +661,11 @@ export default function MonthlyFollowUpPage() {
             </div>
           </div>
 
-          <div className="scroll-x-visible">
-            <table className="w-full text-left text-xs">
+          <ScrollTable>
+            <table className="mfu-grid w-full text-left text-[11.5px]">
               <thead className="border-b border-slate-200/70 bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Opportunity</th>
+                  <th className="sticky-col px-4 py-3 font-semibold">Opportunity</th>
                   <th className="px-3 py-3 font-semibold">Conversion owner</th>
                   <th className="px-3 py-3 font-semibold">Budget</th>
                   <th className="px-3 py-3 text-right font-semibold">Expected</th>
@@ -600,28 +708,33 @@ export default function MonthlyFollowUpPage() {
                         key={r.month.monthly_financial_id}
                         className="transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.025]"
                       >
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-700 dark:text-slate-200">{r.oppName}</span>
+                        <td className="sticky-col px-4 py-2.5">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span
+                              className="sticky-name font-semibold text-slate-700 dark:text-slate-200"
+                              title={r.oppName}
+                            >
+                              {r.oppName}
+                            </span>
                             {filterMissing && r.month.period_month && (
-                              <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                              <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                                 {new Date(r.month.period_month).toLocaleDateString("en-GB", { month: "short", year: "2-digit" })}
                               </span>
                             )}
                             {r.currency && r.currency !== "EUR" && (
-                              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">
+                              <span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">
                                 {r.currency}
                               </span>
                             )}
                             {r.multiLine && (
-                              <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
+                              <span className="inline-flex shrink-0 rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
                                 {r.line.component_name && r.line.component_name !== "Default"
                                   ? r.line.component_name
                                   : "Main line"}
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                          <div className="truncate text-[10px] text-slate-400 dark:text-slate-500">
                             {[
                               r.plantName,
                               !r.multiLine && r.line.component_name && r.line.component_name !== "Default"
@@ -638,8 +751,10 @@ export default function MonthlyFollowUpPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">
-                          {r.conversionOwner || "—"}
+                        <td className="px-3 py-2.5">
+                          <span className="cell-email" title={r.conversionOwner || undefined}>
+                            {r.conversionOwner || "—"}
+                          </span>
                         </td>
                         <td className="px-3 py-2.5">
                           <BudgetTag status={r.budgetStatus} />
@@ -649,12 +764,16 @@ export default function MonthlyFollowUpPage() {
                         </td>
                         <td className={`px-3 py-2.5 text-right ${editColCls} ${editColEdge}`}>
                           <input
-                            type="number"
-                            step="0.01"
-                            value={e?.actual_saving ?? ""}
-                            onChange={(ev) => setField(r.month.monthly_financial_id, "actual_saving", ev.target.value)}
+                            type="text"
+                            inputMode="decimal"
+                            value={groupNumStr(e?.actual_saving ?? "")}
+                            onChange={(ev) => {
+                              const raw = ev.target.value.replace(/,/g, "");
+                              if (raw === "" || /^-?\d*\.?\d*$/.test(raw))
+                                setField(r.month.monthly_financial_id, "actual_saving", raw);
+                            }}
                             disabled={!rowEditable}
-                            className={`w-24 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
+                            className={`w-28 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </td>
                         <td className={`px-3 py-2.5 text-right ${editColCls}`}>
@@ -662,14 +781,16 @@ export default function MonthlyFollowUpPage() {
                         </td>
                         <td className={`px-3 py-2.5 text-right ${editColCls}`}>
                           <input
-                            type="number"
-                            step="0.01"
-                            value={e?.forecast_eoy_saving ?? ""}
-                            onChange={(ev) =>
-                              setField(r.month.monthly_financial_id, "forecast_eoy_saving", ev.target.value)
-                            }
+                            type="text"
+                            inputMode="decimal"
+                            value={groupNumStr(e?.forecast_eoy_saving ?? "")}
+                            onChange={(ev) => {
+                              const raw = ev.target.value.replace(/,/g, "");
+                              if (raw === "" || /^-?\d*\.?\d*$/.test(raw))
+                                setField(r.month.monthly_financial_id, "forecast_eoy_saving", raw);
+                            }}
                             disabled={!rowEditable}
-                            className={`w-24 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
+                            className={`w-28 text-right ${cellInputCls} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </td>
                         <td className={`px-3 py-2.5 ${editColCls}`}>
@@ -718,7 +839,7 @@ export default function MonthlyFollowUpPage() {
               {!loading && filteredRows.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-100/70 text-[13px] font-bold text-slate-800 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-100">
-                    <td className="px-4 py-3">TOTAL ({filteredRows.length}) · EUR</td>
+                    <td className="sticky-col px-4 py-3">TOTAL ({filteredRows.length}) · EUR</td>
                     <td className="px-3 py-3" />
                     <td className="px-3 py-3" />
                     <td className="px-3 py-3 text-right tabular-nums">{fmt(totals.expected)}</td>
@@ -740,7 +861,7 @@ export default function MonthlyFollowUpPage() {
                 </tfoot>
               )}
             </table>
-          </div>
+          </ScrollTable>
       </div>
 
       <p className="px-1 text-[11px] text-slate-400 dark:text-slate-500">
@@ -753,7 +874,7 @@ export default function MonthlyFollowUpPage() {
       )}
 
       {tab === "year" && (
-        <YearOverview opps={opps} owner={owner} loading={loading} />
+        <YearOverview opps={opps} owner={owner} query={query} loading={loading} />
       )}
 
       {recoveryLine && (
@@ -832,7 +953,16 @@ function RecoveryModal({
         ))}
       </select>
       <label className={labelCls}>Amount to recover (€)</label>
-      <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className={`w-full ${selectCls}`} />
+      <input
+        type="text"
+        inputMode="decimal"
+        value={groupNumStr(amount)}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/,/g, "");
+          if (raw === "" || /^-?\d*\.?\d*$/.test(raw)) setAmount(raw);
+        }}
+        className={`w-full ${selectCls}`}
+      />
       <label className={labelCls}>Target date</label>
       <input type="date" value={target} onChange={(e) => setTarget(e.target.value)} className={`w-full ${selectCls}`} />
       <label className={labelCls}>Note</label>
@@ -1007,15 +1137,18 @@ interface YearRow {
 function YearOverview({
   opps,
   owner,
+  query,
   loading,
 }: {
   opps: Opp[];
   owner: string;
+  query: string;
   loading: boolean;
 }) {
   const [year, setYear] = useState(YEAR_NOW);
 
   const { rows, monthKeys } = useMemo(() => {
+    const q = query.trim().toLowerCase();
     const maxKey = `${year}-12`;
     const collected: {
       o: Opp;
@@ -1028,6 +1161,13 @@ function YearOverview({
     for (const o of opps) {
       if (!["Phase 3", "Phase 4", "Closed"].includes(o.phase_status ?? "")) continue;
       if (owner && o.conversion_owner !== owner) continue;
+      if (
+        q &&
+        !`${o.opportunity_name ?? ""} ${o.conversion_owner ?? ""} ${o.plant_name ?? ""} ${o.opportunity_type ?? ""}`
+          .toLowerCase()
+          .includes(q)
+      )
+        continue;
       const fx = o.fx_rate_to_eur != null ? Number(o.fx_rate_to_eur) || 1 : 1;
       const perMonth: Record<string, number | null> = {};
       let firstKey: string | null = null;
@@ -1075,7 +1215,7 @@ function YearOverview({
       .sort((a, b) => a.oppName.localeCompare(b.oppName));
 
     return { rows, monthKeys };
-  }, [opps, owner, year]);
+  }, [opps, owner, query, year]);
 
   const monthTotals = monthKeys.map((k) =>
     rows.reduce((s, r) => s + (r.perMonth[k] ?? 0), 0),
@@ -1114,11 +1254,11 @@ function YearOverview({
           </select>
         </div>
       </div>
-      <div className="scroll-x-visible">
-        <table className="w-full text-left text-xs">
+      <ScrollTable>
+        <table className="mfu-grid w-full text-left text-[11.5px]">
           <thead className="border-b border-slate-200/70 bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-slate-400">
             <tr>
-              <th className="px-4 py-3 font-semibold">Nom Opp</th>
+              <th className="sticky-col px-4 py-3 font-semibold">Nom Opp</th>
               <th className="px-3 py-3 font-semibold">Opp owner</th>
               <th className="px-3 py-3 font-semibold">Starting date</th>
               <th className="px-3 py-3 font-semibold">Mois début</th>
@@ -1152,11 +1292,15 @@ function YearOverview({
                   key={r.oppId}
                   className="transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.025]"
                 >
-                  <td className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                    {r.oppName}
+                  <td className="sticky-col px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-200">
+                    <span className="sticky-name block" title={r.oppName}>
+                      {r.oppName}
+                    </span>
                   </td>
-                  <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {r.owner || "—"}
+                  <td className="px-3 py-2.5">
+                    <span className="cell-email" title={r.owner || undefined}>
+                      {r.owner || "—"}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
                     {fmtStart(r.startDate)}
@@ -1195,9 +1339,10 @@ function YearOverview({
           {!loading && rows.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-100/70 text-[13px] font-bold text-slate-800 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-100">
-                <td className="px-4 py-3" colSpan={4}>
+                <td className="sticky-col px-4 py-3">
                   TOTAL ({rows.length}) · EUR
                 </td>
+                <td className="px-3 py-3" colSpan={3} />
                 {monthTotals.map((v, i) => (
                   <td key={i} className="px-2 py-3 text-right tabular-nums">
                     {v ? nf0.format(v) : "-"}
@@ -1209,7 +1354,7 @@ function YearOverview({
             </tfoot>
           )}
         </table>
-      </div>
+      </ScrollTable>
     </div>
   );
 }
