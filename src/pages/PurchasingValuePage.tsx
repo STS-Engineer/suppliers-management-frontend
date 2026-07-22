@@ -7041,15 +7041,20 @@ function FinancialTab({
   // gating on isOwner, otherwise a non-owner PD/VP wouldn't see the button at
   // all, while an owner who isn't PD/VP would see it and get a 403.
   const { user } = useAuth();
-  const canReviseBaseline =
+  // Purchasing Director / VP Conversion may enter and overwrite real savings on
+  // any opportunity, not just the ones they own — mirrors the backend, where
+  // _PRIVILEGED clears both the first-entry (_NON_VIEWER) and overwrite checks
+  // on PUT /monthly/{id}.
+  const isPrivileged =
     user?.access_profile === "purchasing_director" ||
     user?.access_profile === "vp_conversion";
+  const canReviseBaseline = isPrivileged;
   // Mirror the backend rule: actuals are editable while the financial line is Active
   // and the opportunity has reached execution (Phase 3+), including Phase 4 (LLC) and
   // closure-period realization — not only during Phase 3.
-  // Also requires the logged-in user to be the conversion owner for this opportunity.
+  // Editable by the conversion owner OR a privileged role (PD / VP Conversion).
   const canEditFinancialRows =
-    isOwner &&
+    (isOwner || isPrivileged) &&
     opp.financial_lines[0]?.status === "Active" &&
     !["Assigned", "Phase 0", "Phase 1", "Phase 2"].includes(
       opp.phase_status ?? "",
@@ -7383,12 +7388,12 @@ function FinancialTab({
           {phaseCtx.title}
         </p>
         <p className={`mt-1 text-${phaseCtx.color}-600`}>{phaseCtx.guidance}</p>
-        {!isOwner && (
+        {!isOwner && !isPrivileged && (
           <p className={`mt-2 font-semibold text-${phaseCtx.color}-700`}>
             Read-only — you are not the conversion owner for this opportunity.
           </p>
         )}
-        {isOwner && !canEditFinancialRows && (
+        {(isOwner || isPrivileged) && !canEditFinancialRows && (
           <p className={`mt-2 font-semibold text-${phaseCtx.color}-700`}>
             Monthly actuals are editable once the line is active and the
             opportunity reaches deployment (Phase 3+).

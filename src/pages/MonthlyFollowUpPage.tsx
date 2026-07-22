@@ -151,6 +151,12 @@ function DeltaPill({ value, currency }: { value: number | null; currency?: strin
 export default function MonthlyFollowUpPage() {
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
+  // Purchasing Director / VP Conversion may enter real savings on any
+  // opportunity, not just the ones they own — mirrors the backend, where
+  // _PRIVILEGED clears the checks on PUT /monthly/{id}.
+  const isPrivileged =
+    user?.access_profile === "purchasing_director" ||
+    user?.access_profile === "vp_conversion";
 
   const [opps, setOpps] = useState<Opp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -584,8 +590,9 @@ export default function MonthlyFollowUpPage() {
                   filteredRows.map((r) => {
                     const e = edits[r.month.monthly_financial_id];
                     const rowEditable =
+                      isPrivileged ||
                       (r.conversionOwner ?? "").trim().toLowerCase() ===
-                      userEmail.trim().toLowerCase();
+                        userEmail.trim().toLowerCase();
                     const actualNum = e?.actual_saving ? n(e.actual_saving) : null;
                     const delta = actualNum != null ? actualNum - n(r.month.expected_saving) : null;
                     return (
