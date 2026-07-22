@@ -3,11 +3,14 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle, ClipboardList, UserPlus } from "lucide-react";
 import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
 
+// Roles a new user can request. Mirrors the real access_profile values enforced
+// by the backend. The elevated admin roles (VP Conversion, Purchasing Director)
+// are not self-requestable — an approver assigns them from the Users tab.
 const AVAILABLE_ROLES = [
   { value: "purchasing_manager", label: "Purchasing Manager" },
   { value: "supplier_owner", label: "Supplier Owner" },
-  { value: "plant_manager", label: "Plant Manager" },
-  { value: "quality_manager", label: "Quality Manager" },
+  { value: "global_purchaser", label: "Global Purchaser" },
+  { value: "local_purchaser", label: "Local Purchaser" },
   { value: "viewer", label: "Viewer (Read-only)" },
 ];
 

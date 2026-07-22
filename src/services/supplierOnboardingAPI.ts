@@ -420,6 +420,20 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async deleteAccessIdentity(identityId: number): Promise<{
+    status: string;
+    message?: string;
+  }> {
+    return this.request(
+      `${this.baseUrl}/auth/access-identities/${identityId}`,
+      {
+        method: "DELETE",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to delete the access identity.",
+    );
+  }
+
   async changePassword(data: {
     current_password: string;
     new_password: string;
