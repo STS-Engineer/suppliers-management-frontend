@@ -711,7 +711,9 @@ export default function GateApprovalPage() {
         </div>
 
         <p className="text-center text-[11px] text-slate-300">
-          Avocarbon · Suppliers Management · This link expires in 72 hours
+          Avocarbon · Suppliers Management
+          {form.token_expires_at &&
+            ` · Link valid until ${new Date(form.token_expires_at).toLocaleDateString("fr-FR")}`}
         </p>
       </div>
     </div>
