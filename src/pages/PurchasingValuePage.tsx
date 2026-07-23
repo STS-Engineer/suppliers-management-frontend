@@ -19,6 +19,7 @@ import {
   LayoutList,
   Layers,
   Lock,
+  Mail,
   Paperclip,
   PlusCircle,
   RefreshCw,
@@ -5369,6 +5370,9 @@ function GateTab({
       status: string | null;
       consensus_result: string | null;
       committee_level: string | null;
+      pm_notified_email?: string | null;
+      pm_notified_at?: string | null;
+      pm_notification_status?: string | null;
       votes: {
         vote_id: number;
         approver_email: string | null;
@@ -5582,6 +5586,32 @@ function GateTab({
       setApprovalRequests(st.data ?? []);
     } catch {
       /* non-blocking */
+    }
+  }
+
+  // Manually (re)send the Project Manager handover email for a given gate.
+  const [pmSendingId, setPmSendingId] = useState<number | null>(null);
+  const [pmMsg, setPmMsg] = useState<Record<number, string>>({});
+  async function resendPmEmail(requestId: number) {
+    setPmSendingId(requestId);
+    setPmMsg((m) => ({ ...m, [requestId]: "" }));
+    try {
+      const res = await supplierAPI.resendPmNotification(requestId);
+      setPmMsg((m) => ({
+        ...m,
+        [requestId]:
+          res.delivery === "sent"
+            ? `Email sent to ${res.pm_email}.`
+            : `Delivery failed for ${res.pm_email} — check SMTP / try again.`,
+      }));
+      await refreshApprovalStatus();
+    } catch (e: unknown) {
+      setPmMsg((m) => ({
+        ...m,
+        [requestId]: e instanceof Error ? e.message : "Failed to send.",
+      }));
+    } finally {
+      setPmSendingId(null);
     }
   }
 
@@ -6834,6 +6864,77 @@ function GateTab({
                     </div>
                   ))}
                 </div>
+                {/* Project Manager handover — per gate: confirm the PM was
+                    emailed once the panel approved, and allow a manual (re)send
+                    (e.g. if the automatic email failed). */}
+                {req.status === "Completed" &&
+                  req.consensus_result === "Go" && (
+                    <div className="space-y-1.5 border-t border-slate-200 pt-2 text-[10.5px]">
+                      {req.pm_notified_email &&
+                      req.pm_notification_status === "sent" ? (
+                        <p className="flex items-start gap-1.5 text-slate-600">
+                          <CheckCircle2
+                            size={12}
+                            className="mt-0.5 shrink-0 text-emerald-500"
+                          />
+                          <span>
+                            Project Manager notified:{" "}
+                            <span className="font-semibold text-slate-700">
+                              {req.pm_notified_email}
+                            </span>
+                            {req.pm_notified_at && (
+                              <span className="text-slate-400">
+                                {" "}
+                                · {fmtDateTime(req.pm_notified_at)}
+                              </span>
+                            )}
+                          </span>
+                        </p>
+                      ) : req.pm_notified_email ? (
+                        <p className="flex items-start gap-1.5 text-red-600">
+                          <AlertTriangle
+                            size={12}
+                            className="mt-0.5 shrink-0 text-red-500"
+                          />
+                          <span>
+                            PM email failed to send to{" "}
+                            <span className="font-semibold">
+                              {req.pm_notified_email}
+                            </span>
+                            .
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="flex items-start gap-1.5 text-slate-500">
+                          <AlertTriangle
+                            size={12}
+                            className="mt-0.5 shrink-0 text-amber-500"
+                          />
+                          <span>Project Manager not yet emailed.</span>
+                        </p>
+                      )}
+                      {canRemindApprovers && (
+                        <button
+                          onClick={() => resendPmEmail(req.request_id)}
+                          disabled={pmSendingId === req.request_id}
+                          title="Send the opportunity handover email to the Project Manager"
+                          className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                        >
+                          <Mail size={12} />
+                          {pmSendingId === req.request_id
+                            ? "Sending…"
+                            : req.pm_notification_status === "sent"
+                              ? "Resend PM email"
+                              : "Send PM email"}
+                        </button>
+                      )}
+                      {pmMsg[req.request_id] && (
+                        <p className="text-[10.5px] text-slate-500">
+                          {pmMsg[req.request_id]}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 {req.votes.some((v) => v.comment) && (
                   <div className="border-t border-slate-200 pt-2 space-y-1">
                     {req.votes

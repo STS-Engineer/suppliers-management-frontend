@@ -2314,6 +2314,15 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // Manually (re)send the Project Manager handover email for an approved gate.
+  async resendPmNotification(requestId: number) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/requests/${requestId}/notify-pm`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" } },
+      "Failed to send the Project Manager email.",
+    );
+  }
+
   // Public — no auth
   async getVoteForm(token: string) {
     const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`);
