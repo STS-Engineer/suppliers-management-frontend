@@ -181,7 +181,12 @@ export default function GateApprovalPage() {
     if (!token) return;
     supplierAPI
       .getVoteForm(token)
-      .then((res) => setForm(res.data))
+      .then((res) => {
+        setForm(res.data);
+        // Pre-fill the Project Manager with the current designation (carried
+        // over from Phase 0). The plant manager can override it before approving.
+        if (res.data?.project_owner) setPmEmail(res.data.project_owner);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
@@ -681,8 +686,9 @@ export default function GateApprovalPage() {
                 Designate Project Manager <span className="text-red-500">*</span>
               </p>
               <p className="text-[11px] text-blue-600">
-                As Plant Manager, your approval assigns the Project Manager who will lead
-                this project through Phase 1 and beyond. They will receive a notification email.
+                As Plant Manager, your approval confirms the Project Manager who leads this
+                project. It's pre-filled with the current designation — change it if needed.
+                They receive the opportunity details by email only once the whole panel approves.
               </p>
               <input
                 type="email"

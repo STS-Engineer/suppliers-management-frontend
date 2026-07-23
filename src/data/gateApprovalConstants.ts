@@ -4,10 +4,12 @@
 export const COMMITTEE_LEVELS = ["Light", "Intermediate", "Full"] as const;
 export type CommitteeLevel = (typeof COMMITTEE_LEVELS)[number];
 
+// NOTE: Project Leader is NOT a committee voter. The Project Manager / leader is
+// designated by the Plant Manager on their approval vote (like Phase 0) and is
+// notified only once the whole panel approves.
 export const ALL_ROLES = [
   "Purchasing Director",
   "Plant Manager",
-  "Project Leader",
   "Product Line Manager",
   "COO/VP",
   "CEO",
@@ -32,23 +34,18 @@ export const NEGOTIATION_APPROVER_ROLES = [
 // committee level is chosen. Phase 2/3/4 always use CORE_MANDATORY_ROLES below,
 // regardless of which tier was picked at Phase 1.
 export const MANDATORY_ROLES_BY_TIER: Record<CommitteeLevel, string[]> = {
-  Light: ["Purchasing Director", "Plant Manager", "Project Leader"],
+  Light: ["Purchasing Director", "Plant Manager"],
   Intermediate: [
     "Purchasing Director",
     "Plant Manager",
-    "Project Leader",
     "Product Line Manager",
     "COO/VP",
   ],
-  Full: ["Purchasing Director", "Plant Manager", "Project Leader", "CEO"],
+  Full: ["Purchasing Director", "Plant Manager", "CEO"],
 };
 
 // Phase 2/3/4 mandatory roles — fixed, independent of committee tier.
-export const CORE_MANDATORY_ROLES = [
-  "Purchasing Director",
-  "Plant Manager",
-  "Project Leader",
-];
+export const CORE_MANDATORY_ROLES = ["Purchasing Director", "Plant Manager"];
 
 export function mandatoryRolesForPhase(
   phaseStatus: string | undefined,

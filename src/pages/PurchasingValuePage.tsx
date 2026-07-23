@@ -5412,6 +5412,25 @@ function GateTab({
       .catch(() => {});
   }, [opp.opportunity_id, opp.phase_status]);
 
+  // Phase 1-4 committee gate: pre-fill the Plant Manager approver with whoever
+  // approved as plant manager at Phase 0. Only empty fields are seeded, so a
+  // manual override is preserved. (The Project Manager / leader is no longer a
+  // voter — the Plant Manager designates it on their own vote, pre-filled with
+  // the Phase 0 carry-over; see the approval vote page.)
+  useEffect(() => {
+    if (!showApproval || isNegotiation) return;
+    const plantManagerEmail = approvalRequests
+      .flatMap((r) => r.votes)
+      .find((v) => v.is_plant_manager && v.approver_email)?.approver_email;
+    if (!plantManagerEmail) return;
+    setApproverEmails((m) =>
+      m["Plant Manager"]?.trim()
+        ? m
+        : { ...m, "Plant Manager": plantManagerEmail },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showApproval, isNegotiation, approvalRequests]);
+
   async function submitApprovalRequest() {
     // Block submission if STP format is incomplete for Sourcing/Technical types
     if (opp.phase_status === "Phase 0" && phase0Missing.length > 0) {
