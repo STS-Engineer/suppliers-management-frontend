@@ -1105,6 +1105,10 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
           groupName={groupName}
           isLoading={isLoadingDetails}
           onClose={closeRelationDetailsModal}
+          onUpdated={() =>
+            shared.selectedUnit &&
+            loadRelationsForUnit(shared.selectedUnit.id_supplier_unit)
+          }
         />
       )}
 

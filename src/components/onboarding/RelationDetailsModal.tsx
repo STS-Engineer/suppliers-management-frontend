@@ -5,6 +5,7 @@ import type {
   SupplierUnitResponse,
 } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { useAuth } from "../../context/AuthContext";
 
 type TabKey = "overview" | "criteria" | "history" | "plans" | "spend";
 
@@ -25,6 +26,9 @@ interface RelationDetailsModalProps {
   groupName?: string | null;
   isLoading: boolean;
   onClose: () => void;
+  // Called after a successful edit (e.g. supplier owner change) so the parent
+  // can refresh the underlying relations list.
+  onUpdated?: () => void;
 }
 
 const tabs: Array<{ key: TabKey; label: string }> = [
@@ -124,8 +128,18 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   groupName,
   isLoading,
   onClose,
+  onUpdated,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+
+  // Supplier owner inline editing (any non-viewer role).
+  const { user } = useAuth();
+  const canEditOwner = user?.access_profile !== "viewer";
+  const [ownerOverride, setOwnerOverride] = useState<string | null>(null);
+  const [editingOwner, setEditingOwner] = useState(false);
+  const [ownerInput, setOwnerInput] = useState("");
+  const [savingOwner, setSavingOwner] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
 
   // Spend-by-year state
   const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
@@ -301,6 +315,80 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   );
 
   const relation = workspace?.relation;
+  const currentOwner = ownerOverride ?? relation?.supplier_owner ?? null;
+
+  const startEditOwner = () => {
+    setOwnerInput(currentOwner ?? "");
+    setOwnerError(null);
+    setEditingOwner(true);
+  };
+
+  const saveOwner = async () => {
+    const email = ownerInput.trim().toLowerCase();
+    if (!email.includes("@") || !email.split("@")[1]?.includes(".")) {
+      setOwnerError("A valid owner email is required.");
+      return;
+    }
+    if (!relationId) return;
+    setSavingOwner(true);
+    setOwnerError(null);
+    try {
+      const res = await supplierAPI.updateRelationOwner(relationId, email);
+      setOwnerOverride(res?.data?.supplier_owner ?? email);
+      setEditingOwner(false);
+      onUpdated?.();
+    } catch (e: any) {
+      setOwnerError(e?.message ?? "Failed to update supplier owner.");
+    } finally {
+      setSavingOwner(false);
+    }
+  };
+
+  const ownerCell = editingOwner ? (
+    <div className="space-y-1.5">
+      <input
+        type="email"
+        value={ownerInput}
+        onChange={(e) => setOwnerInput(e.target.value)}
+        placeholder="firstname.lastname@avocarbon.com"
+        className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#062B49]"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={saveOwner}
+          disabled={savingOwner || !ownerInput.trim()}
+          className="rounded-lg bg-[#062B49] px-3 py-1 text-xs font-semibold text-white hover:bg-[#0C5381] disabled:opacity-50"
+        >
+          {savingOwner ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditingOwner(false);
+            setOwnerError(null);
+          }}
+          className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+        >
+          Cancel
+        </button>
+      </div>
+      {ownerError && <p className="text-xs text-rose-500">{ownerError}</p>}
+    </div>
+  ) : (
+    <div className="flex items-center gap-2">
+      <span>{currentOwner || "—"}</span>
+      {canEditOwner && (
+        <button
+          type="button"
+          onClick={startEditOwner}
+          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 hover:border-amber-400"
+        >
+          Edit
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -426,7 +514,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       },
                       {
                         label: "Owner",
-                        value: relation?.supplier_owner || "—",
+                        value: ownerCell,
                       },
                       {
                         label: "Annual Spend",

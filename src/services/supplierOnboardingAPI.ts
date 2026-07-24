@@ -2987,6 +2987,19 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // Reassign a relation's supplier owner (stored as a canonical lowercase email).
+  async updateRelationOwner(relationId: number, supplierOwner: string) {
+    return this.request(
+      `${this.baseUrl}/supplier-relations/${relationId}/owner`,
+      {
+        method: "PATCH",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ supplier_owner: supplierOwner }),
+      },
+      "Failed to update supplier owner.",
+    );
+  }
+
   // ── Committee Review ──────────────────────────────────────────────────
 
   async initiateCommitteeReview(relationId: number) {
