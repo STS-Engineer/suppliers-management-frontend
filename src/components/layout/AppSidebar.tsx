@@ -228,7 +228,25 @@ export default function AppSidebar() {
 
   const open = isExpanded || isHovered || isMobileOpen;
   const accentColor = "#93c5fd";
-  const visibleNav = PRIMARY_NAV;
+  const isViewer = user?.access_profile === "viewer";
+  // Pages hidden from the viewer role: KPI dashboards, supplier monitoring,
+  // recovery, budgeting, evaluation scorecards and monthly follow-up.
+  const VIEWER_HIDDEN_PATHS = [
+    "/purchasing-value/kpis",
+    "/suppliers/monitoring",
+    "/purchasing-value/recovery",
+    "/purchasing-value/budgeting",
+    "/purchasing-value/monthly",
+    "/evaluations",
+  ];
+  const visibleNav = isViewer
+    ? PRIMARY_NAV.map((item) => ({
+        ...item,
+        subItems: item.subItems.filter(
+          (s) => !VIEWER_HIDDEN_PATHS.includes(s.path),
+        ),
+      })).filter((item) => item.subItems.length > 0)
+    : PRIMARY_NAV;
 
   useEffect(() => {
     const parent = visibleNav.find((item) =>
@@ -442,8 +460,8 @@ export default function AppSidebar() {
             })}
           </div>
 
-          {/* Administration — approvers only */}
-          {isApprover && (
+          {/* Administration — vp_conversion only (Account Requests + Relation Review) */}
+          {user?.access_profile === "vp_conversion" && (
             <>
               <div
                 className={
@@ -462,17 +480,15 @@ export default function AppSidebar() {
                 )}
               </div>
 
-              {user?.access_profile === "vp_conversion" && (
-                <AdminNavLink
-                  to="/account-requests"
-                  icon={<ShieldCheck size={15} />}
-                  label="Account Requests"
-                  sublabel="Approvals"
-                  badge={pendingRequestCount}
-                  open={open}
-                  onClick={closeMobile}
-                />
-              )}
+              <AdminNavLink
+                to="/account-requests"
+                icon={<ShieldCheck size={15} />}
+                label="Account Requests"
+                sublabel="Approvals"
+                badge={pendingRequestCount}
+                open={open}
+                onClick={closeMobile}
+              />
 
               <AdminNavLink
                 to="/relation-review"

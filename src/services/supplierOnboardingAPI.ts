@@ -2394,6 +2394,25 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // Create a full action plan NOT attached to any opportunity (general plan).
+  async createStandaloneActionPlan(payload: object) {
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      "Failed to create action plan.",
+    );
+  }
+
+  // Quick-add a single action. Attaches to an opportunity only if opportunityId is given.
+  async createQuickAction(payload: object, opportunityId?: number | null) {
+    const qs = opportunityId != null ? `?opportunity_id=${opportunityId}` : "";
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/quick${qs}`,
+      { method: "POST", headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+      "Failed to create action.",
+    );
+  }
+
   async listAllActionItems(params?: { responsible_email?: string; status?: string; opportunity_id?: number }) {
     const q = new URLSearchParams();
     if (params?.responsible_email) q.set("responsible_email", params.responsible_email);
@@ -2408,7 +2427,7 @@ class SupplierOnboardingAPI {
   }
 
   async uploadActionEvidence(
-    opportunityId: number,
+    opportunityId: number | null,
     actionPlanId: number,
     sujetIdx: number,
     actionIdx: number,
@@ -2417,15 +2436,20 @@ class SupplierOnboardingAPI {
     const formData = new FormData();
     formData.append("file", file);
     const token = localStorage.getItem("auth_token");
+    // General plans (no opportunity) use the non-nested evidence route.
+    const base =
+      opportunityId != null
+        ? `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence`
+        : `${this.baseUrl}/purchasing-value/action-plans/${actionPlanId}/evidence`;
     return this.request(
-      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence?sujet_idx=${sujetIdx}&action_idx=${actionIdx}`,
+      `${base}?sujet_idx=${sujetIdx}&action_idx=${actionIdx}`,
       { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData },
       "Failed to upload evidence.",
     );
   }
 
   async deleteActionEvidence(
-    opportunityId: number,
+    opportunityId: number | null,
     actionPlanId: number,
     sujetIdx: number,
     actionIdx: number,
@@ -2436,8 +2460,12 @@ class SupplierOnboardingAPI {
       action_idx: String(actionIdx),
       blob_name: blobName,
     });
+    const base =
+      opportunityId != null
+        ? `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence`
+        : `${this.baseUrl}/purchasing-value/action-plans/${actionPlanId}/evidence`;
     return this.request(
-      `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/evidence?${q}`,
+      `${base}?${q}`,
       { method: "DELETE", headers: this.getAuthHeaders() },
       "Failed to delete evidence.",
     );
@@ -2460,6 +2488,45 @@ class SupplierOnboardingAPI {
       `${this.baseUrl}/purchasing-value/action-plans/${planId}/item-status?${q}`,
       { method: "PATCH", headers: this.getAuthHeaders() },
       "Failed to update action status.",
+    );
+  }
+
+  async updateActionItem(
+    planId: number,
+    sujetIdx: number,
+    actionIdx: number,
+    data: {
+      titre?: string;
+      description?: string;
+      due_date?: string | null;
+      email_responsable?: string;
+      responsable?: string;
+    },
+  ) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+    });
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/${planId}/item?${q}`,
+      {
+        method: "PATCH",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      "Failed to update action.",
+    );
+  }
+
+  async deleteActionItem(planId: number, sujetIdx: number, actionIdx: number) {
+    const q = new URLSearchParams({
+      sujet_idx: String(sujetIdx),
+      action_idx: String(actionIdx),
+    });
+    return this.request(
+      `${this.baseUrl}/purchasing-value/action-plans/${planId}/item?${q}`,
+      { method: "DELETE", headers: this.getAuthHeaders() },
+      "Failed to delete action.",
     );
   }
 

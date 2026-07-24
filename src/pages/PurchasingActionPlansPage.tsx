@@ -32,6 +32,7 @@ import {
   LayoutGrid,
   Megaphone,
   Paperclip,
+  Plus,
   RefreshCw,
   Table2,
   Trash2,
@@ -52,7 +53,7 @@ interface ActionItem {
   plan_created_by: string | null;
   plan_updated_at: string | null;
   plan_updated_by: string | null;
-  opportunity_id: number;
+  opportunity_id: number | null;
   opportunity_name: string;
   opp_phase: string | null;
   sujet_idx: number;
@@ -197,6 +198,20 @@ function personLabel(email: string | null, name: string | null) {
   return email
     .split("@")[0]
     .split(".")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+}
+
+// Derive a display name from a firstname.lastname@domain email. Mirrors the
+// backend (app.features.purchasing_value.service._name_from_email) — the name is
+// always derived from the email, never entered by hand.
+function deriveNameFromEmail(email: string): string {
+  const local = (email.split("@")[0] ?? "").trim();
+  if (!local) return "";
+  return local
+    .replace(/_/g, ".")
+    .split(".")
+    .filter(Boolean)
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(" ");
 }
@@ -529,6 +544,67 @@ function StatusCell({
   const [error, setError] = useState<string | null>(null);
   const [reminding, setReminding] = useState(false);
   const [reminded, setReminded] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [newRespEmail, setNewRespEmail] = useState(item.responsible_email ?? "");
+  const [newDesc, setNewDesc] = useState(item.description ?? "");
+  const [newDue, setNewDue] = useState(item.due_date?.slice(0, 10) ?? "");
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Read-only, always derived from the email.
+  const editDerivedName = deriveNameFromEmail(newRespEmail);
+
+  const openEdit = () => {
+    setNewRespEmail(item.responsible_email ?? "");
+    setNewDesc(item.description ?? "");
+    setNewDue(item.due_date?.slice(0, 10) ?? "");
+    setEditOpen(true);
+    setError(null);
+  };
+
+  const saveEdit = async () => {
+    if (!newRespEmail.trim()) {
+      setError("A responsible (email) is required.");
+      return;
+    }
+    setEditing(true);
+    setError(null);
+    try {
+      await supplierAPI.updateActionItem(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+        {
+          email_responsable: newRespEmail.trim(),
+          description: newDesc.trim(),
+          due_date: newDue || null,
+        },
+      );
+      setEditOpen(false);
+      onChanged();
+    } catch (e: any) {
+      setError(e?.message ?? "Update failed.");
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const deleteAction = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await supplierAPI.deleteActionItem(
+        item.plan_id,
+        item.sujet_idx,
+        item.action_idx,
+      );
+      onChanged();
+    } catch (e: any) {
+      setError(e?.message ?? "Delete failed.");
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const changeStatus = async (newStatus: string) => {
     if (newStatus === "closed" && item.action_status !== "closed") {
@@ -621,6 +697,105 @@ function StatusCell({
           <option value="closed">→ Closed</option>
           <option value="blocked">→ Blocked</option>
         </select>
+      )}
+      {item.can_manage && !editOpen && (
+        <div className="flex gap-1.5">
+          <button
+            onClick={openEdit}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[9px] font-bold text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+          >
+            <User size={9} /> Edit
+          </button>
+          {!confirmDelete ? (
+            <button
+              onClick={() => {
+                setConfirmDelete(true);
+                setError(null);
+              }}
+              className="flex items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1 text-[9px] font-bold text-rose-500 hover:bg-rose-50 transition-colors"
+            >
+              <Trash2 size={9} /> Delete
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={deleteAction}
+                disabled={deleting}
+                className="flex items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[9px] font-bold text-white hover:bg-rose-700 disabled:opacity-40"
+              >
+                {deleting ? (
+                  <RefreshCw size={9} className="animate-spin" />
+                ) : (
+                  <Trash2 size={9} />
+                )}
+                Confirm
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[9px] font-semibold text-slate-400 hover:text-slate-600"
+              >
+                No
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {item.can_manage && editOpen && (
+        <div className="w-full space-y-1.5 rounded-xl border border-indigo-200 bg-indigo-50 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-700">
+            Edit action
+          </p>
+          <input
+            type="email"
+            value={newRespEmail}
+            onChange={(e) => setNewRespEmail(e.target.value)}
+            placeholder="firstname.lastname@avocarbon.com *"
+            className="w-full rounded-md border border-indigo-200 bg-white px-2 py-1 text-[10px] outline-none focus:border-indigo-500"
+          />
+          {/* Name is derived from the email — read-only. */}
+          <p className="text-[9px] text-slate-500">
+            Responsible:{" "}
+            <span className="font-semibold text-slate-700">
+              {editDerivedName || "—"}
+            </span>
+          </p>
+          <input
+            type="date"
+            value={newDue}
+            onChange={(e) => setNewDue(e.target.value)}
+            className="w-full rounded-md border border-indigo-200 bg-white px-2 py-1 text-[10px] outline-none focus:border-indigo-500"
+          />
+          <textarea
+            rows={2}
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="Description"
+            className="w-full resize-none rounded-md border border-indigo-200 bg-white px-2 py-1 text-[10px] outline-none focus:border-indigo-500"
+          />
+          <div className="flex gap-1.5">
+            <button
+              onClick={saveEdit}
+              disabled={editing || !newRespEmail.trim()}
+              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-[9px] font-bold text-white hover:bg-indigo-700 disabled:opacity-40"
+            >
+              {editing ? (
+                <RefreshCw size={9} className="animate-spin" />
+              ) : (
+                <CheckCircle2 size={9} />
+              )}
+              Save
+            </button>
+            <button
+              onClick={() => {
+                setEditOpen(false);
+                setError(null);
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[9px] font-semibold text-slate-400 hover:text-rose-500"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       {item.action_status !== "closed" && item.responsible_email && (
         <button
@@ -736,24 +911,24 @@ function ActionCard({
         {/* Left: opp + subject */}
         <div className="w-52 shrink-0 space-y-2 border-r border-slate-100 pr-4">
           <div>
-            <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
-              {item.opportunity_name}
-            </p>
-            {item.opp_phase && (
-              <span
-                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
-              >
-                {item.opp_phase}
+            {item.opportunity_id == null ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 ring-1 ring-slate-200">
+                <FolderOpen size={9} /> General
               </span>
+            ) : (
+              <>
+                <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
+                  {item.opportunity_name}
+                </p>
+                {item.opp_phase && (
+                  <span
+                    className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
+                  >
+                    {item.opp_phase}
+                  </span>
+                )}
+              </>
             )}
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
-              Subject
-            </p>
-            <p className="text-[10px] text-slate-600 font-medium line-clamp-2">
-              {item.sujet_titre ?? "—"}
-            </p>
           </div>
           <div className="text-[9px] text-slate-400 space-y-0.5">
             <div>Created {fmtDateShort(item.plan_created_at)}</div>
@@ -844,22 +1019,24 @@ function ActionCard({
             />
           </button>
           {historyOpen && (
-            <div className="absolute bottom-full right-3 z-20 mb-2 max-h-[420px] w-[26rem] max-w-[90vw] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
-              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+            // Inline (in-flow) so it never gets clipped by the viewport when the
+            // card is near the top/bottom of the screen; scrolls internally when long.
+            <div className="mt-2 max-h-[320px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 Audit trail
               </p>
-              <ul className="space-y-3">
+              <ul className="space-y-2">
                 {[...item.history]
                   .sort((a, b) => (a.at < b.at ? 1 : -1))
                   .map((h, hi) => (
                     <li
                       key={hi}
-                      className="border-b border-slate-100 pb-2 text-sm leading-snug text-slate-600 last:border-0 last:pb-0"
+                      className="border-b border-slate-100 pb-1.5 text-xs leading-snug text-slate-600 last:border-0 last:pb-0"
                     >
                       <p className="font-semibold text-slate-800">
                         {historyLabel(h)}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-400">
+                      <p className="mt-0.5 text-[10px] text-slate-400">
                         {h.by} · {fmtDate(h.at)}
                       </p>
                     </li>
@@ -881,6 +1058,10 @@ function historyLabel(h: HistoryEntry): string {
       return `Reminder sent to ${h.to}`;
     case "escalation_sent":
       return `Escalated to ${h.to}${h.subject ? ` — "${h.subject}"` : ""}`;
+    case "responsible_changed":
+      return `Responsible changed: ${h.from_email ?? "—"} → ${h.to_email}`;
+    case "action_edited":
+      return `Action edited${Array.isArray(h.fields) && h.fields.length ? ` (${(h.fields as string[]).join(", ")})` : ""}`;
     case "attachment_added":
       return `File attached: ${h.filename ?? "unnamed"}`;
     case "attachment_removed":
@@ -1097,13 +1278,21 @@ function ActionItemsTable({
                   className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/60 ${overdue ? "bg-rose-50/40" : ""}`}
                 >
                   <td className="max-w-[160px] px-3 py-2 align-top">
-                    <p className="truncate font-semibold text-slate-800">
-                      {item.opportunity_name}
-                    </p>
-                    {item.opp_phase && (
-                      <span className="text-[9px] text-slate-400">
-                        {item.opp_phase}
+                    {item.opportunity_id == null ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">
+                        <FolderOpen size={9} /> General
                       </span>
+                    ) : (
+                      <>
+                        <p className="truncate font-semibold text-slate-800">
+                          {item.opportunity_name}
+                        </p>
+                        {item.opp_phase && (
+                          <span className="text-[9px] text-slate-400">
+                            {item.opp_phase}
+                          </span>
+                        )}
+                      </>
                     )}
                   </td>
                   <td className="max-w-[260px] px-3 py-2 align-top">
@@ -1192,12 +1381,6 @@ function ActionItemsTable({
                       <div className="grid grid-cols-2 gap-4 text-[10px] text-slate-600 md:grid-cols-3">
                         <div>
                           <p className="mb-0.5 font-semibold uppercase tracking-widest text-slate-400">
-                            Subject
-                          </p>
-                          {item.sujet_titre ?? "—"}
-                        </div>
-                        <div>
-                          <p className="mb-0.5 font-semibold uppercase tracking-widest text-slate-400">
                             Description
                           </p>
                           {item.description ?? "—"}
@@ -1247,6 +1430,153 @@ function ActionItemsTable({
 }
 
 // ---------------------------------------------------------------------------
+// Quick-add a single general action
+// ---------------------------------------------------------------------------
+function QuickActionModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [titre, setTitre] = useState("");
+  const [email, setEmail] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Read-only, always derived from the email.
+  const derivedName = deriveNameFromEmail(email);
+
+  const submit = async () => {
+    if (!titre.trim()) {
+      setError("Action title is required.");
+      return;
+    }
+    if (!email.trim()) {
+      setError("A responsible (email) is required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await supplierAPI.createQuickAction({
+        titre: titre.trim(),
+        email_responsable: email.trim(),
+        due_date: dueDate || undefined,
+        description: description.trim() || undefined,
+      });
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to create.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md space-y-4 rounded-2xl border border-indigo-200 bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100">
+            <Plus size={16} className="text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-800">New action</p>
+            <p className="text-xs text-slate-400">
+              General action (no opportunity)
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-slate-500">
+            Action title *
+          </label>
+          <input
+            type="text"
+            value={titre}
+            onChange={(e) => setTitre(e.target.value)}
+            autoFocus
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">
+            Responsible email *
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="firstname.lastname@avocarbon.com"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+          />
+          {/* Name is derived from the email — shown read-only, not editable. */}
+          <p className="mt-1 text-[11px] text-slate-400">
+            Responsible:{" "}
+            <span className="font-semibold text-slate-600">
+              {derivedName || "—"}
+            </span>
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">
+            Due date
+          </label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">
+            Description (optional)
+          </label>
+          <textarea
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="mt-1 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+          />
+        </div>
+        {error && <p className="text-xs text-rose-500">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 hover:text-rose-500 hover:border-rose-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={saving || !titre.trim() || !email.trim()}
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40"
+          >
+            {saving ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              <Plus size={14} />
+            )}
+            Create
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 export default function PurchasingActionPlansPage() {
@@ -1273,6 +1603,7 @@ export default function PurchasingActionPlansPage() {
   const [viewMode, setViewMode] = useState<"cards" | "table">(
     initialFilters.viewMode,
   );
+  const [showQuick, setShowQuick] = useState(false);
 
   useEffect(() => {
     savePersistedFilters(ACTION_PLANS_FILTERS_PAGE_KEY, userEmail, {
@@ -1381,6 +1712,12 @@ export default function PurchasingActionPlansPage() {
 
   return (
     <div className="min-h-screen bg-[#F1F4FA]">
+      {showQuick && (
+        <QuickActionModal
+          onClose={() => setShowQuick(false)}
+          onCreated={() => load(true)}
+        />
+      )}
       {/* Header */}
       <div className="bg-white border-b border-slate-200/70 px-8 py-5 sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.05)]">
         <div className="max-w-[2200px] mx-auto flex items-center justify-between gap-4">
@@ -1398,6 +1735,14 @@ export default function PurchasingActionPlansPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isViewer && (
+              <button
+                onClick={() => setShowQuick(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                <Plus size={12} /> New action
+              </button>
+            )}
             <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-0.5">
               <button
                 onClick={() => setViewMode("cards")}
@@ -1542,7 +1887,8 @@ export default function PurchasingActionPlansPage() {
               No action items found
             </p>
             <p className="text-xs text-slate-300 mt-1">
-              Create action plans inside opportunities to see them here.
+              Click "New action" to create one, or add actions from an
+              opportunity.
             </p>
           </div>
         ) : viewMode === "table" ? (

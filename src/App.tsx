@@ -38,9 +38,15 @@ import AccountRequestsPage from "./pages/AccountRequestsPage";
 import PendingValidationPage from "./pages/PendingValidationPage";
 import RelationReviewQueuePage from "./pages/RelationReviewQueuePage";
 
-function RoleGuard({ roles }: { roles: string[] }) {
+// `roles` = allow-list (only these may enter). `block` = deny-list (everyone
+// except these). Provide exactly one.
+function RoleGuard({ roles, block }: { roles?: string[]; block?: string[] }) {
   const { user } = useAuth();
-  if (!user || !roles.includes(user.access_profile)) {
+  const denied =
+    !user ||
+    (roles ? !roles.includes(user.access_profile) : false) ||
+    (block ? block.includes(user.access_profile) : false);
+  if (denied) {
     return <Navigate to="/" replace />;
   }
   return <Outlet />;
@@ -122,27 +128,34 @@ const router = createBrowserRouter([
         element: <RelationEvaluationPage />,
       },
       { path: "/purchasing-value", element: <PurchasingValuePage /> },
+      // Pages hidden from the viewer role: KPI dashboards, supplier monitoring,
+      // recovery, budgeting, evaluation scorecards and monthly follow-up.
       {
-        path: "/purchasing-value/recovery",
-        element: <PurchasingRecoveryPage />,
+        element: <RoleGuard block={["viewer"]} />,
+        children: [
+          { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
+          { path: "/suppliers/monitoring", element: <SupplierMonitoringPage /> },
+          {
+            path: "/purchasing-value/recovery",
+            element: <PurchasingRecoveryPage />,
+          },
+          { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
+          { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
+          { path: "/evaluations", element: <BatchEvaluationPage /> },
+        ],
       },
-      { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
-      { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
-      { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
-      { path: "/suppliers/monitoring", element: <SupplierMonitoringPage /> },
       {
         path: "/purchasing-value/action-plans",
         element: <PurchasingActionPlansPage />,
       },
-      { path: "/evaluations", element: <BatchEvaluationPage /> },
       {
         element: <RoleGuard roles={["vp_conversion"]} />,
         children: [
           { path: "/account-requests", element: <AccountRequestsPage /> },
           { path: "/pending-validation", element: <PendingValidationPage /> },
+          { path: "/relation-review", element: <RelationReviewQueuePage /> },
         ],
       },
-      { path: "/relation-review", element: <RelationReviewQueuePage /> },
       // { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },
       {
         path: "/suppliers/certifications",

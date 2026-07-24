@@ -5435,6 +5435,39 @@ function GateTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showApproval, isNegotiation, approvalRequests]);
 
+  // While the opportunity is awaiting a gate decision, approvers vote on the
+  // external /approve link pages — poll so the app reflects new votes live and
+  // shows the AUTOMATIC phase transition (once everyone approves) without a
+  // manual refresh. Stops as soon as the status/phase changes.
+  useEffect(() => {
+    const awaiting =
+      opp.status === "Awaiting Validation" ||
+      opp.status === "Under Committee Review";
+    if (!awaiting) return;
+    const timer = setInterval(async () => {
+      try {
+        const st = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
+        setApprovalRequests(st.data ?? []);
+        // A completed gate means consensus was applied (phase advanced, or sent
+        // back for rework / cancelled) — pull the fresh opportunity and update.
+        const anyCompleted = (st.data ?? []).some(
+          (r: { status: string | null }) => r.status === "Completed",
+        );
+        if (anyCompleted) {
+          const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
+          const f = fresh.data as Opp;
+          if (f.status !== opp.status || f.phase_status !== opp.phase_status) {
+            onRefresh(f);
+          }
+        }
+      } catch {
+        /* transient network error — keep polling */
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opp.opportunity_id, opp.status, opp.phase_status]);
+
   async function submitApprovalRequest() {
     // Block submission if STP format is incomplete for Sourcing/Technical types
     if (opp.phase_status === "Phase 0" && phase0Missing.length > 0) {
@@ -5485,6 +5518,10 @@ function GateTab({
       const res = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
       const requests = res.data ?? [];
       setApprovalRequests(requests);
+      // Reflect the new opportunity status (Awaiting Validation) immediately —
+      // without this the badge stays stale until a manual page refresh.
+      const freshOpp = await supplierAPI.getOpportunity(opp.opportunity_id);
+      onRefresh(freshOpp.data as Opp);
       const pmFromVotes = requests
         .flatMap(
           (r: {
@@ -5567,6 +5604,10 @@ function GateTab({
       });
       const res = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
       setApprovalRequests(res.data ?? []);
+      // Reflect the new opportunity status (Under Committee Review) immediately —
+      // without this the badge stays stale until a manual page refresh.
+      const freshOpp = await supplierAPI.getOpportunity(opp.opportunity_id);
+      onRefresh(freshOpp.data as Opp);
       setShowApproval(false);
       setApproverEmails({});
       setNegotiationApproverEmail("");
