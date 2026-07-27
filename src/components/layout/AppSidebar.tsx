@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ClipboardList,
+  FileText,
   GitBranchPlus,
   PanelLeft,
   ShieldCheck,
@@ -21,7 +22,12 @@ import { ThemeToggleButton } from "../common/ThemeToggleButton";
 import UserDropdown from "../header/UserDropdown";
 import logoAvocarbonWide from "../../assets/logo/logo-avocarbon.png";
 
-const APPROVER_ROLES = ["purchasing_manager", "vp_conversion", "purchasing_director", "supplier_owner"];
+const APPROVER_ROLES = [
+  "purchasing_manager",
+  "vp_conversion",
+  "purchasing_director",
+  "supplier_owner",
+];
 
 type SubItem = {
   name: string;
@@ -219,12 +225,16 @@ export default function AppSidebar() {
       supplierAPI
         .listAccountRequests("pending")
         .then((res) => {
-          if (!cancelled) setPendingRequestCount(res.data.count ?? res.data.items.length);
+          if (!cancelled)
+            setPendingRequestCount(res.data.count ?? res.data.items.length);
         })
         .catch(() => {});
     fetch();
     const id = setInterval(fetch, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [isApprover]);
 
   const open = isExpanded || isHovered || isMobileOpen;
@@ -281,7 +291,7 @@ export default function AppSidebar() {
 
       <aside
         className={[
-          "fixed left-0 top-0 z-[60] flex h-screen flex-col border-r border-white/10 bg-gradient-to-b from-slate-900 via-slate-800 to-blue-900 text-white shadow-sm transition-[width,transform] duration-300 ease-in-out",
+          "fixed left-0 top-0 z-[45] flex h-screen flex-col border-r border-white/10 bg-gradient-to-b from-slate-900 via-slate-800 to-blue-900 text-white shadow-sm transition-[width,transform] duration-300 ease-in-out",
           open ? "w-[260px]" : "w-[72px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full",
           "lg:translate-x-0",
@@ -528,6 +538,17 @@ export default function AppSidebar() {
             open={open}
             onClick={closeMobile}
           />
+
+          {user?.access_profile === "vp_conversion" && (
+            <AdminNavLink
+              to="/help/process-reference"
+              icon={<FileText size={15} />}
+              label="Process Reference"
+              sublabel="Business rules · IATF"
+              open={open}
+              onClick={closeMobile}
+            />
+          )}
         </nav>
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">

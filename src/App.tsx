@@ -38,6 +38,7 @@ import AccountRequestsPage from "./pages/AccountRequestsPage";
 import PendingValidationPage from "./pages/PendingValidationPage";
 import RelationReviewQueuePage from "./pages/RelationReviewQueuePage";
 import UserGuidePage from "./pages/UserGuidePage";
+import ProcessReferencePage from "./pages/ProcessReferencePage";
 
 // `roles` = allow-list (only these may enter). `block` = deny-list (everyone
 // except these). Provide exactly one.
@@ -135,13 +136,19 @@ const router = createBrowserRouter([
         element: <RoleGuard block={["viewer"]} />,
         children: [
           { path: "/purchasing-value/kpis", element: <PurchasingKpiPage /> },
-          { path: "/suppliers/monitoring", element: <SupplierMonitoringPage /> },
+          {
+            path: "/suppliers/monitoring",
+            element: <SupplierMonitoringPage />,
+          },
           {
             path: "/purchasing-value/recovery",
             element: <PurchasingRecoveryPage />,
           },
           { path: "/purchasing-value/budgeting", element: <BudgetingPage /> },
-          { path: "/purchasing-value/monthly", element: <MonthlyFollowUpPage /> },
+          {
+            path: "/purchasing-value/monthly",
+            element: <MonthlyFollowUpPage />,
+          },
           { path: "/evaluations", element: <BatchEvaluationPage /> },
         ],
       },
@@ -155,6 +162,10 @@ const router = createBrowserRouter([
           { path: "/account-requests", element: <AccountRequestsPage /> },
           { path: "/pending-validation", element: <PendingValidationPage /> },
           { path: "/relation-review", element: <RelationReviewQueuePage /> },
+          // {
+          //   path: "/help/process-reference",
+          //   element: <ProcessReferencePage />,
+          // },
         ],
       },
       // { path: "/suppliers/carbon-footprint", element: <CarbonFootprintPage /> },

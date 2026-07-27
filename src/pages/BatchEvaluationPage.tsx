@@ -105,7 +105,7 @@ const STATUS_CFG = {
 const SUPPLY_STATUS_CFG: Record<string, string> = {
   "Can Quote and Be Awarded":      "bg-emerald-50 text-emerald-700 ring-emerald-200",
   "Can Quote but Not be Awarded":  "bg-amber-50 text-amber-700 ring-amber-200",
-  "New Business on Hold":          "bg-red-50 text-red-700 ring-red-200",
+  "New business on Hold":          "bg-red-50 text-red-700 ring-red-200",
 };
 
 const GRADE_CLR: Record<string, string> = {
