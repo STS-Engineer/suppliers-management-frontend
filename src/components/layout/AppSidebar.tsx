@@ -539,7 +539,7 @@ export default function AppSidebar() {
             onClick={closeMobile}
           />
 
-          {user?.access_profile === "vp_conversion" && (
+          {/* {user?.access_profile === "vp_conversion" && (
             <AdminNavLink
               to="/help/process-reference"
               icon={<FileText size={15} />}
@@ -548,7 +548,7 @@ export default function AppSidebar() {
               open={open}
               onClick={closeMobile}
             />
-          )}
+          )} */}
         </nav>
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">
