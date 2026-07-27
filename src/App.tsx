@@ -37,6 +37,7 @@ import DocumentsValidityPage from "./pages/DocumentsValidityPage";
 import AccountRequestsPage from "./pages/AccountRequestsPage";
 import PendingValidationPage from "./pages/PendingValidationPage";
 import RelationReviewQueuePage from "./pages/RelationReviewQueuePage";
+import UserGuidePage from "./pages/UserGuidePage";
 
 // `roles` = allow-list (only these may enter). `block` = deny-list (everyone
 // except these). Provide exactly one.
@@ -165,6 +166,7 @@ const router = createBrowserRouter([
         path: "/suppliers/documents-validity",
         element: <DocumentsValidityPage />,
       },
+      { path: "/help/user-guide", element: <UserGuidePage /> },
       { path: "*", element: <Navigate to="/suppliers" replace /> },
     ],
   },

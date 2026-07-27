@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
+  BookOpen,
   Building2,
   ChevronDown,
   ChevronLeft,
@@ -500,6 +501,33 @@ export default function AppSidebar() {
               />
             </>
           )}
+
+          {/* Resources — visible to everyone */}
+          <div
+            className={
+              open
+                ? "mx-2 mb-3 mt-4 flex items-center gap-2"
+                : "mx-3 my-3 h-px bg-white/[0.12]"
+            }
+          >
+            {open && (
+              <>
+                <span className="text-[9px] font-black uppercase tracking-[0.32em] text-sky-100/55">
+                  Resources
+                </span>
+                <span className="h-px flex-1 bg-white/[0.12]" />
+              </>
+            )}
+          </div>
+
+          <AdminNavLink
+            to="/help/user-guide"
+            icon={<BookOpen size={15} />}
+            label="User Guide"
+            sublabel="How to use the app"
+            open={open}
+            onClick={closeMobile}
+          />
         </nav>
 
         <div className="relative shrink-0 border-t border-white/[0.12] p-2.5">
