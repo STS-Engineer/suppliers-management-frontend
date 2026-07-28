@@ -471,8 +471,10 @@ export default function AppSidebar() {
             })}
           </div>
 
-          {/* Administration — vp_conversion only (Account Requests + Relation Review) */}
-          {user?.access_profile === "vp_conversion" && (
+          {/* Administration — Account Requests is also open to purchasing_director;
+              Relation Review stays vp_conversion only. */}
+          {(user?.access_profile === "vp_conversion" ||
+            user?.access_profile === "purchasing_director") && (
             <>
               <div
                 className={
@@ -501,14 +503,16 @@ export default function AppSidebar() {
                 onClick={closeMobile}
               />
 
-              <AdminNavLink
-                to="/relation-review"
-                icon={<ShieldAlert size={15} />}
-                label="Relation Review"
-                sublabel="Pending approvals"
-                open={open}
-                onClick={closeMobile}
-              />
+              {user?.access_profile === "vp_conversion" && (
+                <AdminNavLink
+                  to="/relation-review"
+                  icon={<ShieldAlert size={15} />}
+                  label="Relation Review"
+                  sublabel="Pending approvals"
+                  open={open}
+                  onClick={closeMobile}
+                />
+              )}
             </>
           )}
 

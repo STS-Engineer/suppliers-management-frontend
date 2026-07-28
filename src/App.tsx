@@ -157,9 +157,16 @@ const router = createBrowserRouter([
         element: <PurchasingActionPlansPage />,
       },
       {
-        element: <RoleGuard roles={["vp_conversion"]} />,
+        // Account Requests is open to purchasing_director as well — the backend
+        // already accepts it as an approver role (settings.APPROVER_ROLES).
+        element: <RoleGuard roles={["vp_conversion", "purchasing_director"]} />,
         children: [
           { path: "/account-requests", element: <AccountRequestsPage /> },
+        ],
+      },
+      {
+        element: <RoleGuard roles={["vp_conversion"]} />,
+        children: [
           { path: "/pending-validation", element: <PendingValidationPage /> },
           { path: "/relation-review", element: <RelationReviewQueuePage /> },
           // {
