@@ -829,6 +829,7 @@ class SupplierOnboardingAPI {
     skip?: number;
     limit?: number;
     site_name?: string;
+    search?: string;
     supplier_owner?: string;
     class_grade?: string;
     status?: string;
@@ -861,6 +862,7 @@ class SupplierOnboardingAPI {
     if (params.skip != null) query.set("skip", String(params.skip));
     if (params.limit != null) query.set("limit", String(params.limit));
     if (params.site_name) query.set("site_name", params.site_name);
+    if (params.search) query.set("search", params.search);
     if (params.supplier_owner) query.set("supplier_owner", params.supplier_owner);
     if (params.class_grade) query.set("class_grade", params.class_grade);
     if (params.status) query.set("status", params.status);

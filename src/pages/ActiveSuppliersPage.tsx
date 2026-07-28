@@ -1256,7 +1256,10 @@ export default function ActiveSuppliersPage() {
         const response = await supplierAPI.listSitePanel({
           skip: 0,
           limit: 1000,
-          site_name: search || undefined,
+          // General keyword — matched server-side against plant, group, unit,
+          // alias, family and product line (NOT site_name, which would drop
+          // whole plant bundles when the keyword is a supplier or alias).
+          search: search || undefined,
           class_grade: filterGrade || undefined,
           status: filterStatus || undefined,
           scope: filterScope || undefined,
@@ -1372,6 +1375,7 @@ export default function ActiveSuppliersPage() {
           normalizeText(row.site.site_name).includes(keyword) ||
           normalizeText(row.group.nom).includes(keyword) ||
           normalizeText(row.unit.supplier_name).includes(keyword) ||
+          normalizeText(row.unit.unit_code ?? "").includes(keyword) ||
           normalizeText(row.relation.alias_1 ?? "").includes(keyword) ||
           normalizeText(row.unit.family ?? "").includes(keyword) ||
           normalizeText(row.unit.product_line ?? "").includes(keyword),
