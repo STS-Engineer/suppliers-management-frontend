@@ -33,6 +33,9 @@ interface Props {
   onRelinkSuccess: () => void;
   /** Reload relations after a relation is activated / deactivated */
   onRelationActiveToggled?: () => void;
+  /** Whether the parent group is active — a relation cannot be reactivated
+   *  while its group or unit is deactivated. */
+  groupIsActive?: boolean;
   activeDevelopmentPlanRelationId?: number | null;
   activeDetailsRelationId?: number | null;
   /** Triggered when the user clicks "Assign to Plant" inside this panel */
@@ -71,6 +74,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
   onAssignToPlant,
   assignActive,
   onRelationActiveToggled,
+  groupIsActive = true,
 }) => {
   // Most-recent spend per relation: relationId → latest SpendEntry
   const [latestSpend, setLatestSpend] = useState<Record<number, SpendEntry | null>>({});
@@ -218,6 +222,8 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
                   onViewDetails={() => onViewRelationDetails(rel)}
                   onOverride={() => onOverrideStatus(rel)}
                   onActiveToggled={onRelationActiveToggled}
+                  groupIsActive={groupIsActive}
+                  unitIsActive={selectedUnit.is_active ?? true}
                   isSendingDevelopmentPlan={
                     activeDevelopmentPlanRelationId === rel.id_relation
                   }
@@ -250,6 +256,8 @@ interface RelCardProps {
   onViewDetails: () => void;
   onOverride: () => void;
   onActiveToggled?: () => void;
+  groupIsActive?: boolean;
+  unitIsActive?: boolean;
   isSendingDevelopmentPlan?: boolean;
   isLoadingDetails?: boolean;
 }
@@ -257,12 +265,25 @@ interface RelCardProps {
 const RelationCard: React.FC<RelCardProps> = ({
   relation, unitName, siteName, siteLocation, scope, grade, fmt, latestSpend,
   onEvaluate, onDevelopmentPlan, onViewDetails, onOverride, onActiveToggled,
+  groupIsActive = true, unitIsActive = true,
   isSendingDevelopmentPlan = false, isLoadingDetails = false,
 }) => {
   const isActive = relation.is_active ?? true;
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+
+  // A relation can only be reactivated once its parents are live again — the
+  // group and unit cascades deactivate relations, so reactivating here while a
+  // parent is down would leave an active link under a deactivated supplier.
+  // The backend rejects it too; this just explains it before the user clicks.
+  const blockedReason = isActive
+    ? null
+    : !groupIsActive
+      ? "This relation cannot be activated while its supplier group is deactivated. Reactivate the group first — that also reactivates its units."
+      : !unitIsActive
+        ? `This relation cannot be activated while the unit "${unitName}" is deactivated. Reactivate the unit first.`
+        : null;
 
   const doToggle = async () => {
     setBusy(true);
@@ -376,10 +397,14 @@ const RelationCard: React.FC<RelCardProps> = ({
       {!confirming ? (
         <button
           onClick={() => { setConfirming(true); setToggleError(null); }}
+          disabled={!!blockedReason}
+          title={blockedReason ?? undefined}
           className={`ml-auto rounded-lg border px-4 py-2 text-xs font-semibold transition ${
-            isActive
-              ? "border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-              : "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
+            blockedReason
+              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+              : isActive
+                ? "border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
+                : "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
           }`}
         >
           {isActive ? "Deactivate Relation" : "Activate Relation"}
@@ -408,6 +433,13 @@ const RelationCard: React.FC<RelCardProps> = ({
         </span>
       )}
     </div>
+
+    {blockedReason && (
+      <div className="flex items-start gap-1.5 border-t border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-800">
+        <svg className="mt-0.5 h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+        {blockedReason}
+      </div>
+    )}
 
     {toggleError && (
       <div className="border-t border-rose-100 bg-rose-50 px-5 py-2 text-xs font-medium text-rose-700">

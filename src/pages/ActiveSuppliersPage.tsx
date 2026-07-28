@@ -1238,6 +1238,9 @@ export default function ActiveSuppliersPage() {
   ]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Separate from `error` so a refused activate/deactivate isn't reported under
+  // the "couldn't load the panel" heading.
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [togglingUnit, setTogglingUnit] = useState<number | null>(null);
   const [confirmToggleRow, setConfirmToggleRow] = useState<RelationRow | null>(
@@ -1493,11 +1496,19 @@ export default function ActiveSuppliersPage() {
     currentActive: boolean,
   ) => {
     setTogglingUnit(relationId);
+    setToggleError(null);
     try {
       await supplierAPI.patchRelation(relationId, {
         is_active: !currentActive,
       });
       setReloadTick((v) => v + 1);
+    } catch (e) {
+      // Surface the refusal — activating a relation whose unit or group is
+      // deactivated is rejected with an explanatory 400. Without this the
+      // modal just closed and nothing appeared to happen.
+      setToggleError(
+        e instanceof Error ? e.message : "Failed to update the relation.",
+      );
     } finally {
       setTogglingUnit(null);
     }
@@ -1835,6 +1846,22 @@ export default function ActiveSuppliersPage() {
               className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
             >
               Retry
+            </button>
+          }
+        />
+      )}
+
+      {toggleError && (
+        <InlineAlert
+          title="Couldn't update this relation"
+          message={toggleError}
+          action={
+            <button
+              type="button"
+              onClick={() => setToggleError(null)}
+              className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
+            >
+              Dismiss
             </button>
           }
         />

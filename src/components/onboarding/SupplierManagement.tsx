@@ -42,6 +42,8 @@ export interface SupplierManagementProps {
 interface SharedState {
   groupScope: string | null;
   groupOwner: string | null;
+  /** Drives the "reactivate the group first" hint on relation cards. */
+  groupIsActive: boolean;
   units: SupplierUnitResponse[];
   evaluationSummaryByUnit: Record<number, UnitEvaluationSummary>;
   availableSites: AvocarbonSite[];
@@ -227,6 +229,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   const [shared, setShared] = useState<SharedState>({
     groupScope: initialGroupScope ?? null,
     groupOwner: initialGroupOwner ?? null,
+    groupIsActive: true,
     units: [],
     evaluationSummaryByUnit: {},
     availableSites: [],
@@ -311,6 +314,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
         ...prev,
         groupScope: response.data?.supplier_scope || prev.groupScope || null,
         groupOwner: response.data?.supplier_owner || prev.groupOwner || null,
+        groupIsActive: response.data?.is_active ?? true,
       }));
     } catch {
       setShared((prev) => ({
@@ -1053,6 +1057,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
             summary={selectedSummary}
             availableSites={shared.availableSites}
             isLoading={shared.isLoadingRelations}
+            groupIsActive={shared.groupIsActive}
             onAssignToPlant={
               shared.selectedUnit
                 ? () => setActiveFlow(activeFlow === "assign" ? null : "assign")
