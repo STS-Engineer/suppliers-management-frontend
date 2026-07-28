@@ -325,7 +325,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
 
   const saveOwner = async () => {
     const email = ownerInput.trim().toLowerCase();
-    if (!email.includes("@") || !email.split("@")[1]?.includes(".")) {
+    if (email && (!email.includes("@") || !email.split("@")[1]?.includes("."))) {
       setOwnerError("A valid owner email is required.");
       return;
     }
@@ -350,14 +350,14 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
         type="email"
         value={ownerInput}
         onChange={(e) => setOwnerInput(e.target.value)}
-        placeholder="firstname.lastname@avocarbon.com"
+        placeholder="firstname.lastname@avocarbon.com (leave blank to unassign)"
         className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#062B49]"
       />
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={saveOwner}
-          disabled={savingOwner || !ownerInput.trim()}
+          disabled={savingOwner}
           className="rounded-lg bg-[#062B49] px-3 py-1 text-xs font-semibold text-white hover:bg-[#0C5381] disabled:opacity-50"
         >
           {savingOwner ? "Saving…" : "Save"}
