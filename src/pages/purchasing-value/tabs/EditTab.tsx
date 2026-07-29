@@ -2542,9 +2542,21 @@ export function EditTab({
                         <select
                           className={hi(missingFlags.supplierName)}
                           value={form.proposed_supplier_id}
-                          onChange={(e) =>
-                            set("proposed_supplier_id", e.target.value)
-                          }
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            const picked = suppliersForPlant.find(
+                              (s) => String(s.id_supplier_unit) === String(id),
+                            );
+                            setForm((f) => ({
+                              ...f,
+                              proposed_supplier_id: id,
+                              // Keep the free-text name column in sync with the
+                              // panel pick — otherwise it stays null forever for
+                              // Sourcing opps and "filter by new supplier" can't
+                              // find them.
+                              proposed_supplier_name: picked?.supplier_name ?? "",
+                            }));
+                          }}
                         >
                           <option value="">— Select from panel —</option>
                           {suppliersForPlant.map((s) => (

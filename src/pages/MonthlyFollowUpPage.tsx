@@ -54,6 +54,7 @@ interface Opp {
   phase_status?: string;
   plant_name?: string;
   conversion_owner?: string;
+  proposed_supplier_name?: string;
   currency?: string;
   fx_rate_to_eur?: number;
   real_start_date?: string;
@@ -180,6 +181,103 @@ function ScrollTable({ children }: { children: ReactNode }) {
   );
 }
 
+// Checkbox-list dropdown for filters that can take more than one value
+// (plant, new supplier). Shows "N selected" once more than one is picked.
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const filtered = options.filter((o) =>
+    o.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  function toggle(o: string) {
+    onChange(selected.includes(o) ? selected.filter((s) => s !== o) : [...selected, o]);
+  }
+
+  return (
+    <div className="flex flex-col gap-1" ref={ref}>
+      <label className={labelCls}>{label}</label>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`${selectCls} flex min-w-[220px] max-w-[280px] items-center justify-between gap-2 text-left`}
+        >
+          <span className="truncate">
+            {selected.length === 0
+              ? placeholder
+              : selected.length === 1
+                ? selected[0]
+                : `${selected.length} selected`}
+          </span>
+          <span className="text-slate-400">▾</span>
+        </button>
+        {open && (
+          <div className="absolute z-20 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-white/[0.1] dark:bg-[#0d1929]">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="mb-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-blue-400 dark:border-white/[0.1] dark:bg-[#0a1628] dark:text-slate-200"
+            />
+            <div className="max-h-52 overflow-y-auto">
+              {filtered.length === 0 && (
+                <p className="px-2 py-1 text-xs text-slate-400">No match.</p>
+              )}
+              {filtered.map((o) => (
+                <label
+                  key={o}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/[0.05]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(o)}
+                    onChange={() => toggle(o)}
+                    className="h-3.5 w-3.5 rounded border-slate-300"
+                  />
+                  {o}
+                </label>
+              ))}
+            </div>
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 dark:border-white/[0.1] dark:text-slate-400"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BudgetTag({ status }: { status?: string }) {
   if (status === "Budgeted")
     return (
@@ -233,6 +331,8 @@ export default function MonthlyFollowUpPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const [owner, setOwner] = useState<string>("");
+  const [plantFilter, setPlantFilter] = useState<string[]>([]); // multi-select
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([]); // new (proposed) supplier — multi-select
   const [query, setQuery] = useState(""); // free-text search: opp name, plant, owner…
   const [month, setMonth] = useState<string>(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
 
@@ -280,12 +380,46 @@ export default function MonthlyFollowUpPage() {
     [opps],
   );
 
+  const plantOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          opps
+            .filter((o) => ["Phase 3", "Phase 4", "Closed"].includes(o.phase_status ?? "") && o.plant_name)
+            .map((o) => o.plant_name as string),
+        ),
+      ].sort(),
+    [opps],
+  );
+
+  const supplierOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          opps
+            .filter(
+              (o) =>
+                ["Phase 3", "Phase 4", "Closed"].includes(o.phase_status ?? "") &&
+                o.proposed_supplier_name &&
+                // Skip placeholder/junk values (e.g. "0" entered on old test
+                // rows) — a real supplier name is never purely numeric.
+                !/^\d+$/.test(o.proposed_supplier_name.trim()),
+            )
+            .map((o) => o.proposed_supplier_name as string),
+        ),
+      ].sort(),
+    [opps],
+  );
+
   const rows = useMemo<GridRow[]>(() => {
     const currentMonthKey = new Date().toISOString().slice(0, 7);
     const out: GridRow[] = [];
     for (const o of opps) {
       if (!["Phase 3", "Phase 4", "Closed"].includes(o.phase_status ?? "")) continue;
       if (owner && o.conversion_owner !== owner) continue; // owner is an optional filter
+      if (plantFilter.length && !plantFilter.includes(o.plant_name ?? "")) continue;
+      if (supplierFilter.length && !supplierFilter.includes(o.proposed_supplier_name ?? ""))
+        continue;
       for (const line of o.financial_lines ?? []) {
         if (line.status && line.status !== "Active") continue;
         // "Missing only" bypasses the month selector: every monthly row up to the
@@ -335,7 +469,7 @@ export default function MonthlyFollowUpPage() {
         a.line.financial_line_id - b.line.financial_line_id
       );
     });
-  }, [opps, owner, month, filterMissing]);
+  }, [opps, owner, month, filterMissing, plantFilter, supplierFilter]);
 
   // Is the selected month strictly in the past? (used by the "Late" reporting filter)
   const monthIsPast = month < new Date().toISOString().slice(0, 7);
@@ -502,6 +636,20 @@ export default function MonthlyFollowUpPage() {
               ))}
             </select>
           </div>
+          <MultiSelect
+            label="Plant"
+            options={plantOptions}
+            selected={plantFilter}
+            onChange={setPlantFilter}
+            placeholder="All plants"
+          />
+          <MultiSelect
+            label="New supplier"
+            options={supplierOptions}
+            selected={supplierFilter}
+            onChange={setSupplierFilter}
+            placeholder="All new suppliers"
+          />
           <div className="flex flex-col gap-1">
             <label className={labelCls}>Search</label>
             <div className="relative">
@@ -874,7 +1022,14 @@ export default function MonthlyFollowUpPage() {
       )}
 
       {tab === "year" && (
-        <YearOverview opps={opps} owner={owner} query={query} loading={loading} />
+        <YearOverview
+          opps={opps}
+          owner={owner}
+          plantFilter={plantFilter}
+          supplierFilter={supplierFilter}
+          query={query}
+          loading={loading}
+        />
       )}
 
       {recoveryLine && (
@@ -1137,11 +1292,15 @@ interface YearRow {
 function YearOverview({
   opps,
   owner,
+  plantFilter,
+  supplierFilter,
   query,
   loading,
 }: {
   opps: Opp[];
   owner: string;
+  plantFilter: string[];
+  supplierFilter: string[];
   query: string;
   loading: boolean;
 }) {
@@ -1161,6 +1320,9 @@ function YearOverview({
     for (const o of opps) {
       if (!["Phase 3", "Phase 4", "Closed"].includes(o.phase_status ?? "")) continue;
       if (owner && o.conversion_owner !== owner) continue;
+      if (plantFilter.length && !plantFilter.includes(o.plant_name ?? "")) continue;
+      if (supplierFilter.length && !supplierFilter.includes(o.proposed_supplier_name ?? ""))
+        continue;
       if (
         q &&
         !`${o.opportunity_name ?? ""} ${o.conversion_owner ?? ""} ${o.plant_name ?? ""} ${o.opportunity_type ?? ""}`
@@ -1215,7 +1377,7 @@ function YearOverview({
       .sort((a, b) => a.oppName.localeCompare(b.oppName));
 
     return { rows, monthKeys };
-  }, [opps, owner, query, year]);
+  }, [opps, owner, plantFilter, supplierFilter, query, year]);
 
   const monthTotals = monthKeys.map((k) =>
     rows.reduce((s, r) => s + (r.perMonth[k] ?? 0), 0),
