@@ -2332,6 +2332,20 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // Correct/reassign the Project Manager for an opportunity — resends the
+  // handover email to the corrected address.
+  async updateProjectManager(opportunityId: number, projectManagerEmail: string) {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/opportunities/${opportunityId}/project-manager`,
+      {
+        method: "PUT",
+        headers: { ...this.getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ project_manager_email: projectManagerEmail }),
+      },
+      "Failed to update the Project Manager.",
+    );
+  }
+
   // Public — no auth
   async getVoteForm(token: string) {
     const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`);
