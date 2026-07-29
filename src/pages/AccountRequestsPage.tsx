@@ -86,41 +86,41 @@ const ROLES: RoleInfo[] = [
       "Override relation status / approve-reject relation reviews (VP Conversion only)",
     ],
   },
-  {
-    value: "purchasing_manager",
-    label: "Purchasing Manager",
-    description:
-      "Standard writer. Creates/edits opportunities and supplier data; can approve account requests; manage any action plan.",
-    can: [
-      "Create and edit opportunities, suppliers, relations, contacts and evaluations",
-      "Record the first real-saving entry on an opportunity",
-      "Manage action plans (close actions, delete evidence) on any plan",
-      "Approve or reject new account requests",
-    ],
-    cannot: [
-      "Delete opportunities, apply gate decisions, manage budgets, edit STP baselines",
-      "Overwrite an already-recorded real saving (Director / VP only)",
-      "Manage certifications, supplier validation, committee reviews",
-      "Send development-plan requests for global / strategic suppliers",
-    ],
-  },
-  {
-    value: "supplier_owner",
-    label: "Supplier Owner",
-    description:
-      "Writer focused on supplier relations, evaluations and development plans; can approve account requests.",
-    can: [
-      "Create and edit opportunities, suppliers, relations, evaluations and development plans",
-      "Record the first real-saving entry on an opportunity",
-      "Approve or reject new account requests",
-      "Manage action plans where they are the responsible / related owner",
-    ],
-    cannot: [
-      "Any privileged action (gate decisions, budgets, baseline edits, overwrite actuals)",
-      "Manage certifications, supplier validation or committee reviews",
-      "Send development-plan requests for global / strategic suppliers",
-    ],
-  },
+  // {
+  //   value: "purchasing_manager",
+  //   label: "Purchasing Manager",
+  //   description:
+  //     "Standard writer. Creates/edits opportunities and supplier data; can approve account requests; manage any action plan.",
+  //   can: [
+  //     "Create and edit opportunities, suppliers, relations, contacts and evaluations",
+  //     "Record the first real-saving entry on an opportunity",
+  //     "Manage action plans (close actions, delete evidence) on any plan",
+  //     "Approve or reject new account requests",
+  //   ],
+  //   cannot: [
+  //     "Delete opportunities, apply gate decisions, manage budgets, edit STP baselines",
+  //     "Overwrite an already-recorded real saving (Director / VP only)",
+  //     "Manage certifications, supplier validation, committee reviews",
+  //     "Send development-plan requests for global / strategic suppliers",
+  //   ],
+  // },
+  // {
+  //   value: "supplier_owner",
+  //   label: "Supplier Owner",
+  //   description:
+  //     "Writer focused on supplier relations, evaluations and development plans; can approve account requests.",
+  //   can: [
+  //     "Create and edit opportunities, suppliers, relations, evaluations and development plans",
+  //     "Record the first real-saving entry on an opportunity",
+  //     "Approve or reject new account requests",
+  //     "Manage action plans where they are the responsible / related owner",
+  //   ],
+  //   cannot: [
+  //     "Any privileged action (gate decisions, budgets, baseline edits, overwrite actuals)",
+  //     "Manage certifications, supplier validation or committee reviews",
+  //     "Send development-plan requests for global / strategic suppliers",
+  //   ],
+  // },
   {
     value: "global_purchaser",
     label: "Global Purchaser",
