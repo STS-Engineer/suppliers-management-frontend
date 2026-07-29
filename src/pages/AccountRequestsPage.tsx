@@ -195,6 +195,10 @@ const STATUS_BADGE: Record<string, string> = {
   active: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+};
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
@@ -202,7 +206,7 @@ function StatusBadge({ status }: { status: string }) {
         STATUS_BADGE[status] ?? "bg-slate-100 text-slate-600"
       }`}
     >
-      {status}
+      {STATUS_LABEL[status] ?? status}
     </span>
   );
 }
