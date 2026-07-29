@@ -68,6 +68,9 @@ export default function PurchasingValuePage() {
     initialFilters.filterConversionOwner,
   );
   const [filterPilot, setFilterPilot] = useState(initialFilters.filterPilot);
+  const [filterPlantManager, setFilterPlantManager] = useState(
+    initialFilters.filterPlantManager,
+  );
   const [filterBudgetYear, setFilterBudgetYear] = useState(
     initialFilters.filterBudgetYear,
   );
@@ -93,6 +96,7 @@ export default function PurchasingValuePage() {
       filterPurchasingOwner,
       filterConversionOwner,
       filterPilot,
+      filterPlantManager,
       filterBudgetYear,
       filterEscalated,
       filterValidation,
@@ -109,6 +113,7 @@ export default function PurchasingValuePage() {
     filterPurchasingOwner,
     filterConversionOwner,
     filterPilot,
+    filterPlantManager,
     filterBudgetYear,
     filterEscalated,
     filterValidation,
@@ -173,6 +178,7 @@ export default function PurchasingValuePage() {
   const purchasingOwnerOptions = uniqueEmails("purchasing_owner");
   const conversionOwnerOptions = uniqueEmails("conversion_owner");
   const pilotOptions = uniqueEmails("idea_owner");
+  const plantManagerOptions = uniqueEmails("plant_manager_email");
   const budgetYearOptions = [
     ...new Set(opportunities.map((o) => o.budget_year).filter(Boolean)),
   ].sort() as number[];
@@ -231,6 +237,11 @@ export default function PurchasingValuePage() {
       return false;
     if (filterPilot !== "All" && o.idea_owner !== filterPilot) return false;
     if (
+      filterPlantManager !== "All" &&
+      o.plant_manager_email !== filterPlantManager
+    )
+      return false;
+    if (
       filterBudgetYear !== "All" &&
       String(o.budget_year) !== filterBudgetYear
     )
@@ -260,6 +271,7 @@ export default function PurchasingValuePage() {
       filterPurchasingOwner,
       filterConversionOwner,
       filterPilot,
+      filterPlantManager,
       filterBudgetYear,
       filterValidation,
     ].filter((f) => f !== "All").length + (filterEscalated ? 1 : 0);
@@ -310,6 +322,7 @@ export default function PurchasingValuePage() {
     setFilterPurchasingOwner("All");
     setFilterConversionOwner("All");
     setFilterPilot("All");
+    setFilterPlantManager("All");
     setFilterBudgetYear("All");
     setFilterValidation("All");
     setFilterEscalated(false);
@@ -700,6 +713,17 @@ export default function PurchasingValuePage() {
                 value={filterPilot}
                 onChange={setFilterPilot}
                 options={["All", ...pilotOptions]}
+              />
+            </>
+          )}
+          {plantManagerOptions.length > 0 && (
+            <>
+              <Sep />
+              <FilterSelect
+                label="Plant Manager"
+                value={filterPlantManager}
+                onChange={setFilterPlantManager}
+                options={["All", ...plantManagerOptions]}
               />
             </>
           )}

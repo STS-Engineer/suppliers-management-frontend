@@ -151,6 +151,9 @@ export interface Opp {
   // Reminder aggregate for the open gate request (computed on the backend)
   reminders_sent?: number;
   pending_approvers?: number;
+  // Approver email of whoever voted as Plant Manager on the most recent gate
+  // approval request (computed on the backend)
+  plant_manager_email?: string;
   created_at?: string;
   created_by?: string;
   updated_at?: string;
@@ -285,6 +288,7 @@ export interface PvFilters {
   filterPurchasingOwner: string;
   filterConversionOwner: string;
   filterPilot: string;
+  filterPlantManager: string;
   filterBudgetYear: string;
   filterEscalated: boolean;
   filterValidation: string;

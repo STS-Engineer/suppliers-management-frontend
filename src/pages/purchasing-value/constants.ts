@@ -45,6 +45,7 @@ export const PV_FILTERS_DEFAULT: PvFilters = {
   filterPurchasingOwner: "All",
   filterConversionOwner: "All",
   filterPilot: "All",
+  filterPlantManager: "All",
   filterBudgetYear: "All",
   filterEscalated: false,
   filterValidation: "All",

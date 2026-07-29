@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, CheckCircle, ClipboardList, Gavel, Inbox, ShieldAlert, Users, XCircle } from "lucide-react";
+import { Bell, CheckCheck, CheckCircle, ClipboardList, Gavel, Inbox, ShieldAlert, UserCheck, Users, XCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNotifications } from "../../context/NotificationContext";
 import type { NotificationRecord } from "../../services/supplierOnboardingAPI";
@@ -46,6 +46,18 @@ function NotifIcon({ type }: { type: string }) {
     return (
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300">
         <Gavel size={15} />
+      </span>
+    );
+  if (
+    type === "relation_owner_assigned" ||
+    type === "group_owner_assigned" ||
+    type === "opportunity_owner_assigned" ||
+    type === "idea_owner_assigned" ||
+    type === "action_responsible_assigned"
+  )
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-300">
+        <UserCheck size={15} />
       </span>
     );
   return (
