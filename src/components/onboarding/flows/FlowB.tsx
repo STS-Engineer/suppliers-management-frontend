@@ -12,6 +12,7 @@ import {
 } from "../../../types/onboarding";
 import { supplierAPI } from "../../../services/supplierOnboardingAPI";
 import { PurchaserOwnerField } from "../PurchaserOwnerField";
+import { MemberDirectoryPicker } from "../../common/MemberDirectoryPicker";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -766,12 +767,12 @@ export const FlowB: React.FC<FlowBProps> = ({
                 />
               ) : (
                 <FieldWrap label="Owner email *">
-                  <input
-                    type="email"
-                    className={inputCls}
-                    placeholder="name@avocarbon.com"
+                  <MemberDirectoryPicker
+                    fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                    fetchKey="flowB_supplier_owner"
                     value={supplierOwner}
-                    onChange={(e) => setSupplierOwner(e.target.value)}
+                    onChange={setSupplierOwner}
+                    placeholder="name@avocarbon.com"
                   />
                 </FieldWrap>
               )}

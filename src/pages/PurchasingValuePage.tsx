@@ -37,6 +37,7 @@ import supplierAPI, {
 } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
+import { MemberDirectoryPicker } from "../components/common/MemberDirectoryPicker";
 import {
   loadPersistedFilters,
   savePersistedFilters,
@@ -1159,12 +1160,12 @@ function CreateModal({
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               Initial Pilot (email) *
             </label>
-            <input
-              required
-              type="email"
-              className={inp}
+            <MemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKey="idea_owner"
               value={form.idea_owner}
-              onChange={(e) => set("idea_owner", e.target.value)}
+              onChange={(email) => set("idea_owner", email)}
+              placeholder="initial.pilot@avocarbon.com"
             />
           </div>
           <div>
@@ -3292,12 +3293,12 @@ function EditTab({
                     — receives tracking alerts
                   </span>
                 </label>
-                <input
-                  type="email"
-                  className={`${inp} ${!form.purchasing_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-                  placeholder="purchasing.manager@avocarbon.com"
+                <MemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKey="purchasing_owner"
                   value={form.purchasing_owner}
-                  onChange={(e) => set("purchasing_owner", e.target.value)}
+                  onChange={(email) => set("purchasing_owner", email)}
+                  placeholder="purchasing.manager@avocarbon.com"
                 />
               </div>
               <div>
@@ -3308,12 +3309,12 @@ function EditTab({
                     — enters monthly actuals
                   </span>
                 </label>
-                <input
-                  type="email"
-                  className={`${inp} ${!form.conversion_owner ? "border-amber-300 focus:border-amber-400" : ""}`}
-                  placeholder="buyer@avocarbon.com"
+                <MemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKey="conversion_owner"
                   value={form.conversion_owner}
-                  onChange={(e) => set("conversion_owner", e.target.value)}
+                  onChange={(email) => set("conversion_owner", email)}
+                  placeholder="buyer@avocarbon.com"
                 />
               </div>
             </div>
@@ -5313,7 +5314,7 @@ function GateTab({
   // Gate approval request (Phase 0)
   const [showApproval, setShowApproval] = useState(false);
   const [plantManagerEmail, setPlantManagerEmail] = useState("");
-  const [purchasingManagerEmails, setPurchasingManagerEmails] = useState("");
+  const [purchasingManagerEmails, setPurchasingManagerEmails] = useState<string[]>([""]);
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -5502,7 +5503,6 @@ function GateTab({
         return;
       }
       const purchasing = purchasingManagerEmails
-        .split(/[,;\s]+/)
         .map((e) => e.trim())
         .filter(Boolean);
       requestPayload = {
@@ -5540,7 +5540,7 @@ function GateTab({
       if (pmFromVotes) setPm(pmFromVotes);
       setShowApproval(false);
       setPlantManagerEmail("");
-      setPurchasingManagerEmails("");
+      setPurchasingManagerEmails([""]);
       setNegotiationApproverEmail("");
       setApprovalMessage("");
     } catch (e: unknown) {
@@ -6093,12 +6093,12 @@ function GateTab({
                       <p className="text-[10px] text-slate-400 mb-1">
                         Notified by email only — does not vote.
                       </p>
-                      <input
-                        type="email"
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        placeholder="plant.manager@avocarbon.com"
+                      <MemberDirectoryPicker
+                        fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                        fetchKey="plant_manager_negotiation"
                         value={plantManagerEmail}
-                        onChange={(e) => setPlantManagerEmail(e.target.value)}
+                        onChange={setPlantManagerEmail}
+                        placeholder="plant.manager@avocarbon.com"
                       />
                     </div>
                   </>
@@ -6113,12 +6113,12 @@ function GateTab({
                         Will vote and designate the Project Manager upon
                         approval.
                       </p>
-                      <input
-                        type="email"
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        placeholder="plant.manager@avocarbon.com"
+                      <MemberDirectoryPicker
+                        fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                        fetchKey="plant_manager"
                         value={plantManagerEmail}
-                        onChange={(e) => setPlantManagerEmail(e.target.value)}
+                        onChange={setPlantManagerEmail}
+                        placeholder="plant.manager@avocarbon.com"
                       />
                     </div>
                     <div>
@@ -6128,15 +6128,48 @@ function GateTab({
                       <p className="text-[10px] text-slate-400 mb-1">
                         Additional approvers — vote only, no PM designation.
                       </p>
-                      <input
-                        type="text"
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        placeholder="purchasing@avocarbon.com, director@avocarbon.com"
-                        value={purchasingManagerEmails}
-                        onChange={(e) =>
-                          setPurchasingManagerEmails(e.target.value)
-                        }
-                      />
+                      <div className="space-y-2">
+                        {purchasingManagerEmails.map((email, idx) => (
+                          <div key={idx} className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <MemberDirectoryPicker
+                                fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                                fetchKey={`purchasing_manager_${idx}`}
+                                value={email}
+                                onChange={(v) =>
+                                  setPurchasingManagerEmails((list) =>
+                                    list.map((e, i) => (i === idx ? v : e)),
+                                  )
+                                }
+                                placeholder="purchasing@avocarbon.com"
+                              />
+                            </div>
+                            {purchasingManagerEmails.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPurchasingManagerEmails((list) =>
+                                    list.filter((_, i) => i !== idx),
+                                  )
+                                }
+                                className="mt-2 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                title="Remove"
+                              >
+                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setPurchasingManagerEmails((list) => [...list, ""])}
+                          className="text-[11px] font-semibold text-blue-600 hover:underline"
+                        >
+                          + Add another approver
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -6268,9 +6301,9 @@ function GateTab({
                             {mandatoryRoles.map((role) => (
                               <div
                                 key={role}
-                                className="flex items-center gap-2"
+                                className="flex items-start gap-2"
                               >
-                                <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-500">
+                                <span className="w-40 shrink-0 pt-2 text-[10.5px] font-semibold text-slate-500">
                                   {role} <span className="text-red-500">*</span>
                                 </span>
                                 {ROLE_LABEL_TO_PROFILE[role] ? (
@@ -6295,18 +6328,20 @@ function GateTab({
                                     ))}
                                   </select>
                                 ) : (
-                                  <input
-                                    type="email"
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                    placeholder="name@avocarbon.com"
-                                    value={approverEmails[role] ?? ""}
-                                    onChange={(e) =>
-                                      setApproverEmails((m) => ({
-                                        ...m,
-                                        [role]: e.target.value,
-                                      }))
-                                    }
-                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <MemberDirectoryPicker
+                                      fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                                      fetchKey={role}
+                                      value={approverEmails[role] ?? ""}
+                                      onChange={(email) =>
+                                        setApproverEmails((m) => ({
+                                          ...m,
+                                          [role]: email,
+                                        }))
+                                      }
+                                      placeholder="name@avocarbon.com"
+                                    />
+                                  </div>
                                 )}
                               </div>
                             ))}
@@ -6327,9 +6362,9 @@ function GateTab({
                                 {optionalRoles.map((role) => (
                                   <div
                                     key={role}
-                                    className="flex items-center gap-2"
+                                    className="flex items-start gap-2"
                                   >
-                                    <span className="w-40 shrink-0 text-[10.5px] font-semibold text-slate-400">
+                                    <span className="w-40 shrink-0 pt-2 text-[10.5px] font-semibold text-slate-400">
                                       {role}
                                     </span>
                                     {ROLE_LABEL_TO_PROFILE[role] ? (
@@ -6356,18 +6391,20 @@ function GateTab({
                                         ))}
                                       </select>
                                     ) : (
-                                      <input
-                                        type="email"
-                                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                        placeholder="name@avocarbon.com (optional)"
-                                        value={approverEmails[role] ?? ""}
-                                        onChange={(e) =>
-                                          setApproverEmails((m) => ({
-                                            ...m,
-                                            [role]: e.target.value,
-                                          }))
-                                        }
-                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <MemberDirectoryPicker
+                                          fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                                          fetchKey={role}
+                                          value={approverEmails[role] ?? ""}
+                                          onChange={(email) =>
+                                            setApproverEmails((m) => ({
+                                              ...m,
+                                              [role]: email,
+                                            }))
+                                          }
+                                          placeholder="name@avocarbon.com (optional)"
+                                        />
+                                      </div>
                                     )}
                                   </div>
                                 ))}
@@ -6739,12 +6776,12 @@ function GateTab({
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
                     Project Manager email *
                   </label>
-                  <input
-                    required
-                    type="email"
-                    className={inp}
+                  <MemberDirectoryPicker
+                    fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                    fetchKey="manual_gate_pm"
                     value={pm}
-                    onChange={(e) => setPm(e.target.value)}
+                    onChange={setPm}
+                    placeholder="project.manager@avocarbon.com"
                   />
                 </div>
               )}

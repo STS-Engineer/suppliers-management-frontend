@@ -41,6 +41,7 @@ import {
   XCircle,
 } from "lucide-react";
 import supplierAPI from "../services/supplierOnboardingAPI";
+import { MemberDirectoryPicker } from "../components/common/MemberDirectoryPicker";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -466,14 +467,15 @@ function EscalateButton({
               <label className="text-xs font-semibold text-slate-500">
                 To (email)
               </label>
-              <input
-                type="email"
-                value={recipientEmail}
-                onChange={(e) => setRecipientEmail(e.target.value)}
-                placeholder="manager@company.com"
-                autoFocus
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
-              />
+              <div className="mt-1">
+                <MemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKey="escalate_recipient"
+                  value={recipientEmail}
+                  onChange={setRecipientEmail}
+                  placeholder="manager@avocarbon.com"
+                />
+              </div>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500">
@@ -745,12 +747,12 @@ function StatusCell({
           <p className="text-[9px] font-bold uppercase tracking-wide text-indigo-700">
             Edit action
           </p>
-          <input
-            type="email"
+          <MemberDirectoryPicker
+            fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+            fetchKey={`edit_responsible_${item.plan_id}_${item.action_idx}`}
             value={newRespEmail}
-            onChange={(e) => setNewRespEmail(e.target.value)}
-            placeholder="firstname.lastname@avocarbon.com *"
-            className="w-full rounded-md border border-indigo-200 bg-white px-2 py-1 text-[10px] outline-none focus:border-indigo-500"
+            onChange={setNewRespEmail}
+            placeholder="firstname.lastname@avocarbon.com"
           />
           {/* Name is derived from the email — read-only. */}
           <p className="text-[9px] text-slate-500">
@@ -1512,13 +1514,15 @@ function QuickActionModal({
           <label className="text-xs font-semibold text-slate-500">
             Responsible email *
           </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="firstname.lastname@avocarbon.com"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
-          />
+          <div className="mt-1">
+            <MemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKey="new_action_responsible"
+              value={email}
+              onChange={setEmail}
+              placeholder="firstname.lastname@avocarbon.com"
+            />
+          </div>
           {/* Name is derived from the email — shown read-only, not editable. */}
           <p className="mt-1 text-[11px] text-slate-400">
             Responsible:{" "}

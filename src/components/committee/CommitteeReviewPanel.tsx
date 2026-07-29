@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import supplierAPI from "../../services/supplierOnboardingAPI";
+import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
 
 type Decision = {
   id_decision: number;
@@ -279,7 +280,7 @@ export default function CommitteeReviewPanel({
                 <input
                   value={addForm.name}
                   onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Full name"
+                  placeholder="Full name (auto-filled)"
                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
                 />
                 <input
@@ -288,12 +289,13 @@ export default function CommitteeReviewPanel({
                   placeholder="Position (e.g. Quality Manager)"
                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
                 />
-                <input
+                <MemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKey="committee_add_member"
                   value={addForm.email}
-                  onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+                  onChange={(email) => setAddForm((f) => ({ ...f, email }))}
+                  onSelectEntry={(entry) => setAddForm((f) => ({ ...f, name: entry.full_name }))}
                   placeholder="Email address"
-                  type="email"
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-200"
                 />
               </div>
               <button

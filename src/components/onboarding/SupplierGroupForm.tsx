@@ -1,6 +1,8 @@
 import React from "react";
 import { GroupFormData, FormErrors } from "../../types/onboarding";
 import { FormInput, FormSelect } from "./FormElements";
+import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
+import supplierAPI from "../../services/supplierOnboardingAPI";
 
 interface SupplierGroupFormProps {
   data: GroupFormData;
@@ -52,22 +54,25 @@ export const SupplierGroupForm: React.FC<SupplierGroupFormProps> = ({
             required
           />
 
-          <FormInput
-            label="Global Owner Email"
-            name="supplier_owner"
-            type="email"
-            value={data.supplier_owner}
-            onChange={(e) => onChange("supplier_owner", e.target.value)}
-            onBlur={() => onBlur?.("supplier_owner")}
-            placeholder="name@avocarbon.com"
-            error={errors.supplier_owner}
-            required={data.supplier_scope === "global"}
-            helperText={
-              data.supplier_scope === "global"
+          <div className="form-group">
+            <label htmlFor="supplier_owner" className="form-label">
+              Global Owner Email
+              {data.supplier_scope === "global" && <span className="ml-1 text-red-500">*</span>}
+            </label>
+            <MemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKey="group_owner"
+              value={data.supplier_owner}
+              onChange={(email) => onChange("supplier_owner", email)}
+              placeholder="name@avocarbon.com"
+            />
+            {errors.supplier_owner && <p className="form-error">{errors.supplier_owner}</p>}
+            <p className="form-helper">
+              {data.supplier_scope === "global"
                 ? "Default owner for all unit-site relations"
-                : "Leave blank for local suppliers"
-            }
-          />
+                : "Leave blank for local suppliers"}
+            </p>
+          </div>
 
           {/* Commodity — inherited from units */}
           <div className="md:col-span-2">

@@ -2343,6 +2343,30 @@ class SupplierOnboardingAPI {
     return res.json();
   }
 
+  // Public — no auth. Directory of AVO Carbon members with an email, for the
+  // Project Manager picker on the gate approval form.
+  async getPmDirectory(token: string) {
+    const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}/pm-directory`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.detail?.message || body?.message || "Failed to load the member directory.");
+    }
+    return res.json();
+  }
+
+  // Authenticated — same AVO Carbon member directory, for approver pickers
+  // used inside the app (e.g. sourcing committee role assignment).
+  async getPmDirectoryAuthenticated() {
+    return this.request(
+      `${this.baseUrl}/gate-approvals/pm-directory`,
+      {
+        method: "GET",
+        headers: this.getAuthHeaders(),
+      },
+      "Failed to load the member directory.",
+    );
+  }
+
   async submitVote(token: string, data: { decision: string; comment?: string; project_manager_email?: string }) {
     const res = await fetch(`${this.baseUrl}/gate-approvals/vote/${token}`, {
       method: "POST",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import supplierAPI from "../services/supplierOnboardingAPI";
+import { MemberDirectoryPicker } from "../components/common/MemberDirectoryPicker";
 
 interface PeerVote {
   approver_email: string | null;
@@ -690,13 +691,12 @@ export default function GateApprovalPage() {
                 project. It's pre-filled with the current designation — change it if needed.
                 They receive the opportunity details by email only once the whole panel approves.
               </p>
-              <input
-                type="email"
-                required
-                className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                placeholder="project.manager@avocarbon.com"
+              <MemberDirectoryPicker
+                fetchDirectory={() => supplierAPI.getPmDirectory(token!)}
+                fetchKey={token}
                 value={pmEmail}
-                onChange={(e) => setPmEmail(e.target.value)}
+                onChange={setPmEmail}
+                placeholder="project.manager@avocarbon.com"
               />
             </div>
           )}

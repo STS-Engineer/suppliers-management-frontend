@@ -8,6 +8,7 @@ import { AvocarbonSite, SupplierUnitResponse } from "../../../types/onboarding";
 import { StepIndicator } from "../Stepindicator";
 import { FormField, ScopeSelect } from "../ScopeSelect";
 import { PurchaserOwnerField } from "../PurchaserOwnerField";
+import { MemberDirectoryPicker } from "../../common/MemberDirectoryPicker";
 
 interface FlowAProps {
   groupId: number;
@@ -246,12 +247,12 @@ export const FlowA: React.FC<FlowAProps> = ({
                   siteName={selectedSite?.site_name}
                 />
               ) : (
-                <input
-                  type="text"
-                  placeholder="name@avocarbon.com"
+                <MemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKey="flowA_supplier_owner"
                   value={form.supplierOwner}
-                  onChange={(event) => setField("supplierOwner", event.target.value)}
-                  className={inputClass}
+                  onChange={(email) => setField("supplierOwner", email)}
+                  placeholder="name@avocarbon.com"
                 />
               )}
             </FormField>

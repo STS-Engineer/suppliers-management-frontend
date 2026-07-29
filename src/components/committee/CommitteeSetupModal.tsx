@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import supplierAPI from "../../services/supplierOnboardingAPI";
+import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
 
 const ROLES = [
   "Purchasing VP",
@@ -162,30 +163,31 @@ export default function CommitteeSetupModal({
           ) : (
             <div className="space-y-3">
               {/* Column headers */}
-              <div className="grid grid-cols-[180px_1fr_1fr] gap-3 px-1">
+              <div className="grid grid-cols-[180px_1fr_1fr] gap-2 px-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Role</span>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Full Name</span>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Email Address</span>
               </div>
 
               {ROLES.map((role) => (
-                <div key={role} className="grid grid-cols-[180px_1fr_1fr] items-center gap-3">
-                  <div className="flex items-center gap-2">
+                <div key={role} className="grid grid-cols-[180px_1fr_1fr] items-start gap-2">
+                  <div className="flex items-center gap-2 pt-2">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{role}</span>
                   </div>
                   <input
                     value={entries[role].name}
                     onChange={(e) => update(role, "name", e.target.value)}
-                    placeholder="Full name"
+                    placeholder="Full name (auto-filled from directory)"
                     className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-white/[0.08] dark:bg-[#111e30] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:bg-[#162235]"
                   />
-                  <input
+                  <MemberDirectoryPicker
+                    fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                    fetchKey={`committee_${role}`}
                     value={entries[role].email}
-                    onChange={(e) => update(role, "email", e.target.value)}
+                    onChange={(email) => update(role, "email", email)}
+                    onSelectEntry={(entry) => update(role, "name", entry.full_name)}
                     placeholder="name@avocarbon.com"
-                    type="email"
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-white/[0.08] dark:bg-[#111e30] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:bg-[#162235]"
                   />
                 </div>
               ))}

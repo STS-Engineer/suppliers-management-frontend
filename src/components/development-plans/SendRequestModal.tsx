@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import supplierAPI from "../../services/supplierOnboardingAPI";
+import { MultiMemberDirectoryPicker } from "../common/MultiMemberDirectoryPicker";
 import type {
   ContactResponse,
   DevelopmentPlanRegisterRow,
@@ -441,7 +442,7 @@ export function SharedSendRequestModal({
   const [dueDate, setDueDate] = useState(plan.due_date?.slice(0, 10) ?? "");
   const [planTitle, setPlanTitle] = useState(plan.plan_title ?? "");
   const [customMessage, setCustomMessage] = useState("");
-  const [ccRaw, setCcRaw] = useState(supplierOwner);
+  const [ccList, setCcList] = useState<string[]>([supplierOwner]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -495,7 +496,7 @@ export function SharedSendRequestModal({
       return;
     }
     const allTo = [...new Set([...selectedEmails, ...extraParsed])];
-    const ccParsed = parseEmails(ccRaw);
+    const ccParsed = ccList.map((e) => e.trim()).filter(Boolean);
     if (ccParsed.length && !validateEmails(ccParsed)) {
       setError("One or more CC email addresses are invalid.");
       return;
@@ -685,10 +686,11 @@ export function SharedSendRequestModal({
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               CC — Supplier Owner / Additional
             </label>
-            <input
-              value={ccRaw}
-              onChange={(event) => setCcRaw(event.target.value)}
-              className={inputCls}
+            <MultiMemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKeyPrefix="send_request_cc"
+              values={ccList}
+              onChange={setCcList}
               placeholder="owner@avocarbon.com"
             />
             {supplierOwner && (
@@ -764,8 +766,8 @@ export function SharedMarkReceivedModal({
   const [internalComments, setInternalComments] = useState("");
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [sendEmail, setSendEmail] = useState(false);
-  const [emailTo, setEmailTo] = useState("");
-  const [emailCc, setEmailCc] = useState(supplierOwner);
+  const [emailToList, setEmailToList] = useState<string[]>([""]);
+  const [emailCcList, setEmailCcList] = useState<string[]>([supplierOwner]);
   const [emailMessage, setEmailMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStep, setSaveStep] = useState<string | null>(null);
@@ -794,7 +796,7 @@ export function SharedMarkReceivedModal({
 
   const handleSubmit = async () => {
     if (sendEmail) {
-      const to = parseEmails(emailTo);
+      const to = emailToList.map((e) => e.trim()).filter(Boolean);
       if (!to.length || !validateEmails(to)) {
         setError("Enter at least one valid recipient email address.");
         return;
@@ -835,10 +837,10 @@ export function SharedMarkReceivedModal({
       );
 
       if (sendEmail) {
-        const to = parseEmails(emailTo);
-        const cc = parseEmails(emailCc).filter((email) =>
-          validateEmails([email]),
-        );
+        const to = emailToList.map((e) => e.trim()).filter(Boolean);
+        const cc = emailCcList
+          .map((e) => e.trim())
+          .filter((email) => email && validateEmails([email]));
         setSaveStep("Sending notification email...");
         await supplierAPI.sendPlanReceivedNotification(
           item.relation.id_relation,
@@ -1038,11 +1040,12 @@ export function SharedMarkReceivedModal({
                 <label className="mb-1 block text-xs font-semibold text-slate-600">
                   Send To <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  value={emailTo}
-                  onChange={(event) => setEmailTo(event.target.value)}
-                  className={inputCls}
-                  placeholder="manager@avocarbon.com, quality@avocarbon.com"
+                <MultiMemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKeyPrefix="mark_received_to"
+                  values={emailToList}
+                  onChange={setEmailToList}
+                  placeholder="manager@avocarbon.com"
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   The uploaded files will be attached to this email.
@@ -1052,10 +1055,11 @@ export function SharedMarkReceivedModal({
                 <label className="mb-1 block text-xs font-semibold text-slate-600">
                   CC
                 </label>
-                <input
-                  value={emailCc}
-                  onChange={(event) => setEmailCc(event.target.value)}
-                  className={inputCls}
+                <MultiMemberDirectoryPicker
+                  fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+                  fetchKeyPrefix="mark_received_cc"
+                  values={emailCcList}
+                  onChange={setEmailCcList}
                   placeholder="owner@avocarbon.com"
                 />
               </div>
@@ -1211,8 +1215,8 @@ export function SharedSubmitForReviewModal({
     date.setDate(date.getDate() + 8);
     return date.toISOString().slice(0, 10);
   });
-  const [reviewersRaw, setReviewersRaw] = useState("");
-  const [ccRaw, setCcRaw] = useState(supplierOwner);
+  const [reviewersList, setReviewersList] = useState<string[]>([""]);
+  const [ccList, setCcList] = useState<string[]>([supplierOwner]);
   const [internalComments, setInternalComments] = useState(
     plan.internal_comments ?? "",
   );
@@ -1226,7 +1230,7 @@ export function SharedSubmitForReviewModal({
       setError("Please enter the name of the person submitting for review.");
       return;
     }
-    const toEmails = parseEmails(reviewersRaw);
+    const toEmails = reviewersList.map((e) => e.trim()).filter(Boolean);
     if (!toEmails.length) {
       setError(
         "Enter at least one reviewer email (Plant Manager, Quality or Logistics).",
@@ -1237,7 +1241,7 @@ export function SharedSubmitForReviewModal({
       setError("One or more reviewer email addresses are invalid.");
       return;
     }
-    const ccEmails = parseEmails(ccRaw);
+    const ccEmails = ccList.map((e) => e.trim()).filter(Boolean);
     if (ccEmails.length && !validateEmails(ccEmails)) {
       setError("One or more CC email addresses are invalid.");
       return;
@@ -1345,22 +1349,23 @@ export function SharedSubmitForReviewModal({
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               Send To (Plant Manager / Quality / Logistics)
             </label>
-            <textarea
-              value={reviewersRaw}
-              onChange={(e) => setReviewersRaw(e.target.value)}
-              rows={2}
-              className={`${inputCls} resize-none`}
-              placeholder="plantmanager@avocarbon.com, quality@avocarbon.com, logistics@avocarbon.com"
+            <MultiMemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKeyPrefix="submit_review_to"
+              values={reviewersList}
+              onChange={setReviewersList}
+              placeholder="plantmanager@avocarbon.com"
             />
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600">
               CC — Supplier Owner / Additional
             </label>
-            <input
-              value={ccRaw}
-              onChange={(e) => setCcRaw(e.target.value)}
-              className={inputCls}
+            <MultiMemberDirectoryPicker
+              fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+              fetchKeyPrefix="submit_review_cc"
+              values={ccList}
+              onChange={setCcList}
               placeholder="owner@avocarbon.com"
             />
           </div>
@@ -1416,7 +1421,7 @@ export function SharedSubmitForReviewModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || !reviewersRaw.trim()}
+            disabled={isSaving || !reviewersList.some((e) => e.trim())}
             className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Mail className="h-4 w-4" />
@@ -1611,7 +1616,7 @@ export function SharedRequestRevisionModal({
   const plan = item.development_plan;
   const supplierOwner = item.relation.supplier_owner || "";
   const [newDueDate, setNewDueDate] = useState("");
-  const [ccRaw, setCcRaw] = useState(supplierOwner);
+  const [ccList, setCcList] = useState<string[]>([supplierOwner]);
   const [customMessage, setCustomMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1633,7 +1638,7 @@ export function SharedRequestRevisionModal({
           sync_relation_hold_status: false,
         },
       );
-      const ccParsed = parseEmails(ccRaw);
+      const ccParsed = ccList.map((e) => e.trim()).filter(Boolean);
       await supplierAPI.sendRelationDevelopmentPlanRequest(
         item.relation.id_relation,
         plan.id_development_plan,
@@ -1698,10 +1703,11 @@ export function SharedRequestRevisionModal({
           <label className="mb-1 block text-sm font-semibold text-slate-700">
             CC <span className="font-normal text-slate-400">(optional)</span>
           </label>
-          <input
-            value={ccRaw}
-            onChange={(e) => setCcRaw(e.target.value)}
-            className={inputCls}
+          <MultiMemberDirectoryPicker
+            fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+            fetchKeyPrefix="request_revision_cc"
+            values={ccList}
+            onChange={setCcList}
             placeholder="owner@avocarbon.com"
           />
         </div>

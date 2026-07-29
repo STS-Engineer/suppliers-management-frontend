@@ -6,6 +6,7 @@ import type {
 } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
 import { useAuth } from "../../context/AuthContext";
+import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
 
 type TabKey = "overview" | "criteria" | "history" | "plans" | "spend";
 
@@ -346,12 +347,12 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
 
   const ownerCell = editingOwner ? (
     <div className="space-y-1.5">
-      <input
-        type="email"
+      <MemberDirectoryPicker
+        fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+        fetchKey={`relation_owner_${relationId}`}
         value={ownerInput}
-        onChange={(e) => setOwnerInput(e.target.value)}
-        placeholder="firstname.lastname@avocarbon.com (leave blank to unassign)"
-        className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#062B49]"
+        onChange={setOwnerInput}
+        placeholder="firstname.lastname@avocarbon.com"
       />
       <div className="flex items-center gap-2">
         <button
@@ -362,6 +363,15 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
         >
           {savingOwner ? "Saving…" : "Save"}
         </button>
+        {ownerInput && (
+          <button
+            type="button"
+            onClick={() => setOwnerInput("")}
+            className="text-xs font-medium text-slate-400 underline hover:text-slate-600"
+          >
+            Unassign
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
