@@ -10,7 +10,9 @@ import {
   User,
   UserPlus,
 } from "lucide-react";
-import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
+import supplierAPI, {
+  SupplierApiError,
+} from "../services/supplierOnboardingAPI";
 import AuthShell, {
   AuthField,
   authButtonClass,
@@ -21,8 +23,8 @@ import AuthShell, {
 // by the backend. The elevated admin roles (VP Conversion, Purchasing Director)
 // are not self-requestable — an approver assigns them from the Users tab.
 const AVAILABLE_ROLES = [
-  { value: "purchasing_manager", label: "Purchasing Manager" },
-  { value: "supplier_owner", label: "Supplier Owner" },
+  // { value: "purchasing_manager", label: "Purchasing Manager" },
+  // { value: "supplier_owner", label: "Supplier Owner" },
   { value: "global_purchaser", label: "Global Purchaser" },
   { value: "local_purchaser", label: "Local Purchaser" },
   { value: "viewer", label: "Viewer (Read-only)" },
