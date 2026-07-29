@@ -338,6 +338,7 @@ function RequestsPanel() {
     try {
       const res = await supplierAPI.listAccountRequests(
         filter === "all" ? undefined : filter,
+        filter === "approved",
       );
       setRequests(res.data.items);
     } catch (err) {
@@ -415,6 +416,11 @@ function RequestsPanel() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={req.registration_status} />
+                      {req.approved_by && (
+                        <span className="mt-0.5 block text-[11px] text-slate-400">
+                          by {req.approved_by}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                       {formatDate(req.created_at)}

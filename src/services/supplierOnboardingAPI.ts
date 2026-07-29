@@ -185,6 +185,7 @@ export type AccountRequestRecord = {
   full_name: string;
   requested_role: string;
   registration_status: string;
+  approved_by?: string | null;
   created_at?: string | null;
 };
 
@@ -574,11 +575,17 @@ class SupplierOnboardingAPI {
     );
   }
 
-  async listAccountRequests(status?: string): Promise<{
+  async listAccountRequests(
+    status?: string,
+    mineOnly?: boolean,
+  ): Promise<{
     status: string;
     data: { items: AccountRequestRecord[]; count: number };
   }> {
-    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (mineOnly) params.set("mine_only", "true");
+    const query = params.toString() ? `?${params.toString()}` : "";
     return this.request(
       `${this.baseUrl}/auth/account-requests${query}`,
       {
