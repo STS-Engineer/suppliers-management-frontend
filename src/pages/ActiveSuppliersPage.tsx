@@ -1138,6 +1138,7 @@ interface Sb1Filters {
   filterAlias: string;
   filterGroupName: string;
   filterUnitName: string;
+  filterOwner: string;
   activeTab: string;
 }
 
@@ -1153,6 +1154,7 @@ const SB1_FILTERS_DEFAULT: Sb1Filters = {
   filterAlias: "",
   filterGroupName: "",
   filterUnitName: "",
+  filterOwner: "",
   activeTab: "all",
 };
 
@@ -1201,6 +1203,7 @@ export default function ActiveSuppliersPage() {
   const [filterUnitName, setFilterUnitName] = useState(
     initialFilters.filterUnitName,
   );
+  const [filterOwner, setFilterOwner] = useState(initialFilters.filterOwner);
   const [activeTab, setActiveTab] = useState(initialFilters.activeTab);
   const [page, setPage] = useState(1);
 
@@ -1219,6 +1222,7 @@ export default function ActiveSuppliersPage() {
       filterAlias,
       filterGroupName,
       filterUnitName,
+      filterOwner,
       activeTab,
     });
   }, [
@@ -1234,6 +1238,7 @@ export default function ActiveSuppliersPage() {
     filterAlias,
     filterGroupName,
     filterUnitName,
+    filterOwner,
     activeTab,
   ]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1350,6 +1355,11 @@ export default function ActiveSuppliersPage() {
       scopes: uniq(relationRows.map((r) => r.relation.supplier_scope)),
       plants: uniq(relationRows.map((r) => r.site.site_name)),
       globalStatuses: uniq(relationRows.map((r) => r.relation.global_status)),
+      owners: uniq(
+        relationRows.map(
+          (r) => r.relation.supplier_owner || r.group.supplier_owner,
+        ),
+      ),
     };
   }, [relationRows]);
 
@@ -1421,6 +1431,13 @@ export default function ActiveSuppliersPage() {
         matchesMultiValue(row.unit.product_line, filterProductLine),
       );
     }
+    if (filterOwner) {
+      rows = rows.filter(
+        (row) =>
+          (row.relation.supplier_owner || row.group.supplier_owner) ===
+          filterOwner,
+      );
+    }
     return rows;
   }, [
     relationRows,
@@ -1433,6 +1450,7 @@ export default function ActiveSuppliersPage() {
     filterAlias,
     filterGroupName,
     filterUnitName,
+    filterOwner,
   ]);
 
   const counts = useMemo(() => {
@@ -1475,7 +1493,8 @@ export default function ActiveSuppliersPage() {
     filterProductLine ||
     filterAlias ||
     filterGroupName ||
-    filterUnitName;
+    filterUnitName ||
+    filterOwner;
 
   const clearFilters = () => {
     setSearch("");
@@ -1489,6 +1508,7 @@ export default function ActiveSuppliersPage() {
     setFilterAlias("");
     setFilterGroupName("");
     setFilterUnitName("");
+    setFilterOwner("");
   };
 
   const toggleRelationActive = async (
@@ -1602,6 +1622,7 @@ export default function ActiveSuppliersPage() {
                     filterAlias,
                     filterGroupName,
                     filterUnitName,
+                    filterOwner,
                   ].filter(Boolean).length
                 }
               </span>
@@ -1710,6 +1731,14 @@ export default function ActiveSuppliersPage() {
             onChange={setFilterUnitName}
             placeholder="Filter by unit name…"
           />
+          <FilterSelect
+            label="Supplier Owner"
+            value={filterOwner}
+            onChange={setFilterOwner}
+            options={filterOptions.owners}
+            placeholder="All owners"
+            active={!!filterOwner}
+          />
         </div>
 
         {/* Active filter chips */}
@@ -1766,6 +1795,11 @@ export default function ActiveSuppliersPage() {
                 label: "Unit Name",
                 value: filterUnitName,
                 clear: () => setFilterUnitName(""),
+              },
+              {
+                label: "Supplier Owner",
+                value: filterOwner,
+                clear: () => setFilterOwner(""),
               },
             ]
               .filter((f) => f.value)
