@@ -10,7 +10,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import supplierAPI from "../../../services/supplierOnboardingAPI";
+import supplierAPI, { SupplierApiError } from "../../../services/supplierOnboardingAPI";
 import { useAuth } from "../../../context/AuthContext";
 import { MemberDirectoryPicker } from "../../../components/common/MemberDirectoryPicker";
 import type { Opp, SiteOption, SupplierOption } from "../types";
@@ -358,6 +358,10 @@ export function EditTab({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the backend rejects the save with STP_NEGATIVE_SAVING — offers the
+  // buyer a "confirm this is a real price increase" checkbox instead of a dead end.
+  const [negativeSavingError, setNegativeSavingError] = useState<string | null>(null);
+  const [confirmPriceIncrease, setConfirmPriceIncrease] = useState(false);
   // Non-blocking "still needed before you can request approval" notice, shown
   // after a successful save. Saving is intentionally permissive (the user can
   // fill fields incrementally); these fields are only *enforced* at the gate.
@@ -409,6 +413,11 @@ export function EditTab({
   const [stpRevForm, setStpRevForm] = useState(emptyStpRevForm);
   const [stpRevLoading, setStpRevLoading] = useState(false);
   const [stpRevError, setStpRevError] = useState<string | null>(null);
+  const [stpRevNegativeSavingError, setStpRevNegativeSavingError] = useState<
+    string | null
+  >(null);
+  const [stpRevConfirmPriceIncrease, setStpRevConfirmPriceIncrease] =
+    useState(false);
   const stpRevHasChange = Object.entries(stpRevForm).some(
     ([k, v]) => k !== "note" && String(v).trim() !== "",
   );
@@ -890,6 +899,7 @@ export function EditTab({
     setLoading(true);
     setError(null);
     setSaveNotice(null);
+    setNegativeSavingError(null);
 
     // Budget status / year are derived from validation — nothing to validate here.
 
@@ -1064,6 +1074,7 @@ export function EditTab({
         reason_other: form.reason_other || undefined,
         secondary_plants: form.secondary_plants || undefined,
         changed_by: userEmail,
+        confirm_price_increase: confirmPriceIncrease || undefined,
       });
       // Always refetch after save so server-computed fields (period saving, ROI,
       // cash gaps, total investment, rebuilt monthly profiles) are displayed
@@ -1077,11 +1088,19 @@ export function EditTab({
       // Saved successfully — surface (without blocking) any fields still needed
       // before this opportunity can be sent for gate/committee approval.
       setSaveNotice(missing.length ? missing : null);
+      setNegativeSavingError(null);
+      setConfirmPriceIncrease(false);
     } catch (err: unknown) {
       // Request Revision creation is disabled (see the DISABLED block below) —
       // a non-privileged user hitting STP_REQUIRES_APPROVAL just gets the plain
       // error message now instead of a modal that leads nowhere.
-      setError(err instanceof Error ? err.message : "Failed");
+      if (err instanceof SupplierApiError && err.errorCode === "STP_NEGATIVE_SAVING") {
+        // Real price increases happen (client-confirmed) — offer an explicit
+        // opt-in instead of a hard dead end, rather than blocking the save outright.
+        setNegativeSavingError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -1092,6 +1111,7 @@ export function EditTab({
     if (!stpRevForm.note.trim() || !stpRevHasChange) return;
     setStpRevLoading(true);
     setStpRevError(null);
+    setStpRevNegativeSavingError(null);
     try {
       await supplierAPI.requestSTPRevision(opp.opportunity_id, {
         note: stpRevForm.note.trim(),
@@ -1138,17 +1158,23 @@ export function EditTab({
         bonus_after: stpRevForm.bonus_after
           ? parseFloat(stpRevForm.bonus_after)
           : undefined,
+        confirm_price_increase: stpRevConfirmPriceIncrease || undefined,
       });
       setStpRevModal(false);
       setStpRevForm(emptyStpRevForm);
+      setStpRevConfirmPriceIncrease(false);
       const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(fresh.data as Opp);
     } catch (err: unknown) {
-      setStpRevError(
-        err instanceof Error
-          ? err.message
-          : "Failed to submit revision request.",
-      );
+      if (err instanceof SupplierApiError && err.errorCode === "STP_NEGATIVE_SAVING") {
+        setStpRevNegativeSavingError(err.message);
+      } else {
+        setStpRevError(
+          err instanceof Error
+            ? err.message
+            : "Failed to submit revision request.",
+        );
+      }
     } finally {
       setStpRevLoading(false);
     }
@@ -3340,6 +3366,23 @@ export function EditTab({
               </p>
             </div>
           )}
+          {negativeSavingError && (
+            <div className="mb-3 flex justify-end">
+              <div className="max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 shadow-sm">
+                <p>{negativeSavingError}</p>
+                <label className="mt-2 flex items-start gap-2 text-xs font-medium text-red-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={confirmPriceIncrease}
+                    onChange={(e) => setConfirmPriceIncrease(e.target.checked)}
+                  />
+                  This is a genuine price increase, not a mistake — save it
+                  anyway.
+                </label>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-3">
             <button
               type="submit"
@@ -3520,12 +3563,30 @@ export function EditTab({
                     {stpRevError}
                   </p>
                 )}
+                {stpRevNegativeSavingError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                    <p>{stpRevNegativeSavingError}</p>
+                    <label className="mt-2 flex items-start gap-2 text-xs font-medium text-red-700">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={stpRevConfirmPriceIncrease}
+                        onChange={(e) =>
+                          setStpRevConfirmPriceIncrease(e.target.checked)
+                        }
+                      />
+                      This is a genuine price increase, not a mistake — submit anyway.
+                    </label>
+                  </div>
+                )}
                 <div className="flex justify-end gap-3 pt-1">
                   <button
                     type="button"
                     onClick={() => {
                       setStpRevModal(false);
                       setStpRevError(null);
+                      setStpRevNegativeSavingError(null);
+                      setStpRevConfirmPriceIncrease(false);
                     }}
                     className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
                   >

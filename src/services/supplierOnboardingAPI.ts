@@ -1908,6 +1908,8 @@ class SupplierOnboardingAPI {
       // STP — missing workbook fields (rev 1.2)
       secondary_plants?: string;
       changed_by?: string;
+      // Bypasses the negative-saving guard when the buyer confirms a genuine price increase
+      confirm_price_increase?: boolean;
     },
   ) {
     return this.request(
@@ -2258,6 +2260,7 @@ class SupplierOnboardingAPI {
       annual_quantity_n4?: number;
       bonus_before?: number;
       bonus_after?: number;
+      confirm_price_increase?: boolean;
     },
   ) {
     return this.request(
