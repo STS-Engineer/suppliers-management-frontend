@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   Building2,
@@ -746,6 +746,13 @@ const SCOPE_OPTIONS = [
 export const SupplierManagementPage = () => {
   const { groupId } = useParams<{ groupId?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const unitParam = searchParams.get("unit");
+  const relationParam = searchParams.get("relation");
+  const initialUnitId = unitParam ? Number.parseInt(unitParam, 10) : null;
+  const initialRelationId = relationParam
+    ? Number.parseInt(relationParam, 10)
+    : null;
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
 
@@ -856,6 +863,8 @@ export const SupplierManagementPage = () => {
       <SupplierManagement
         groupId={directGroup.id_group}
         groupName={directGroup.nom}
+        initialUnitId={initialUnitId}
+        initialRelationId={initialRelationId}
         onClose={() => navigate("/suppliers/manage")}
       />
     );

@@ -17,7 +17,9 @@ import {
   ListChecks,
   LayoutGrid,
   Search,
+  ExternalLink,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
@@ -315,6 +317,7 @@ function DeltaPill({ value, currency }: { value: number | null; currency?: strin
 }
 
 export default function MonthlyFollowUpPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
   // Purchasing Director / VP Conversion may enter real savings on any
@@ -858,12 +861,14 @@ export default function MonthlyFollowUpPage() {
                       >
                         <td className="sticky-col px-4 py-2.5">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <span
-                              className="sticky-name font-semibold text-slate-700 dark:text-slate-200"
+                            <button
+                              onClick={() => navigate(`/purchasing-value?opp=${r.oppId}`)}
+                              className="sticky-name flex items-center gap-1 font-semibold text-slate-700 hover:text-blue-600 dark:text-slate-200 dark:hover:text-blue-400"
                               title={r.oppName}
                             >
                               {r.oppName}
-                            </span>
+                              <ExternalLink size={10} className="text-slate-300" />
+                            </button>
                             {filterMissing && r.month.period_month && (
                               <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                                 {new Date(r.month.period_month).toLocaleDateString("en-GB", { month: "short", year: "2-digit" })}
@@ -1304,6 +1309,7 @@ function YearOverview({
   query: string;
   loading: boolean;
 }) {
+  const navigate = useNavigate();
   const [year, setYear] = useState(YEAR_NOW);
 
   const { rows, monthKeys } = useMemo(() => {
@@ -1455,9 +1461,14 @@ function YearOverview({
                   className="transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.025]"
                 >
                   <td className="sticky-col px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-200">
-                    <span className="sticky-name block" title={r.oppName}>
+                    <button
+                      onClick={() => navigate(`/purchasing-value?opp=${r.oppId}`)}
+                      className="sticky-name flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400"
+                      title={r.oppName}
+                    >
                       {r.oppName}
-                    </span>
+                      <ExternalLink size={10} className="text-slate-300" />
+                    </button>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="cell-email" title={r.owner || undefined}>

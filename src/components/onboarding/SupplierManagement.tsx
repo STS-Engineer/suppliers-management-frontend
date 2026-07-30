@@ -36,6 +36,10 @@ export interface SupplierManagementProps {
   groupName: string;
   initialGroupScope?: string | null;
   initialGroupOwner?: string | null;
+  /** Deep-link: auto-select this unit once units have loaded. */
+  initialUnitId?: number | null;
+  /** Deep-link: auto-open this relation's details modal once its unit's relations have loaded. */
+  initialRelationId?: number | null;
   onClose?: () => void;
 }
 
@@ -168,9 +172,13 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   groupName,
   initialGroupScope,
   initialGroupOwner,
+  initialUnitId,
+  initialRelationId,
   onClose,
 }) => {
   const navigate = useNavigate();
+  const didAutoSelectUnit = React.useRef(false);
+  const didAutoOpenRelation = React.useRef(false);
   const [activeFlow, setActiveFlow] = useState<ActiveFlow>(null);
   const [overrideModalRelation, setOverrideModalRelation] =
     useState<SupplierSiteRelation | null>(null);
@@ -864,6 +872,35 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
     loadUnits();
     loadSites();
   }, [loadGroupContext, loadSites, loadUnits]);
+
+  // Deep-link: once units have loaded, auto-select the unit passed via
+  // initialUnitId/initialRelationId so a caller (e.g. SB1) can jump straight
+  // to a specific relation instead of forcing the user to re-navigate.
+  useEffect(() => {
+    if (didAutoSelectUnit.current) return;
+    if (!initialUnitId && !initialRelationId) return;
+    if (!shared.units.length) return;
+    const target = shared.units.find(
+      (u) => u.id_supplier_unit === initialUnitId,
+    );
+    if (target) {
+      didAutoSelectUnit.current = true;
+      selectUnit(target);
+    }
+  }, [shared.units, initialUnitId, initialRelationId, selectUnit]);
+
+  useEffect(() => {
+    if (didAutoOpenRelation.current) return;
+    if (!initialRelationId) return;
+    if (!shared.siteRelations.length) return;
+    const target = shared.siteRelations.find(
+      (r) => r.id_relation === initialRelationId,
+    );
+    if (target) {
+      didAutoOpenRelation.current = true;
+      openRelationDetailsModal(target);
+    }
+  }, [shared.siteRelations, initialRelationId, openRelationDetailsModal]);
 
   const selectedSummary = shared.selectedUnit
     ? shared.evaluationSummaryByUnit[shared.selectedUnit.id_supplier_unit] ?? null

@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   loadPersistedFilters,
@@ -27,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  ExternalLink,
   FolderOpen,
   History as HistoryIcon,
   LayoutGrid,
@@ -894,6 +896,7 @@ function ActionCard({
   onChanged: () => void;
   isViewer?: boolean;
 }) {
+  const navigate = useNavigate();
   const [historyOpen, setHistoryOpen] = useState(false);
   const overdue = isOverdue(item.due_date, item.action_status);
   const phase = PHASE_COLORS[item.opp_phase ?? ""] ?? PHASE_COLORS["Closed"];
@@ -919,9 +922,15 @@ function ActionCard({
               </span>
             ) : (
               <>
-                <p className="text-[11px] font-bold text-slate-800 leading-tight line-clamp-2">
+                <button
+                  onClick={() =>
+                    navigate(`/purchasing-value?opp=${item.opportunity_id}`)
+                  }
+                  className="flex items-center gap-1 text-left text-[11px] font-bold text-slate-800 leading-tight line-clamp-2 hover:text-blue-600"
+                >
                   {item.opportunity_name}
-                </p>
+                  <ExternalLink size={9} className="shrink-0 text-slate-300" />
+                </button>
                 {item.opp_phase && (
                   <span
                     className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ${phase.bg} ${phase.text} ${phase.ring}`}
@@ -1191,6 +1200,7 @@ function ActionItemsTable({
   onChanged: () => void;
   isViewer: boolean;
 }) {
+  const navigate = useNavigate();
   const [sortKey, setSortKey] = useState<SortKey>("due_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -1286,9 +1296,15 @@ function ActionItemsTable({
                       </span>
                     ) : (
                       <>
-                        <p className="truncate font-semibold text-slate-800">
-                          {item.opportunity_name}
-                        </p>
+                        <button
+                          onClick={() =>
+                            navigate(`/purchasing-value?opp=${item.opportunity_id}`)
+                          }
+                          className="flex items-center gap-1 truncate font-semibold text-slate-800 hover:text-blue-600"
+                        >
+                          <span className="truncate">{item.opportunity_name}</span>
+                          <ExternalLink size={9} className="shrink-0 text-slate-300" />
+                        </button>
                         {item.opp_phase && (
                           <span className="text-[9px] text-slate-400">
                             {item.opp_phase}

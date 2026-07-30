@@ -1029,18 +1029,18 @@ function RelationDetailModal({
         </div>
 
         {/* ═══ FOOTER ═══ */}
-        <div className="flex-shrink-0 flex items-center justify-between gap-3 border-t border-slate-100 bg-white px-6 py-4 dark:border-white/[0.06] dark:bg-[#0d1b2a]">
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 font-mono text-[10px] font-semibold text-slate-400 dark:border-white/[0.06] dark:bg-white/[0.03]">
+        <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white px-6 py-4 dark:border-white/[0.06] dark:bg-[#0d1b2a]">
+          <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1 font-mono text-[10px] font-semibold text-slate-400 dark:border-white/[0.06] dark:bg-white/[0.03]">
             {record.relation.relation_code ||
               `REL-${String(record.relation.id_relation).padStart(6, "0")}`}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isAdmin && onToggleActive && (
               <button
                 type="button"
                 disabled={togglingUnit === record.relation.id_relation}
                 onClick={onToggleActive}
-                className={`inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed ${
                   (record.relation.is_active ?? true)
                     ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20"
                     : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
@@ -1057,9 +1057,22 @@ function RelationDetailModal({
             <button
               type="button"
               onClick={close}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.07]"
+              className="shrink-0 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.07]"
             >
               Close
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigate(
+                  `/suppliers/${record.group.id_group}/manage?unit=${record.unit.id_supplier_unit}&relation=${record.relation.id_relation}`,
+                );
+                close();
+              }}
+              className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.07]"
+            >
+              Manage Relation
+              <ExternalLink className="h-3.5 w-3.5 opacity-60" />
             </button>
             <button
               type="button"
@@ -1069,7 +1082,7 @@ function RelationDetailModal({
                 );
                 close();
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#062B49] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] active:scale-[0.98]"
+              className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#062B49] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0C5381] active:scale-[0.98]"
             >
               Open Evaluation
               <ExternalLink className="h-3.5 w-3.5 opacity-80" />
