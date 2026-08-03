@@ -79,6 +79,14 @@ interface ActionItem {
   last_escalated_by: string | null;
   // Backend-computed: may this viewer close the action / delete its evidence?
   can_manage?: boolean;
+  // Plan-level Action Plan DB push status ("ok" | "failed" | "pending") — the
+  // sync runs per-plan, so this reflects the whole plan's last sync attempt.
+  external_push_status: string | null;
+  external_push_error: string | null;
+  // Whether THIS action specifically has been written back with an external
+  // id from a successful sync (can lag behind external_push_status if this
+  // action was added after the plan's last successful sync).
+  synced: boolean;
 }
 
 interface Attachment {
@@ -701,6 +709,27 @@ function StatusCell({
         {cfg.icon}
         {cfg.label}
         {saving && <RefreshCw size={9} className="animate-spin ml-0.5" />}
+      </div>
+      <div
+        className={`inline-flex items-center gap-1 text-[9px] font-semibold ${
+          item.synced
+            ? "text-emerald-600"
+            : item.external_push_status === "failed"
+              ? "text-rose-500"
+              : "text-slate-400"
+        }`}
+        title={
+          item.external_push_status === "failed"
+            ? item.external_push_error ?? "Sync failed"
+            : undefined
+        }
+      >
+        ●{" "}
+        {item.synced
+          ? "Synced to Action Plan DB"
+          : item.external_push_status === "failed"
+            ? "Sync failed"
+            : "Not synced yet"}
       </div>
       {/* Changing status (incl. closing) is limited to the responsible person, a
           manager, or a related owner. Others see the status read-only. */}

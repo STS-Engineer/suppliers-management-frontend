@@ -314,6 +314,9 @@ export interface ActionNode {
   closed_date?: string | null;
   attachments: { name: string; url: string }[];
   sous_actions: ActionNode[];
+  // Written back by the Action Plan MCP sync once this action has been
+  // successfully created there — absent/undefined means "not synced yet".
+  _external_id?: number;
 }
 
 export interface SujetNode {

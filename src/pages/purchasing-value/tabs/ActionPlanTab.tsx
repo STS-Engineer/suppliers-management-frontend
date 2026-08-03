@@ -645,6 +645,16 @@ export function ActionPlanTab({
                           >
                             {a.status ?? "open"}
                           </span>
+                          <span
+                            className={`shrink-0 text-[9px] font-semibold ${a._external_id ? "text-emerald-500" : "text-slate-300"}`}
+                            title={
+                              a._external_id
+                                ? "Synced to the Action Plan database"
+                                : "Not yet synced to the Action Plan database"
+                            }
+                          >
+                            ●
+                          </span>
                           <span className="text-[11px] text-slate-700 dark:text-slate-300 flex-1">
                             {a.titre}
                           </span>
