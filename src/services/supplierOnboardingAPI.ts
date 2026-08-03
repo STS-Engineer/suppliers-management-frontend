@@ -2444,6 +2444,19 @@ class SupplierOnboardingAPI {
     );
   }
 
+  // opportunityId is null/undefined for a general plan not attached to any opportunity.
+  async syncActionPlan(actionPlanId: number, opportunityId?: number | null) {
+    const url =
+      opportunityId != null
+        ? `${this.baseUrl}/purchasing-value/opportunities/${opportunityId}/action-plans/${actionPlanId}/sync`
+        : `${this.baseUrl}/purchasing-value/action-plans/${actionPlanId}/sync`;
+    return this.request(
+      url,
+      { method: "POST", headers: this.getAuthHeaders() },
+      "Failed to sync action plan.",
+    );
+  }
+
   // Create a full action plan NOT attached to any opportunity (general plan).
   async createStandaloneActionPlan(payload: object) {
     return this.request(

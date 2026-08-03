@@ -555,6 +555,7 @@ function StatusCell({
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   // Read-only, always derived from the email.
   const editDerivedName = deriveNameFromEmail(newRespEmail);
 
@@ -607,6 +608,19 @@ function StatusCell({
       setError(e?.message ?? "Delete failed.");
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  };
+
+  const syncPlan = async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      await supplierAPI.syncActionPlan(item.plan_id, item.opportunity_id);
+      onChanged();
+    } catch (e: any) {
+      setError(e?.message ?? "Sync failed.");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -704,6 +718,18 @@ function StatusCell({
       )}
       {item.can_manage && !editOpen && (
         <div className="flex gap-1.5">
+          <button
+            onClick={syncPlan}
+            disabled={syncing}
+            title="Sync this action's plan to the Action Plan database"
+            className="flex items-center justify-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-1 text-[9px] font-bold text-blue-600 hover:bg-blue-50 disabled:opacity-40 transition-colors"
+          >
+            {syncing ? (
+              <RefreshCw size={9} className="animate-spin" />
+            ) : (
+              <RefreshCw size={9} />
+            )}
+          </button>
           <button
             onClick={openEdit}
             className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[9px] font-bold text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors"

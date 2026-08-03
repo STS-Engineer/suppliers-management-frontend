@@ -18,6 +18,7 @@ export function ActionPlanTab({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -140,6 +141,21 @@ export function ActionPlanTab({
       setError(e?.message ?? "Failed to delete action plan.");
     } finally {
       setDeleting(null);
+    }
+  }
+
+  async function handleSync(planId: number) {
+    setSyncing(planId);
+    setError(null);
+    try {
+      await supplierAPI.syncActionPlan(planId, opp.opportunity_id);
+      setSuccess("Action plan synced.");
+      await loadPlans();
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to sync action plan.");
+      await loadPlans(); // refresh external_push_status/error even on failure
+    } finally {
+      setSyncing(null);
     }
   }
 
@@ -570,6 +586,26 @@ export function ActionPlanTab({
                       )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {plan.external_push_status !== "ok" && (
+                      <button
+                        onClick={() => handleSync(plan.action_plan_id)}
+                        disabled={syncing === plan.action_plan_id}
+                        title={
+                          plan.external_push_status === "failed"
+                            ? "Retry sync to the Action Plan database"
+                            : "Sync to the Action Plan database"
+                        }
+                        className="rounded border border-blue-200 px-2 py-1 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-40 dark:border-blue-500/30 dark:text-blue-400"
+                      >
+                        {syncing === plan.action_plan_id ? (
+                          <RefreshCw size={10} className="animate-spin" />
+                        ) : plan.external_push_status === "failed" ? (
+                          "Retry sync"
+                        ) : (
+                          "Sync"
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => openEdit(plan)}
                       className="rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300"
