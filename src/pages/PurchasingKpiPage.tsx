@@ -57,6 +57,7 @@ interface Kpis {
   pacing_late_count: number;
   pacing_on_time_count: number;
   monthly_update_pct: number | null;
+  monthly_update_ref_month?: string;
   avg_priority_score: number | null;
   active_lines_count: number;
   escalated_count: number;
@@ -426,9 +427,10 @@ function ExecSummaryBar({
       token: coverageToken,
       label: "Monthly Coverage",
       value: pctFmt(kpis.monthly_update_pct),
-      sub:
-        kpis.missing_update_lines > 0
-          ? `${kpis.missing_update_lines} lines missing`
+      sub: kpis.monthly_update_ref_month
+        ? `vs ${kpis.monthly_update_ref_month}`
+        : kpis.missing_update_lines > 0
+          ? `${kpis.missing_update_lines} lines missing (budget year)`
           : "Fully up to date",
       trend: kpis.monthly_update_pct,
     },
@@ -1416,6 +1418,8 @@ export default function PurchasingKpiPage() {
   const [tab, setTab] = useState<
     "monthly" | "plant" | "supplier" | "type" | "nature" | "buyer" | "alerts"
   >("monthly");
+  const [buyerFilterOpen, setBuyerFilterOpen] = useState(false);
+  const [buyerFilterSearch, setBuyerFilterSearch] = useState("");
 
   useEffect(() => {
     savePersistedFilters<PersistedKpiFilters>(KPI_FILTERS_PAGE_KEY, userEmail, {
@@ -1514,6 +1518,14 @@ export default function PurchasingKpiPage() {
         ? f.buyers.filter((x) => x !== b)
         : [...f.buyers, b],
     }));
+  const formatBuyerName = (b: string) =>
+    b.includes("@")
+      ? b
+          .split("@")[0]
+          .split(".")
+          .map((s: string) => s[0].toUpperCase() + s.slice(1))
+          .join(" ")
+      : b;
 
   const tabs = [
     {
@@ -1611,71 +1623,160 @@ export default function PurchasingKpiPage() {
         (avail.plants.length > 0 ||
           avail.categories.length > 0 ||
           avail.buyers.length > 0) && (
-          <div className="bg-white border-b border-slate-100 px-8 py-2.5 flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-slate-400 mr-1">
-              <SlidersHorizontal size={11} />
-              <span className="text-[9.5px] font-black uppercase tracking-widest">
-                Filter
-              </span>
+          <div className="bg-white border-b border-slate-100 px-8 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-slate-400">
+                <SlidersHorizontal size={11} />
+                <span className="text-[9.5px] font-black uppercase tracking-widest">
+                  Filter
+                </span>
+              </div>
+              {hasFilters && (
+                <button
+                  onClick={() =>
+                    setFilters({ plantIds: [], categories: [], buyers: [] })
+                  }
+                  className="flex items-center gap-1 text-[10.5px] font-semibold text-slate-400 hover:text-rose-500 transition-colors"
+                >
+                  <XCircle size={11} /> Reset
+                </button>
+              )}
             </div>
 
-            {avail.plants.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => togglePlant(p.id)}
-                className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
-                  filters.plantIds.includes(p.id)
-                    ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
-                    : "bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
-            {avail.categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => toggleCategory(c)}
-                className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
-                  filters.categories.includes(c)
-                    ? `${TYPE_PALETTE[c]?.bg ?? "bg-violet-600"} border-transparent text-white shadow-sm`
-                    : "bg-white border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600"
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-            {avail.buyers.map((b) => {
-              const name = b.includes("@")
-                ? b
-                    .split("@")[0]
-                    .split(".")
-                    .map((s: string) => s[0].toUpperCase() + s.slice(1))
-                    .join(" ")
-                : b;
-              return (
-                <button
-                  key={b}
-                  onClick={() => toggleBuyer(b)}
-                  className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
-                    filters.buyers.includes(b)
-                      ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-                      : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
-                  }`}
-                >
-                  {name}
-                </button>
-              );
-            })}
-            {hasFilters && (
-              <button
-                onClick={() =>
-                  setFilters({ plantIds: [], categories: [], buyers: [] })
-                }
-                className="ml-auto flex items-center gap-1 text-[10.5px] font-semibold text-slate-400 hover:text-rose-500 transition-colors"
-              >
-                <XCircle size={11} /> Reset
-              </button>
+            {avail.plants.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                  Plant
+                </span>
+                {avail.plants.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => togglePlant(p.id)}
+                    className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
+                      filters.plantIds.includes(p.id)
+                        ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {avail.categories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                  Type
+                </span>
+                {avail.categories.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => toggleCategory(c)}
+                    className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
+                      filters.categories.includes(c)
+                        ? `${TYPE_PALETTE[c]?.bg ?? "bg-violet-600"} border-transparent text-white shadow-sm`
+                        : "bg-white border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+            {avail.buyers.length > 0 && (
+              <div className="flex flex-wrap items-start gap-2">
+                <span className="w-20 shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-slate-400 mt-1.5">
+                  Buyer/Owner
+                </span>
+                {avail.buyers.length > 10 ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setBuyerFilterOpen((o) => !o)}
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
+                        filters.buyers.length > 0
+                          ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
+                          : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
+                      }`}
+                    >
+                      {filters.buyers.length > 0
+                        ? `${filters.buyers.length} selected`
+                        : "Select buyer(s)…"}
+                      <ChevronDown size={11} />
+                    </button>
+                    {buyerFilterOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setBuyerFilterOpen(false)}
+                        />
+                        <div className="absolute z-20 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white shadow-lg">
+                          <div className="p-2 border-b border-slate-100">
+                            <input
+                              autoFocus
+                              value={buyerFilterSearch}
+                              onChange={(e) =>
+                                setBuyerFilterSearch(e.target.value)
+                              }
+                              placeholder="Search buyer/owner…"
+                              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] outline-none focus:border-emerald-400"
+                            />
+                          </div>
+                          <div className="max-h-64 overflow-y-auto py-1">
+                            {avail.buyers
+                              .filter((b) =>
+                                formatBuyerName(b)
+                                  .toLowerCase()
+                                  .includes(buyerFilterSearch.toLowerCase()),
+                              )
+                              .map((b) => (
+                                <button
+                                  key={b}
+                                  onClick={() => toggleBuyer(b)}
+                                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium transition-colors ${
+                                    filters.buyers.includes(b)
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "text-slate-600 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {formatBuyerName(b)}
+                                  {filters.buyers.includes(b) && (
+                                    <CheckCircle2 size={12} />
+                                  )}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  avail.buyers.map((b) => (
+                    <button
+                      key={b}
+                      onClick={() => toggleBuyer(b)}
+                      className={`rounded-full px-3 py-1 text-[10.5px] font-semibold border transition-all ${
+                        filters.buyers.includes(b)
+                          ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
+                          : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
+                      }`}
+                    >
+                      {formatBuyerName(b)}
+                    </button>
+                  ))
+                )}
+                {avail.buyers.length > 10 &&
+                  filters.buyers.map((b) => (
+                    <span
+                      key={b}
+                      className="flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[10.5px] font-semibold text-emerald-700"
+                    >
+                      {formatBuyerName(b)}
+                      <button onClick={() => toggleBuyer(b)}>
+                        <XCircle size={11} />
+                      </button>
+                    </span>
+                  ))}
+              </div>
             )}
           </div>
         )}
@@ -1806,8 +1907,17 @@ export default function PurchasingKpiPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {/* Monthly update coverage */}
           <div className="rounded-2xl border border-slate-200/60 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] px-4 py-3.5 border-l-4 border-l-indigo-300">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400 mb-3">
+            <p
+              className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400 mb-3"
+              title={`Share of active lines with an actual saving entered for ${kpis.monthly_update_ref_month ?? "the last closed month"}. Not comparable to "lines missing" below, which counts gaps across the whole budget year.`}
+            >
               Monthly Coverage
+              {kpis.monthly_update_ref_month && (
+                <span className="font-normal text-slate-400">
+                  {" "}
+                  · {kpis.monthly_update_ref_month}
+                </span>
+              )}
             </p>
             <div className="flex items-center gap-3">
               <Ring
@@ -1828,9 +1938,13 @@ export default function PurchasingKpiPage() {
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
                   {kpis.missing_update_lines > 0 ? (
-                    <span className="text-orange-600 font-semibold">
+                    <span
+                      className="text-orange-600 font-semibold"
+                      title="Distinct lines with at least one missing month anywhere in the current budget year — a different, wider window than the coverage % above."
+                    >
                       {kpis.missing_update_lines} line
                       {kpis.missing_update_lines !== 1 ? "s" : ""} missing
+                      (budget year)
                     </span>
                   ) : (
                     "All lines up to date"
@@ -3399,6 +3513,10 @@ export default function PurchasingKpiPage() {
                       </span>
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                         {kpis.missing_update_lines}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        lines with ≥1 gap over the whole budget year — not the
+                        same window as Monthly Coverage above
                       </span>
                     </div>
                     <div className="space-y-2">
