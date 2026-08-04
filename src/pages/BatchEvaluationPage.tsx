@@ -174,6 +174,7 @@ export default function BatchEvaluationPage() {
 function EvaluationDashboard() {
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
+  const isViewer = user?.access_profile === "viewer";
   // Restores whatever this user last had filtered — otherwise leaving this
   // page and coming back (or a reload) silently resets it.
   const initialFilters = loadPersistedFilters(
@@ -337,8 +338,8 @@ function EvaluationDashboard() {
           Refresh
         </button>
 
-        {/* Trigger notifications */}
-        {(() => {
+        {/* Trigger notifications — sends third-party emails, so viewers (read-only) can't use it */}
+        {!isViewer && (() => {
           const actionable = (summary?.OVERDUE ?? 0) + (summary?.DUE_SOON ?? 0) + (summary?.NEVER_EVALUATED ?? 0);
           return (
             <button

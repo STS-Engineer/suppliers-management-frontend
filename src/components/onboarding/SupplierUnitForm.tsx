@@ -24,6 +24,7 @@ interface SupplierUnitFormProps {
   data: UnitFormData;
   errors: FormErrors;
   unitContactErrors?: { [key: number]: FormErrors };
+  primaryContactError?: string;
   onChange: (field: keyof UnitFormData, value: any) => void;
   groupContacts?: ContactFormData[];
 }
@@ -48,6 +49,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
   data,
   errors,
   unitContactErrors = {},
+  primaryContactError,
   onChange,
   groupContacts = [],
 }) => {
@@ -55,7 +57,10 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
   const hasGroupContacts = groupContacts.some((c) => c.full_name.trim());
 
   const availableFamilies = getFamiliesForCommodities(data.commodity ?? []);
-  const availableSubFamilies = getSubFamiliesForFamilies(data.family);
+  // No family selected yet ⇒ no sub-families should be offered (the shared
+  // helper otherwise falls back to returning every sub-family in that case).
+  const availableSubFamilies =
+    data.family.length > 0 ? getSubFamiliesForFamilies(data.family) : [];
 
   const toggleCommodity = (value: string) => {
     const next = (data.commodity ?? []).includes(value)
@@ -242,10 +247,11 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
               storageKey="unit_sub_family"
               availableOptions={availableSubFamilies}
               displayLabel={toDisplayLabel}
+              disabled={data.family.length === 0}
               placeholder={data.family.length === 0 ? "Select a family first…" : "Select sub-families…"}
               helperText={
                 data.family.length === 0
-                  ? "Filtered by selected families"
+                  ? "Select a family first"
                   : `${availableSubFamilies.length} sub-families available`
               }
             />
@@ -343,6 +349,10 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
             </button>
           </div>
 
+          {primaryContactError && (
+            <p className="form-error mb-3">{primaryContactError}</p>
+          )}
+
           {contacts.length === 0 ? (
             <div
               onClick={addContact}
@@ -402,6 +412,8 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                       value={contact.phone}
                       onChange={(e) => updateContact(index, "phone", e.target.value)}
                       placeholder="+86 21 1234 5678"
+                      maxLength={50}
+                      error={unitContactErrors[index]?.phone}
                     />
                     <FormInput
                       label="Role"
@@ -409,6 +421,7 @@ export const SupplierUnitForm: React.FC<SupplierUnitFormProps> = ({
                       value={contact.role_label}
                       onChange={(e) => updateContact(index, "role_label", e.target.value)}
                       placeholder="e.g., Quality Manager"
+                      maxLength={100}
                     />
                     <FormInput
                       label="Role description"

@@ -22,6 +22,9 @@ import {
   SupplierStatusHistoryEntry,
 } from "../types/onboarding";
 
+const looksLikeEmail = (value: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 // ---------------------------------------------------------------------------
 // PLD scoring tables (mirrored from pld_scoring_rules)
 // ---------------------------------------------------------------------------
@@ -1032,6 +1035,12 @@ export default function RelationEvaluationPage() {
   };
 
   const saveClass = async () => {
+    const sqmaApproverEmail = criteriaDetails.sqma?.approver_email?.trim();
+    if (sqmaApproverEmail && !looksLikeEmail(sqmaApproverEmail)) {
+      setError("Enter a valid approver email address for the SQMA criterion.");
+      return;
+    }
+
     setSaving("class");
     setError(null);
     try {

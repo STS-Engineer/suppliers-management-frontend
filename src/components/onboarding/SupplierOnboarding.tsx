@@ -156,6 +156,28 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   const looksLikeEmail = (value: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
+  // Digits only, with an optional leading "+" for the country code (e.g. +21695493646).
+  // No letters, no stray symbols like unmatched parentheses/dashes.
+  const looksLikePhone = (value: string) => /^\+?[0-9]{7,15}$/.test(value.trim());
+  const PHONE_FORMAT_ERROR =
+    "Phone must contain digits only, optionally starting with + and the country code (e.g. +21695493646).";
+
+  const buildGroupPrimaryContactError = () => {
+    const meaningful = formData.contacts.filter(hasMeaningfulContactData);
+    if (meaningful.length > 0 && !meaningful.some((c) => c.is_primary_contact)) {
+      return "At least one contact must be marked as Primary.";
+    }
+    return undefined;
+  };
+
+  const buildUnitPrimaryContactError = () => {
+    const meaningful = formData.unit.unit_contacts.filter(hasMeaningfulContactData);
+    if (meaningful.length > 0 && !meaningful.some((c) => c.is_primary_contact)) {
+      return "At least one unit contact must be marked as Primary.";
+    }
+    return undefined;
+  };
+
   const cleanedUnitPayload = (unit: UnitFormData) => ({ ...unit });
 
   const formHasData =
@@ -227,6 +249,60 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     return certificationErrors;
   };
 
+  // Non-blocking: flags certifications repeated for this unit (same standard
+  // + certification type) so the user can double-check it's intentional
+  // (e.g. distinct certificate numbers) rather than a copy/paste slip.
+  const buildCertificationDuplicateWarning = () => {
+    const seen = new Map<string, number>();
+    formData.certifications.forEach((certification) => {
+      const standardType = certification.standard_type?.trim();
+      const certificationType = certification.certification_type?.trim();
+      if (!standardType || !certificationType) return;
+      const key = `${standardType}|${certificationType}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    });
+
+    const duplicateLabels = [...seen.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key.split("|")[1]);
+
+    if (duplicateLabels.length === 0) return undefined;
+
+    return `This unit has the same certification added more than once: ${duplicateLabels.join(", ")}. That's allowed (e.g. different certificate numbers), just double-check it's intentional.`;
+  };
+
+  const buildUnitErrors = () => {
+    const unitErrors: Record<string, string> = {};
+    if (!formData.unit.supplier_name) {
+      unitErrors.supplier_name = "Supplier name is required";
+    }
+
+    const carbonRaw = formData.unit.carbon_footprint.trim();
+    if (carbonRaw) {
+      const normalizedCarbon = carbonRaw.replace(/\s/g, "");
+      if (!/^-?\d+(\.\d+)?$/.test(normalizedCarbon)) {
+        unitErrors.carbon_footprint = "Enter a valid numeric value.";
+      } else if (parseFloat(normalizedCarbon) < 0) {
+        unitErrors.carbon_footprint = "Carbon footprint cannot be negative.";
+      }
+    }
+
+    const greenRaw = formData.unit.green_electricity_pct.trim();
+    if (greenRaw) {
+      if (!/^-?\d+(\.\d+)?$/.test(greenRaw)) {
+        unitErrors.green_electricity_pct = "Enter a valid numeric value.";
+      } else {
+        const greenValue = parseFloat(greenRaw);
+        if (greenValue < 0 || greenValue > 100) {
+          unitErrors.green_electricity_pct =
+            "Green electricity must be between 0 and 100%.";
+        }
+      }
+    }
+
+    return unitErrors;
+  };
+
   const buildUnitContactErrors = () => {
     const unitContactErrors: Record<number, Record<string, string>> = {};
 
@@ -242,6 +318,9 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       }
       if (contact.email.trim() && !looksLikeEmail(contact.email)) {
         rowErrors.email = "Enter a valid email address";
+      }
+      if (contact.phone.trim() && !looksLikePhone(contact.phone)) {
+        rowErrors.phone = PHONE_FORMAT_ERROR;
       }
 
       if (Object.keys(rowErrors).length > 0) {
@@ -303,19 +382,33 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
   };
 
   const handleContactBlur = (index: number, field: keyof ContactFormData) => {
-    if (field !== "email") return;
-    const value = formData.contacts[index]?.email ?? "";
-    const emailError =
-      value && !looksLikeEmail(value)
-        ? "Must be a valid email address"
-        : undefined;
-    setErrors((prev) => ({
-      ...prev,
-      contacts: {
-        ...(prev.contacts ?? {}),
-        [index]: { ...(prev.contacts?.[index] ?? {}), email: emailError },
-      },
-    }));
+    if (field === "email") {
+      const value = formData.contacts[index]?.email ?? "";
+      const emailError =
+        value && !looksLikeEmail(value)
+          ? "Must be a valid email address"
+          : undefined;
+      setErrors((prev) => ({
+        ...prev,
+        contacts: {
+          ...(prev.contacts ?? {}),
+          [index]: { ...(prev.contacts?.[index] ?? {}), email: emailError },
+        },
+      }));
+      return;
+    }
+    if (field === "phone") {
+      const value = formData.contacts[index]?.phone ?? "";
+      const phoneError =
+        value.trim() && !looksLikePhone(value) ? PHONE_FORMAT_ERROR : undefined;
+      setErrors((prev) => ({
+        ...prev,
+        contacts: {
+          ...(prev.contacts ?? {}),
+          [index]: { ...(prev.contacts?.[index] ?? {}), phone: phoneError },
+        },
+      }));
+    }
   };
 
   const handleGroupBlur = (field: keyof GroupFormData) => {
@@ -419,6 +512,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
   const validateStep = (step: OnboardingStep): boolean => {
     const newErrors: any = {};
+    let notice: string | null = null;
 
     switch (step) {
       case "supplier": {
@@ -448,16 +542,18 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       }
 
       case "unit": {
-        const unitErrors: Record<string, string> = {};
-        if (!formData.unit.supplier_name) {
-          unitErrors.supplier_name = "Supplier name is required";
-        }
+        const unitErrors = buildUnitErrors();
         if (Object.keys(unitErrors).length > 0) {
           newErrors.unit = unitErrors;
         }
         const unitContactErrors = buildUnitContactErrors();
         if (Object.keys(unitContactErrors).length > 0) {
           newErrors.unit_contacts = unitContactErrors;
+        }
+        const unitPrimaryError = buildUnitPrimaryContactError();
+        if (unitPrimaryError) {
+          newErrors.unit_contacts_primary = unitPrimaryError;
+          notice = unitPrimaryError;
         }
         break;
       }
@@ -474,12 +570,20 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           } else if (!looksLikeEmail(contact.email)) {
             contactIdx.email = "Must be a valid email address";
           }
+          if (contact.phone.trim() && !looksLikePhone(contact.phone)) {
+            contactIdx.phone = PHONE_FORMAT_ERROR;
+          }
           if (Object.keys(contactIdx).length > 0) {
             contactErrors[idx] = contactIdx;
           }
         });
         if (Object.keys(contactErrors).length > 0) {
           newErrors.contacts = contactErrors;
+        }
+        const groupPrimaryError = buildGroupPrimaryContactError();
+        if (groupPrimaryError) {
+          newErrors.contacts_primary = groupPrimaryError;
+          notice = groupPrimaryError;
         }
         break;
 
@@ -492,7 +596,14 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const isValid = Object.keys(newErrors).length === 0;
+    if (!isValid) {
+      setValidationNotice(
+        notice ??
+          "Please complete the required fields highlighted below before continuing.",
+      );
+    }
+    return isValid;
   };
 
   const handleNext = () => {
@@ -503,10 +614,6 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
       if (nextIndex < steps.length) {
         setCurrentStep(steps[nextIndex]);
       }
-    } else {
-      setValidationNotice(
-        "Please complete the required fields highlighted below before continuing.",
-      );
     }
   };
 
@@ -521,14 +628,22 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
 
   const handleSubmit = async () => {
     const certificationErrors = buildCertificationErrors();
+    const unitErrors = buildUnitErrors();
     const unitContactErrors = buildUnitContactErrors();
+    const unitPrimaryError = buildUnitPrimaryContactError();
+    const groupPrimaryError = buildGroupPrimaryContactError();
     if (
       !validateStep(currentStep) ||
       Object.keys(certificationErrors).length > 0 ||
-      Object.keys(unitContactErrors).length > 0
+      Object.keys(unitErrors).length > 0 ||
+      Object.keys(unitContactErrors).length > 0 ||
+      unitPrimaryError ||
+      groupPrimaryError
     ) {
       setValidationNotice(
-        "Please review the missing or invalid fields before creating the supplier master.",
+        unitPrimaryError ||
+          groupPrimaryError ||
+          "Please review the missing or invalid fields before creating the supplier master.",
       );
       setErrors((prev) => ({
         ...prev,
@@ -536,10 +651,14 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
           Object.keys(certificationErrors).length > 0
             ? certificationErrors
             : prev.certifications,
+        unit:
+          Object.keys(unitErrors).length > 0 ? unitErrors : prev.unit,
         unit_contacts:
           Object.keys(unitContactErrors).length > 0
             ? unitContactErrors
             : prev.unit_contacts,
+        unit_contacts_primary: unitPrimaryError ?? prev.unit_contacts_primary,
+        contacts_primary: groupPrimaryError ?? prev.contacts_primary,
       }));
       return;
     }
@@ -788,6 +907,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
               data={formData.unit}
               errors={errors.unit || {}}
               unitContactErrors={errors.unit_contacts || {}}
+              primaryContactError={errors.unit_contacts_primary}
               onChange={handleUnitChange}
               groupContacts={formData.contacts}
             />
@@ -797,6 +917,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
             <ContactsForm
               contacts={formData.contacts}
               errors={errors.contacts || {}}
+              primaryContactError={errors.contacts_primary}
               onAddContact={handleAddContact}
               onRemoveContact={handleRemoveContact}
               onChange={handleContactChange}
@@ -808,6 +929,7 @@ export const SupplierOnboarding: React.FC<SupplierOnboardingProps> = ({
             <CertificationsForm
               certifications={formData.certifications}
               errors={errors.certifications || {}}
+              duplicateWarning={buildCertificationDuplicateWarning()}
               onAddCertification={handleAddCertification}
               onRemoveCertification={handleRemoveCertification}
               onChange={handleCertificationChange}

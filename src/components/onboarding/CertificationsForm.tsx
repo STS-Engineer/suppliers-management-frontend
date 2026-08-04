@@ -11,7 +11,7 @@
  * Plus: certificate name (free text), dates, comments, file upload.
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { CertificationFormData, FormErrors } from "../../types/onboarding";
 import {
   CERTIFICATION_STANDARD_TYPE_OPTIONS,
@@ -22,6 +22,7 @@ import { FormInput, FormSelect } from "./FormElements";
 interface CertificationsFormProps {
   certifications: CertificationFormData[];
   errors: { [key: number]: FormErrors };
+  duplicateWarning?: string;
   onAddCertification: () => void;
   onRemoveCertification: (index: number) => void;
   onChange: (
@@ -34,6 +35,7 @@ interface CertificationsFormProps {
 export const CertificationsForm: React.FC<CertificationsFormProps> = ({
   certifications,
   errors,
+  duplicateWarning,
   onAddCertification,
   onRemoveCertification,
   onChange,
@@ -42,18 +44,48 @@ export const CertificationsForm: React.FC<CertificationsFormProps> = ({
     <div className="form-section">
       <div className="mb-6 flex items-start gap-4 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 ring-1 ring-amber-200">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-              d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.8}
+              d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+            />
           </svg>
         </div>
         <div>
-          <h2 className="text-base font-bold text-slate-900">Quality &amp; Compliance Certifications</h2>
+          <h2 className="text-base font-bold text-slate-900">
+            Quality &amp; Compliance Certifications
+          </h2>
           <p className="mt-0.5 text-sm text-slate-500">
-            Select the standard category first, then pick the specific certification from the list. Upload the certificate document if available.
+            Select the standard category first, then pick the specific
+            certification from the list. Upload the certificate document if
+            available.
           </p>
         </div>
       </div>
+
+      {duplicateWarning && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <svg
+            className="mt-0.5 h-4 w-4 shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.98-1.743 2.98H3.482c-1.53 0-2.493-1.646-1.743-2.98l6.518-11.59zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <p>{duplicateWarning}</p>
+        </div>
+      )}
 
       <div className="space-y-6">
         {certifications.map((cert, index) => (
@@ -100,8 +132,7 @@ export const CertificationsForm: React.FC<CertificationsFormProps> = ({
             />
           </svg>
           <p>
-            Certifications are optional. Add relevant quality and compliance
-            certifications if available.
+            Add relevant quality and compliance certifications if available.
           </p>
         </div>
       )}
@@ -122,6 +153,10 @@ interface CardProps {
   onChange: (field: keyof CertificationFormData, value: any) => void;
 }
 
+const ALLOWED_CERT_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
+// Matches the backend's MAX_FILE_SIZE (app/shared/utils/blob_storage.py).
+const MAX_CERT_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 const CertificationCard: React.FC<CardProps> = ({
   cert,
   index,
@@ -131,6 +166,7 @@ const CertificationCard: React.FC<CardProps> = ({
   onChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const certTypeOptions = cert.standard_type
     ? (CERT_TYPES_BY_STANDARD[cert.standard_type] ?? [])
@@ -144,8 +180,30 @@ const CertificationCard: React.FC<CardProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setFileError(null);
+      onChange("file", null);
+      onChange("file_name", "");
+      return;
+    }
+
+    const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+    if (!ALLOWED_CERT_EXTENSIONS.includes(extension)) {
+      setFileError("Unsupported file type. Accepted formats: PDF, PNG, JPG.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    if (file.size > MAX_CERT_FILE_SIZE_BYTES) {
+      setFileError(
+        `File is too large (${(file.size / 1_048_576).toFixed(1)} MB). Max allowed: 10 MB.`,
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setFileError(null);
     onChange("file", file);
-    onChange("file_name", file?.name ?? "");
+    onChange("file_name", file.name);
   };
 
   return (
@@ -281,6 +339,7 @@ const CertificationCard: React.FC<CardProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setFileError(null);
                     onChange("file", null);
                     onChange("file_name", "");
                     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -317,6 +376,7 @@ const CertificationCard: React.FC<CardProps> = ({
               </>
             )}
           </div>
+          {fileError && <p className="form-error mt-2">{fileError}</p>}
           <input
             ref={fileInputRef}
             type="file"

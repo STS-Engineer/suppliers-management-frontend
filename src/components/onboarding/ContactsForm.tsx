@@ -9,6 +9,7 @@ import { FormInput, FormCheckbox } from "./FormElements";
 interface ContactsFormProps {
   contacts: ContactFormData[];
   errors: { [key: number]: FormErrors };
+  primaryContactError?: string;
   onAddContact: () => void;
   onRemoveContact: (index: number) => void;
   onChange: (index: number, field: keyof ContactFormData, value: any) => void;
@@ -18,6 +19,7 @@ interface ContactsFormProps {
 export const ContactsForm: React.FC<ContactsFormProps> = ({
   contacts,
   errors,
+  primaryContactError,
   onAddContact,
   onRemoveContact,
   onChange,
@@ -96,7 +98,9 @@ export const ContactsForm: React.FC<ContactsFormProps> = ({
                 name={`contact-${index}-phone`}
                 value={contact.phone}
                 onChange={(e) => onChange(index, "phone", e.target.value)}
+                onBlur={() => onBlur(index, "phone")}
                 placeholder="+1 (555) 123-4567"
+                maxLength={50}
                 error={errors[index]?.phone}
               />
 
@@ -106,6 +110,7 @@ export const ContactsForm: React.FC<ContactsFormProps> = ({
                 value={contact.role_label}
                 onChange={(e) => onChange(index, "role_label", e.target.value)}
                 placeholder="e.g., Quality Manager"
+                maxLength={100}
                 error={errors[index]?.role_label}
                 helperText="e.g., Quality Manager, Procurement Manager"
               />
@@ -156,19 +161,32 @@ export const ContactsForm: React.FC<ContactsFormProps> = ({
         </button>
       </div>
 
-      <div className="info-box mt-6">
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path
-            fillRule="evenodd"
-            d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <p>
-          At least one primary contact is required. They will receive the
-          assessment template and prequalification instructions.
-        </p>
-      </div>
+      {primaryContactError ? (
+        <div className="info-box mt-6 border-red-300 bg-red-50 text-red-700">
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.98-1.743 2.98H3.482c-1.53 0-2.493-1.646-1.743-2.98l6.518-11.59zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <p>{primaryContactError}</p>
+        </div>
+      ) : (
+        <div className="info-box mt-6">
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <p>
+            At least one primary contact is required.
+            {/* They will receive the assessment template and prequalification instructions. */}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

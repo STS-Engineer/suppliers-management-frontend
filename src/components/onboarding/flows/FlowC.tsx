@@ -396,6 +396,28 @@ export const FlowC: React.FC<FlowCProps> = ({ groupId, onSuccess, onCancel }) =>
             </p>
           ) : (
             <div className="space-y-4">
+              {(() => {
+                const seen = new Map<string, number>();
+                certs.forEach((c) => {
+                  if (!c.standard_type || !c.certification_type) return;
+                  const key = `${c.standard_type}|${c.certification_type}`;
+                  seen.set(key, (seen.get(key) ?? 0) + 1);
+                });
+                const duplicateLabels = [...seen.entries()]
+                  .filter(([, count]) => count > 1)
+                  .map(([key]) => key.split("|")[1]);
+                if (duplicateLabels.length === 0) return null;
+                return (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                    <span>
+                      This unit has the same certification added more than once:{" "}
+                      {duplicateLabels.join(", ")}. That&apos;s allowed (e.g.
+                      different certificate numbers), just double-check it&apos;s
+                      intentional.
+                    </span>
+                  </div>
+                );
+              })()}
               {certs.map((cert, i) => (
                 <CertCard
                   key={i}
@@ -477,6 +499,10 @@ const CertField: React.FC<{
   </div>
 );
 
+const ALLOWED_CERT_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
+// Matches the backend's MAX_FILE_SIZE (app/shared/utils/blob_storage.py).
+const MAX_CERT_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 const CertCard: React.FC<{
   cert: CertRow;
   index: number;
@@ -486,7 +512,34 @@ const CertCard: React.FC<{
   onStandardType: (v: string) => void;
 }> = ({ cert, index, errors, onRemove, onField, onStandardType }) => {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const typeOptions = cert.standard_type ? (CERT_TYPES_BY_STANDARD[cert.standard_type] ?? []) : [];
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setFileError(null);
+      onField("file", null);
+      return;
+    }
+
+    const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+    if (!ALLOWED_CERT_EXTENSIONS.includes(extension)) {
+      setFileError("Unsupported file type. Accepted formats: PDF, PNG, JPG.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    if (file.size > MAX_CERT_FILE_SIZE_BYTES) {
+      setFileError(
+        `File is too large (${(file.size / 1_048_576).toFixed(1)} MB). Max allowed: 10 MB.`,
+      );
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    setFileError(null);
+    onField("file", file);
+  };
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -580,6 +633,7 @@ const CertCard: React.FC<{
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setFileError(null);
                     onField("file", null);
                     if (fileRef.current) fileRef.current.value = "";
                   }}
@@ -592,12 +646,13 @@ const CertCard: React.FC<{
               <span className="text-xs text-slate-400">Click to upload PDF / PNG / JPG</span>
             )}
           </div>
+          {fileError && <p className="mt-1 text-[11px] text-red-600">{fileError}</p>}
           <input
             ref={fileRef}
             type="file"
             accept=".pdf,.png,.jpg,.jpeg"
             className="hidden"
-            onChange={(e) => onField("file", e.target.files?.[0] ?? null)}
+            onChange={handleFileChange}
           />
         </div>
       </div>
