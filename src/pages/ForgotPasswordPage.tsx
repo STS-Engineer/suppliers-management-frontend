@@ -23,6 +23,7 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [otpLocked, setOtpLocked] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Step 1 — send OTP
@@ -32,6 +33,8 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
     try {
       await supplierAPI.forgotPassword(email.trim().toLowerCase());
+      setOtp(["", "", "", "", "", ""]);
+      setOtpLocked(false);
       setStep("otp");
     } catch (err) {
       setError(
@@ -48,6 +51,7 @@ export default function ForgotPasswordPage() {
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (otpLocked) return;
     const otpValue = otp.join("");
     if (otpValue.length < 6) {
       setError("Please enter all 6 digits.");
@@ -59,11 +63,16 @@ export default function ForgotPasswordPage() {
       setResetToken(res.data.reset_token);
       setStep("password");
     } catch (err) {
-      setError(
-        err instanceof SupplierApiError
-          ? err.message
-          : "OTP verification failed. Please try again.",
-      );
+      if (err instanceof SupplierApiError) {
+        setError(err.message);
+        // 429 = the code has been locked out after too many wrong guesses;
+        // the user must go back and request a fresh one.
+        if (err.statusCode === 429) {
+          setOtpLocked(true);
+        }
+      } else {
+        setError("OTP verification failed. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -139,11 +148,17 @@ export default function ForgotPasswordPage() {
               otpRefs={otpRefs}
               error={error}
               isSubmitting={isSubmitting}
+              locked={otpLocked}
               onSubmit={handleOtpSubmit}
               onChange={handleOtpChange}
               onKeyDown={handleOtpKeyDown}
               onPaste={handleOtpPaste}
-              onBack={() => { setOtp(["", "", "", "", "", ""]); setStep("email"); }}
+              onBack={() => {
+                setOtp(["", "", "", "", "", ""]);
+                setOtpLocked(false);
+                setError(null);
+                setStep("email");
+              }}
             />
           )}
 
@@ -244,6 +259,7 @@ function OtpStep({
   otpRefs,
   error,
   isSubmitting,
+  locked,
   onSubmit,
   onChange,
   onKeyDown,
@@ -255,6 +271,7 @@ function OtpStep({
   otpRefs: React.MutableRefObject<(HTMLInputElement | null)[]>;
   error: string | null;
   isSubmitting: boolean;
+  locked: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onChange: (index: number, value: string) => void;
   onKeyDown: (index: number, e: React.KeyboardEvent) => void;
@@ -293,9 +310,10 @@ function OtpStep({
               inputMode="numeric"
               maxLength={1}
               value={digit}
+              disabled={locked}
               onChange={(e) => onChange(i, e.target.value)}
               onKeyDown={(e) => onKeyDown(i, e)}
-              className="h-14 w-12 rounded-2xl border border-slate-200 bg-slate-50 text-center text-xl font-bold text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-100"
+              className="h-14 w-12 rounded-2xl border border-slate-200 bg-slate-50 text-center text-xl font-bold text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
             />
           ))}
         </div>
@@ -306,25 +324,37 @@ function OtpStep({
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={isSubmitting || otp.join("").length < 6}
-          className={`mt-6 ${BTN_CLS}`}
-        >
-          {isSubmitting ? "Verifying…" : "Verify code"}
-        </button>
+        {locked ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className={`mt-6 ${BTN_CLS}`}
+          >
+            Request a new code
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={isSubmitting || otp.join("").length < 6}
+            className={`mt-6 ${BTN_CLS}`}
+          >
+            {isSubmitting ? "Verifying…" : "Verify code"}
+          </button>
+        )}
       </form>
 
-      <p className="mt-6 text-center text-sm text-slate-500">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 font-semibold text-[#1b5d92] hover:underline"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Change email
-        </button>
-      </p>
+      {!locked && (
+        <p className="mt-6 text-center text-sm text-slate-500">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1 font-semibold text-[#1b5d92] hover:underline"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Change email
+          </button>
+        </p>
+      )}
     </>
   );
 }
