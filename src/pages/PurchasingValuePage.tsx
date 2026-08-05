@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -13,8 +13,10 @@ import {
   X,
 } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
+import { queryKeys } from "../lib/queryClient";
 import {
   loadPersistedFilters,
   savePersistedFilters,
@@ -33,11 +35,29 @@ import { CreateModal } from "./purchasing-value/modals/CreateModal";
 import { DetailDrawer } from "./purchasing-value/modals/DetailDrawer";
 import { PhaseColumn } from "./purchasing-value/cards/PhaseColumn";
 
+// Applies a LOCAL/optimistic update (this page's own create/refresh/delete/
+// duplicate actions, done outside the reactive query lifecycle) directly onto
+// the shared "opportunities" cache entry, so it's visible here immediately
+// AND stays the single source of truth other readers (MonthlyFollowUpPage,
+// another tab) will see too -- instead of a local-only setState that an
+// external invalidation/refetch could later silently overwrite or race with.
+function updateOppsCache(
+  queryClient: QueryClient,
+  updater: (items: Opp[]) => Opp[],
+) {
+  queryClient.setQueryData(queryKeys.opportunities("all"), (old: any) => {
+    if (!old) return old;
+    return {
+      ...old,
+      data: { ...old.data, items: updater((old.data?.items as Opp[]) ?? []) },
+    };
+  });
+}
+
 export default function PurchasingValuePage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
-  const [opportunities, setOpportunities] = useState<Opp[]>([]);
-  const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -120,22 +140,33 @@ export default function PurchasingValuePage() {
     showClosed,
   ]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listOpportunities();
-      setOpportunities((res.data?.items as Opp[]) ?? []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Load failed");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Full unfiltered list, routed through a real (reactive) TanStack Query
+  // subscription on queryKeys.opportunities -- so this page shares its data
+  // AND invalidation with MonthlyFollowUpPage (same "all" paramsKey, both
+  // filter client-side): a mutation on this page's children (ProjectTab,
+  // GateTab, ...), MonthlyFollowUpPage, BudgetingPage, or another browser tab
+  // via crossTabSync calls invalidateOpportunity(), which marks this query
+  // stale, and because it's mounted here (useQuery, not a one-off
+  // fetchQuery) React Query refetches it automatically -- no manual
+  // reload/refresh click needed. Local optimistic actions (create/refresh/
+  // delete/duplicate below) go through updateOppsCache() instead so they
+  // land in this same cache entry rather than a page-local copy.
+  const oppsQuery = useQuery({
+    queryKey: queryKeys.opportunities("all"),
+    queryFn: () => supplierAPI.listOpportunities(),
+  });
+  const opportunities = useMemo<Opp[]>(
+    () => (oppsQuery.data?.data?.items as Opp[]) ?? [],
+    [oppsQuery.data],
+  );
+  const loading = oppsQuery.isPending || oppsQuery.isFetching;
+  const loadError = oppsQuery.isError
+    ? oppsQuery.error instanceof Error
+      ? oppsQuery.error.message
+      : "Load failed"
+    : null;
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = () => oppsQuery.refetch();
 
   // Deep-link: open a specific opportunity's detail when navigated from Budgeting.
   // Supports both router state (legacy) and ?opp=<id> query param (L2 — URL-safe, refresh-proof).
@@ -405,24 +436,24 @@ export default function PurchasingValuePage() {
   const stuck = opportunities.filter((o) => o.status === "Stuck").length;
 
   function handleCreated(o: Opp) {
-    setOpportunities((p) => [o, ...p]);
+    updateOppsCache(queryClient, (p) => [o, ...p]);
     setShowCreate(false);
   }
   function handleRefresh(u: Opp) {
-    setOpportunities((p) =>
+    updateOppsCache(queryClient, (p) =>
       p.map((o) => (o.opportunity_id === u.opportunity_id ? u : o)),
     );
     setSelected(u);
   }
   function handleDeleted(opportunityId: number) {
-    setOpportunities((p) =>
+    updateOppsCache(queryClient, (p) =>
       p.filter((o) => o.opportunity_id !== opportunityId),
     );
     setSelected(null);
   }
   function handleDuplicated(o: Opp) {
     // Prepend the new draft and open it so the buyer can re-scope it immediately.
-    setOpportunities((p) => [o, ...p]);
+    updateOppsCache(queryClient, (p) => [o, ...p]);
     setSelected(o);
   }
 
@@ -779,12 +810,12 @@ export default function PurchasingValuePage() {
             Loading…
           </div>
         )}
-        {error && (
+        {(error || loadError) && (
           <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">
-            {error}
+            {error || loadError}
           </p>
         )}
-        {!loading && !error && (
+        {!loading && !error && !loadError && (
           <div className="scroll-x-bar flex gap-4 pb-6">
             {visiblePhases.map((ph, i) => (
               <div key={ph} className="flex items-start gap-4">

@@ -1,6 +1,9 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { queryKeys } from "../lib/queryClient";
+import { invalidateActionPlans } from "../hooks/useActionPlans";
 import {
   loadPersistedFilters,
   savePersistedFilters,
@@ -246,7 +249,7 @@ function AttachmentsList({
   canDelete = false,
 }: {
   item: ActionItem;
-  onChanged?: () => void;
+  onChanged?: (oppId?: number | null) => void;
   canDelete?: boolean;
 }) {
   const [deletingBlob, setDeletingBlob] = useState<string | null>(null);
@@ -266,7 +269,7 @@ function AttachmentsList({
         item.action_idx,
         attachment.blob_name,
       );
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch (e: any) {
       setError(e?.message ?? "Delete failed");
     } finally {
@@ -323,7 +326,7 @@ function EvidenceButton({
   onChanged,
 }: {
   item: ActionItem;
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -342,7 +345,7 @@ function EvidenceButton({
         item.action_idx,
         file,
       );
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch (e: any) {
       setError(e?.message ?? "Upload failed");
     } finally {
@@ -392,7 +395,7 @@ function EscalateButton({
   onChanged,
 }: {
   item: ActionItem;
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -423,7 +426,7 @@ function EscalateButton({
         },
       );
       setSent(true);
-      onChanged();
+      onChanged(item.opportunity_id);
       setTimeout(() => {
         setOpen(false);
         setSent(false);
@@ -548,7 +551,7 @@ function StatusCell({
   onChanged,
 }: {
   item: ActionItem;
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
@@ -594,7 +597,7 @@ function StatusCell({
         },
       );
       setEditOpen(false);
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch (e: any) {
       setError(e?.message ?? "Update failed.");
     } finally {
@@ -611,7 +614,7 @@ function StatusCell({
         item.sujet_idx,
         item.action_idx,
       );
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch (e: any) {
       setError(e?.message ?? "Delete failed.");
       setDeleting(false);
@@ -624,7 +627,7 @@ function StatusCell({
     setError(null);
     try {
       await supplierAPI.syncActionPlan(item.plan_id, item.opportunity_id);
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch (e: any) {
       setError(e?.message ?? "Sync failed.");
     } finally {
@@ -647,7 +650,7 @@ function StatusCell({
         item.action_idx,
         newStatus,
       );
-      onChanged();
+      onChanged(item.opportunity_id);
     } catch {
       setError("Save failed");
     } finally {
@@ -670,7 +673,7 @@ function StatusCell({
         "closed",
         implDate,
       );
-      onChanged();
+      onChanged(item.opportunity_id);
       setPendingClose(false);
     } catch (e: any) {
       setError(e?.message ?? "Save failed");
@@ -689,7 +692,7 @@ function StatusCell({
         item.action_idx,
       );
       setReminded(true);
-      onChanged();
+      onChanged(item.opportunity_id);
       setTimeout(() => setReminded(false), 4000);
     } catch (e: any) {
       setError(e?.message ?? "Failed to send reminder.");
@@ -948,7 +951,7 @@ function ActionCard({
   isViewer = false,
 }: {
   item: ActionItem;
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
   isViewer?: boolean;
 }) {
   const navigate = useNavigate();
@@ -1150,7 +1153,7 @@ function PersonGroup({
   email: string | null;
   name: string | null;
   items: ActionItem[];
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
   isViewer?: boolean;
 }) {
   const [open, setOpen] = useState(true);
@@ -1252,7 +1255,7 @@ function ActionItemsTable({
   isViewer,
 }: {
   items: ActionItem[];
-  onChanged: () => void;
+  onChanged: (oppId?: number | null) => void;
   isViewer: boolean;
 }) {
   const navigate = useNavigate();
@@ -1665,9 +1668,6 @@ export default function PurchasingActionPlansPage() {
     userEmail,
     ACTION_PLANS_FILTERS_DEFAULT,
   );
-  const [items, setItems] = useState<ActionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>(
     initialFilters.filterStatus,
   );
@@ -1689,33 +1689,44 @@ export default function PurchasingActionPlansPage() {
     });
   }, [userEmail, filterStatus, filterPerson, filterOpp, viewMode]);
 
-  // silent=true skips the full-page spinner — used to re-sync after a mutation
-  // (status change, upload, reminder, escalation) so audit-trail fields
-  // (history, last_reminded_at, last_escalated_at) always reflect server truth.
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listAllActionItems();
-      setItems((res as { data: ActionItem[] }).data ?? []);
-    } catch (e: unknown) {
-      if (!silent) {
-        setError(
-          e instanceof Error ? e.message : "Failed to load action items",
-        );
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Real (reactive) TanStack Query subscription instead of a one-off
+  // fetchQuery -- any mutation here, in ActionPlanTab (a single opportunity's
+  // action plans), or another browser tab via crossTabSync calls
+  // invalidateActionPlans(), which marks this "actionItems" query stale, and
+  // because it's mounted via useQuery (not an isolated fetch) React Query
+  // refetches it automatically -- no manual reload/refresh click needed.
+  const itemsQuery = useQuery({
+    queryKey: queryKeys.actionItems("all"),
+    queryFn: () => supplierAPI.listAllActionItems(),
+  });
+  const items = useMemo<ActionItem[]>(
+    () => (itemsQuery.data as { data: ActionItem[] })?.data ?? [],
+    [itemsQuery.data],
+  );
+  // isPending (no data at all yet) drives the full-page spinner; a background
+  // refetch after a mutation (isFetching only) no longer blanks the page --
+  // it just quietly swaps the list once the server responds.
+  const loading = itemsQuery.isPending;
+  const error = itemsQuery.isError
+    ? itemsQuery.error instanceof Error
+      ? itemsQuery.error.message
+      : "Failed to load action items"
+    : null;
 
-  const refresh = useCallback(() => {
-    load(true);
-  }, [load]);
+  async function load() {
+    await itemsQuery.refetch();
+  }
+
+  // Passed down as `onChanged` to every mutation site (status change, upload,
+  // delete, escalate, remind, sync...). Invalidates the shared "actionItems"
+  // list plus, when the mutated item carries an opportunity_id, that
+  // opportunity's ActionPlanTab cache entry -- and broadcasts both to other
+  // open tabs.
+  function refresh(oppId?: number | null) {
+    invalidateActionPlans(queryClient, oppId ?? undefined);
+  }
 
   const allPersons = Array.from(
     new Set(items.map((i) => i.responsible_email).filter(Boolean)),
@@ -1790,7 +1801,7 @@ export default function PurchasingActionPlansPage() {
       {showQuick && (
         <QuickActionModal
           onClose={() => setShowQuick(false)}
-          onCreated={() => load(true)}
+          onCreated={() => refresh()}
         />
       )}
       {/* Header */}

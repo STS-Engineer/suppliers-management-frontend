@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { AlertTriangle, BarChart2, CheckCircle2, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import supplierAPI from "../../../services/supplierOnboardingAPI";
 import { useAuth } from "../../../context/AuthContext";
 import type { Opp } from "../types";
 import { FINANCIAL_PHASE_CONTEXT, OUTCOME_CONFIG, REVISE_BASELINE_ENABLED } from "../constants";
 import { fmt, fmtDate, toNum } from "../utils";
+import { invalidateRecoveryAndOpportunity } from "../../../hooks/useRecoveryPlans";
 
 export function FinancialTab({
   opp,
@@ -26,6 +28,7 @@ export function FinancialTab({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [showEscalate, setShowEscalate] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [showCashEntry, setShowCashEntry] = useState(false);
@@ -199,6 +202,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
       setShowCashEntry(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -234,6 +238,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
       setEditRow(null);
       // Auto-prompt recovery form when outcome = Recover and no plan yet
       if (rowForm.monthly_outcome === "Recover") {
@@ -270,6 +275,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
       setShowEscalate(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Escalation failed");
@@ -285,6 +291,7 @@ export function FinancialTab({
       await supplierAPI.deescalateFinancialLine(line.financial_line_id);
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -308,6 +315,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
       setShowRecovery(false);
       setPendingRecoveryPrompt(false);
     } catch (err: unknown) {
@@ -326,6 +334,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -405,6 +414,7 @@ export function FinancialTab({
       });
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateRecoveryAndOpportunity(queryClient, opp.opportunity_id);
       setShowRevise(false);
       setReviseForm(emptyReviseForm);
     } catch (err: unknown) {

@@ -20,9 +20,12 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { PageIntro } from "../components/UI";
+import { queryKeys } from "../lib/queryClient";
+import { invalidateRecoveryAndOpportunity } from "../hooks/useRecoveryPlans";
 
 // ─── Types (subset of the opportunity payload we need here) ──────────────────
 interface MonthlyRow {
@@ -318,6 +321,7 @@ function DeltaPill({ value, currency }: { value: number | null; currency?: strin
 
 export default function MonthlyFollowUpPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
   // Purchasing Director / VP Conversion may enter real savings on any
@@ -327,8 +331,6 @@ export default function MonthlyFollowUpPage() {
     user?.access_profile === "purchasing_director" ||
     user?.access_profile === "vp_conversion";
 
-  const [opps, setOpps] = useState<Opp[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -351,25 +353,35 @@ export default function MonthlyFollowUpPage() {
   const [edits, setEdits] = useState<Record<number, Edit>>({});
   const [touched, setTouched] = useState<Set<number>>(new Set());
 
-  const [recoveryLine, setRecoveryLine] = useState<FinLine | null>(null);
-  const [escalateLine, setEscalateLine] = useState<FinLine | null>(null);
+  const [recoveryLine, setRecoveryLine] = useState<{ line: FinLine; oppId: number } | null>(null);
+  const [escalateLine, setEscalateLine] = useState<{ line: FinLine; oppId: number } | null>(null);
+
+  // Full unfiltered list, routed through a real (reactive) TanStack Query
+  // subscription on queryKeys.opportunities -- so this page shares its data
+  // AND invalidation with PurchasingValuePage (same "all" paramsKey, both
+  // filter client-side): a mutation on this page, PurchasingValuePage,
+  // BudgetingPage, or another browser tab via crossTabSync calls
+  // invalidateOpportunity(), which marks this query stale, and because it's
+  // mounted here (useQuery, not a one-off fetchQuery) React Query refetches
+  // it automatically -- no manual reload/refresh click needed.
+  const oppsQuery = useQuery({
+    queryKey: queryKeys.opportunities("all"),
+    queryFn: () => supplierAPI.listOpportunities(),
+  });
+  const opps = useMemo<Opp[]>(
+    () => (oppsQuery.data?.data?.items as Opp[]) ?? [],
+    [oppsQuery.data],
+  );
+  const loading = oppsQuery.isPending || oppsQuery.isFetching;
+  const loadError = oppsQuery.isError
+    ? oppsQuery.error instanceof Error
+      ? oppsQuery.error.message
+      : "Failed to load opportunities"
+    : null;
 
   async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listOpportunities();
-      setOpps((res.data?.items as Opp[]) ?? []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load opportunities");
-    } finally {
-      setLoading(false);
-    }
+    await oppsQuery.refetch();
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   const ownerOptions = useMemo(
     () =>
@@ -560,6 +572,9 @@ export default function MonthlyFollowUpPage() {
     setNotice(null);
     try {
       const ids = [...touched];
+      // monthly_financial_id -> owning opportunity id, so we know which
+      // opportunities to invalidate once the saves are done.
+      const oppIdOfMonth = new Map(rows.map((r) => [r.month.monthly_financial_id, r.oppId]));
       for (const id of ids) {
         const e = edits[id];
         if (!e) continue;
@@ -571,6 +586,14 @@ export default function MonthlyFollowUpPage() {
           updated_by: userEmail,
         });
       }
+      // Invalidate every opportunity touched (its detail cache, the shared
+      // opportunities list, the KPI dashboard, AND the recovery-plans list --
+      // a monthly outcome saved here can be "Recover", which is exactly what
+      // PurchasingRecoveryPage tracks), and broadcast to other tabs.
+      const affectedOppIds = new Set(
+        ids.map((id) => oppIdOfMonth.get(id)).filter((v): v is number => v != null),
+      );
+      affectedOppIds.forEach((oppId) => invalidateRecoveryAndOpportunity(queryClient, oppId));
       await load();
       setNotice(`Saved ${ids.length} row(s).`);
     } catch (err: unknown) {
@@ -768,9 +791,9 @@ export default function MonthlyFollowUpPage() {
           {notice}
         </div>
       )}
-      {error && (
+      {(error || loadError) && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-          {error}
+          {error || loadError}
         </div>
       )}
 
@@ -972,13 +995,13 @@ export default function MonthlyFollowUpPage() {
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => setRecoveryLine(r.line)}
+                              onClick={() => setRecoveryLine({ line: r.line, oppId: r.oppId })}
                               className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
                             >
                               {r.line.recovery_status ? `Recovery: ${r.line.recovery_status}` : "Recovery"}
                             </button>
                             <button
-                              onClick={() => setEscalateLine(r.line)}
+                              onClick={() => setEscalateLine({ line: r.line, oppId: r.oppId })}
                               className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
                             >
                               Escalate
@@ -1039,7 +1062,8 @@ export default function MonthlyFollowUpPage() {
 
       {recoveryLine && (
         <RecoveryModal
-          line={recoveryLine}
+          line={recoveryLine.line}
+          oppId={recoveryLine.oppId}
           userEmail={userEmail}
           onClose={() => setRecoveryLine(null)}
           onSaved={() => {
@@ -1050,7 +1074,8 @@ export default function MonthlyFollowUpPage() {
       )}
       {escalateLine && (
         <EscalateModal
-          line={escalateLine}
+          line={escalateLine.line}
+          oppId={escalateLine.oppId}
           userEmail={userEmail}
           onClose={() => setEscalateLine(null)}
           onSaved={() => {
@@ -1066,15 +1091,18 @@ export default function MonthlyFollowUpPage() {
 // ─── Recovery plan modal ─────────────────────────────────────────────────────
 function RecoveryModal({
   line,
+  oppId,
   userEmail,
   onClose,
   onSaved,
 }: {
   line: FinLine;
+  oppId: number;
   userEmail: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState(line.recovery_status || "Planned");
   const [amount, setAmount] = useState(line.recovery_amount != null ? String(line.recovery_amount) : "");
   const [target, setTarget] = useState(line.recovery_target_date ?? "");
@@ -1093,6 +1121,7 @@ function RecoveryModal({
         recovery_note: note || undefined,
         updated_by: userEmail,
       });
+      invalidateRecoveryAndOpportunity(queryClient, oppId);
       onSaved();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed");
@@ -1146,15 +1175,18 @@ function RecoveryModal({
 // ─── Escalate modal ──────────────────────────────────────────────────────────
 function EscalateModal({
   line,
+  oppId,
   userEmail,
   onClose,
   onSaved,
 }: {
   line: FinLine;
+  oppId: number;
   userEmail: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [reason, setReason] = useState(line.escalation_reason ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1176,6 +1208,7 @@ function EscalateModal({
           escalated_by: userEmail,
         });
       }
+      invalidateRecoveryAndOpportunity(queryClient, oppId);
       onSaved();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed");

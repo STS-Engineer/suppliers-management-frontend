@@ -9,8 +9,14 @@
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
+import { queryKeys } from "../lib/queryClient";
+import {
+  useRelationWorkspaceQuery,
+  invalidateRelationWorkspace,
+} from "../hooks/useRelationWorkspace";
 import CommitteeReviewPanel from "../components/committee/CommitteeReviewPanel";
 import {
   CERTIFICATION_STANDARD_TYPE_OPTIONS,
@@ -573,6 +579,7 @@ const inputCls =
 // ---------------------------------------------------------------------------
 
 function VpReviewBar({ relationId, onDone }: { relationId: number; onDone: () => void }) {
+  const queryClient = useQueryClient();
   const [action, setAction] = useState<"idle" | "approving" | "rejecting">("idle");
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
@@ -588,6 +595,7 @@ function VpReviewBar({ relationId, onDone }: { relationId: number; onDone: () =>
     try {
       if (type === "approve") await supplierAPI.approveRelationReview(relationId, comment || undefined);
       else await supplierAPI.rejectRelationReview(relationId, comment.trim());
+      invalidateRelationWorkspace(queryClient, relationId);
       onDone();
     } catch (e: any) {
       setErr(e.message ?? "Action failed.");
@@ -682,6 +690,30 @@ export default function RelationEvaluationPage() {
   const { user } = useAuth();
   const isVpConversion = user?.access_profile === "vp_conversion";
   const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
+
+  const queryClient = useQueryClient();
+  // Shared cache entry for this relation's workspace payload (see
+  // src/hooks/useRelationWorkspace.ts). This page still hydrates its many
+  // local form/UI states imperatively via `load()` below (rewriting that
+  // logic to be purely derived from `workspaceQuery.data` would be a much
+  // larger refactor than this pass calls for) -- but subscribing here means
+  // that when ActiveSuppliersPage mutates this relation, or another browser
+  // tab does (via crossTabSync), this query refetches and the effect further
+  // below re-runs `load()` so the open Evaluation page picks up the change
+  // without a manual reload.
+  const workspaceQuery = useRelationWorkspaceQuery(
+    Number.isNaN(relId) ? null : relId,
+  );
+  // There is no per-field "dirty" tracking in this form today. To avoid a
+  // background refetch (window refocus, or another tab/page invalidating the
+  // shared cache) silently wiping out an unsaved in-progress edit, every
+  // user-facing setter below flips this ref to true, and the resync effect
+  // skips re-hydrating while it's set. `load()` resets it once it applies
+  // fresh data (both on mount and right after this page's own save actions,
+  // where overwriting the just-saved local state with the server's echo is
+  // exactly what we want).
+  const dirtyRef = useRef(false);
+  const workspaceDataUpdatedAtRef = useRef<number | undefined>(undefined);
 
   const [tab, setTab] = useState<Tab>("class");
   const [form, setForm] = useState<EvaluationDetailsFormData>({
@@ -808,8 +840,17 @@ export default function RelationEvaluationPage() {
     setLoading(true);
     setError(null);
     try {
+      // Route the workspace fetch through the shared TanStack Query cache
+      // (queryClient.fetchQuery) instead of calling the API directly: it
+      // reuses a fresh cached response when one exists (e.g. one just primed
+      // by workspaceQuery below) and, either way, populates the same cache
+      // entry ActiveSuppliersPage's detail modal reads -- so opening the
+      // Evaluation page also warms the Supplier Panel's copy.
       const [wsRes, sitesRes] = await Promise.all([
-        supplierAPI.getRelationEvaluationWorkspace(relId),
+        queryClient.fetchQuery({
+          queryKey: queryKeys.relationWorkspace(relId),
+          queryFn: () => supplierAPI.getRelationEvaluationWorkspace(relId),
+        }),
         supplierAPI.listSites(),
       ]);
       const ws = wsRes.data as any;
@@ -818,6 +859,10 @@ export default function RelationEvaluationPage() {
         setLoading(false);
         return;
       }
+      // We're about to apply fresh server data over all the local form
+      // state below -- from this point on it once again matches the server,
+      // so any earlier "the user has unsaved edits" flag no longer applies.
+      dirtyRef.current = false;
       const rel: SupplierSiteRelation = ws.relation;
       const sites = (
         Array.isArray(sitesRes.data) ? sitesRes.data : []
@@ -985,14 +1030,36 @@ export default function RelationEvaluationPage() {
     load();
   }, [load]);
 
-  const setField = (key: keyof EvaluationDetailsFormData, value: any) =>
+  // React to *external* changes to this relation's workspace: a mutation
+  // from ActiveSuppliersPage's detail modal, or another browser tab (relayed
+  // via crossTabSync), invalidates the shared "relationWorkspace" query key,
+  // which refetches it here since `workspaceQuery` is mounted -- this effect
+  // notices the new data and re-runs `load()` to refresh the page's local
+  // state. Skips the very first arrival (the mount effect above already
+  // handles initial load) and skips entirely while the user has unsaved
+  // edits in progress (see dirtyRef above).
+  useEffect(() => {
+    if (workspaceDataUpdatedAtRef.current === undefined) {
+      workspaceDataUpdatedAtRef.current = workspaceQuery.dataUpdatedAt;
+      return;
+    }
+    if (workspaceQuery.dataUpdatedAt === workspaceDataUpdatedAtRef.current) return;
+    workspaceDataUpdatedAtRef.current = workspaceQuery.dataUpdatedAt;
+    if (dirtyRef.current) return;
+    load();
+  }, [workspaceQuery.dataUpdatedAt, load]);
+
+  const setField = (key: keyof EvaluationDetailsFormData, value: any) => {
+    dirtyRef.current = true;
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   const setCriterionDetail = (
     pldKey: string,
     field: keyof CriterionDetail,
     value: string,
   ) => {
+    dirtyRef.current = true;
     setCriteriaDetails((prev) => {
       const existing = prev[pldKey] ?? {};
       const updated: CriterionDetail = { ...existing, [field]: value };
@@ -1018,6 +1085,7 @@ export default function RelationEvaluationPage() {
   };
 
   const toggleStrategicMention = (value: string) => {
+    dirtyRef.current = true;
     setStrategicMentions((prev) => {
       const next = new Set(prev);
       if (value === "none") return new Set(["none"]);
@@ -1077,6 +1145,7 @@ export default function RelationEvaluationPage() {
           Object.entries(criteriaDetails).map(([k, v]) => [k, v]),
         ),
       });
+      invalidateRelationWorkspace(queryClient, relId);
       showMsg("Class evaluation saved.");
       await load();
     } catch (err) {
@@ -1128,6 +1197,7 @@ export default function RelationEvaluationPage() {
         comments: form.comments,
       });
       setHasDraft(true);
+      invalidateRelationWorkspace(queryClient, relId);
       showMsg("Draft saved — you can complete and submit later.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Draft save failed.");
@@ -1140,6 +1210,7 @@ export default function RelationEvaluationPage() {
     setRevising(true);
     try {
       await supplierAPI.resetRelationToDraft(relId);
+      invalidateRelationWorkspace(queryClient, relId);
       await load();
     } catch (e: any) {
       setError(e.message ?? "Failed to reset relation.");
@@ -1253,6 +1324,7 @@ export default function RelationEvaluationPage() {
         await supplierAPI.submitRelationForReview(relId);
       }
 
+      invalidateRelationWorkspace(queryClient, relId);
       const successMsg = isVpConversion
         ? "Baseline locked and relation approved for panel."
         : "Evaluation submitted for VP Conversion review.";
@@ -1282,6 +1354,7 @@ export default function RelationEvaluationPage() {
         impact_question_5: form.impact_question_5,
         impact_question_6: form.impact_question_6,
       });
+      invalidateRelationWorkspace(queryClient, relId);
       showMsg("Decision & impact saved.");
       await load();
     } catch (err) {
@@ -1462,7 +1535,10 @@ export default function RelationEvaluationPage() {
               <input
                 type="date"
                 value={evaluationDate}
-                onChange={(e) => setEvaluationDate(e.target.value)}
+                onChange={(e) => {
+                  dirtyRef.current = true;
+                  setEvaluationDate(e.target.value);
+                }}
                 className="border-0 bg-transparent text-sm font-semibold text-white outline-none [color-scheme:dark]"
               />
             </div>

@@ -16,6 +16,10 @@ import supplierAPI, {
   SupplierApiError,
 } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
+import {
+  useAccountRequestMutations,
+  useAccountRequestsQuery,
+} from "../hooks/useAccountRequests";
 
 type StatusFilter = "pending" | "approved" | "rejected" | "all";
 type UserFilter = "active" | "inactive" | "all";
@@ -214,40 +218,35 @@ function StatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 // Requests row action — approve or reject with optional note
 // ---------------------------------------------------------------------------
-function ActionPanel({
-  request,
-  onDone,
-}: {
-  request: AccountRequestRecord;
-  onDone: () => void;
-}) {
+function ActionPanel({ request }: { request: AccountRequestRecord }) {
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [message, setMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { approve, reject } = useAccountRequestMutations();
+  const isSubmitting = approve.isPending || reject.isPending;
 
   if (request.registration_status !== "pending") return null;
 
   const submit = async () => {
     setError(null);
-    setIsSubmitting(true);
     try {
       if (mode === "approve") {
-        await supplierAPI.approveAccountRequest(
-          request.id_identity,
-          message || undefined,
-        );
+        await approve.mutateAsync({
+          id: request.id_identity,
+          message: message || undefined,
+        });
       } else {
-        await supplierAPI.rejectAccountRequest(
-          request.id_identity,
-          message || undefined,
-        );
+        await reject.mutateAsync({
+          id: request.id_identity,
+          reason: message || undefined,
+        });
       }
-      onDone();
+      // Approving/rejecting invalidates the shared "accountRequests" cache
+      // (see useAccountRequestMutations), so the table here, the sidebar
+      // badge, and any other open tab/page all refresh on their own —
+      // no manual reload callback needed.
     } catch (err) {
       setError(err instanceof SupplierApiError ? err.message : "Action failed.");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -328,33 +327,22 @@ function ActionPanel({
 // ---------------------------------------------------------------------------
 function RequestsPanel() {
   const [filter, setFilter] = useState<StatusFilter>("pending");
-  const [requests, setRequests] = useState<AccountRequestRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listAccountRequests(
-        filter === "all" ? undefined : filter,
-        filter === "approved",
-      );
-      setRequests(res.data.items);
-    } catch (err) {
-      setError(
-        err instanceof SupplierApiError
-          ? err.message
-          : "Failed to load account requests.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filter]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useAccountRequestsQuery(
+    filter === "all" ? undefined : filter,
+    filter === "approved",
+  );
+  const requests = data?.items ?? [];
+  const error = queryError
+    ? queryError instanceof SupplierApiError
+      ? queryError.message
+      : "Failed to load account requests."
+    : null;
+  const load = () => refetch();
 
   return (
     <div className="space-y-4">
@@ -426,7 +414,7 @@ function RequestsPanel() {
                       {formatDate(req.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <ActionPanel request={req} onDone={load} />
+                      <ActionPanel request={req} />
                     </td>
                   </tr>
                 ))}

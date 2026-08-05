@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -26,6 +27,7 @@ import {
   loadPersistedFilters,
   savePersistedFilters,
 } from "../utils/persistedFilters";
+import { queryKeys } from "../lib/queryClient";
 
 const KPI_FILTERS_PAGE_KEY = "purchasing-kpis";
 
@@ -1404,9 +1406,6 @@ export default function PurchasingKpiPage() {
     userEmail,
     { selectedYear: null, plantIds: [], categories: [], buyers: [] },
   );
-  const [data, setData] = useState<KpiData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(
     initialFilters.selectedYear ?? activeBudgetYear,
   );
@@ -1430,26 +1429,35 @@ export default function PurchasingKpiPage() {
     });
   }, [userEmail, selectedYear, filters]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.getPurchasingKpis(selectedYear, {
+  // Read-only aggregate over every opportunity mutation across the app —
+  // routed through the shared "purchasingKpis" query key so any opportunity
+  // mutation elsewhere (Monthly Follow-up, Purchasing Value, Budgeting, Gate
+  // decisions, ...) invalidates it via invalidateOpportunity and this page
+  // refetches automatically (plus refetchOnWindowFocus from the queryClient
+  // defaults), without this page ever mutating anything itself.
+  const kpiParamsKey = JSON.stringify({
+    selectedYear,
+    plantIds: filters.plantIds,
+    categories: filters.categories,
+    buyers: filters.buyers,
+  });
+  const kpiQuery = useQuery({
+    queryKey: queryKeys.purchasingKpis(kpiParamsKey),
+    queryFn: () =>
+      supplierAPI.getPurchasingKpis(selectedYear, {
         plantIds: filters.plantIds,
         categories: filters.categories,
         buyers: filters.buyers,
-      });
-      setData(res.data as KpiData);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedYear, filters]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      }),
+  });
+  const data = (kpiQuery.data?.data as KpiData | undefined) ?? null;
+  const loading = kpiQuery.isLoading;
+  const error = kpiQuery.error
+    ? kpiQuery.error instanceof Error
+      ? kpiQuery.error.message
+      : "Failed"
+    : null;
+  const load = () => kpiQuery.refetch();
 
   if (loading)
     return (

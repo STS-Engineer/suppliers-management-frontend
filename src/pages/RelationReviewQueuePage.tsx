@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, XCircle, Clock, Building2, MapPin, User, ChevronDown, ChevronUp } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
+import { queryKeys } from "../lib/queryClient";
 
 type RelationRecord = {
   relation_id: number;
@@ -197,24 +199,28 @@ function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; 
 export default function RelationReviewQueuePage() {
   const { user } = useAuth();
   const isVpConversion = user?.access_profile === "vp_conversion";
-  const [items, setItems] = useState<RelationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listPendingRelationReviews();
-      setItems(res.data);
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load review queue.");
-    } finally {
-      setLoading(false);
-    }
+  // Real (reactive) TanStack Query subscription -- an approve/reject
+  // mutation below invalidates this query, and because it's mounted here
+  // (useQuery, not a one-off fetch) React Query refetches it automatically.
+  // refetchOnWindowFocus (a global default, see queryClient.ts) also catches
+  // relations reviewed from elsewhere when the user comes back to this tab.
+  const reviewQuery = useQuery({
+    queryKey: queryKeys.pendingRelationReviews(),
+    queryFn: () => supplierAPI.listPendingRelationReviews(),
+  });
+  const items = (reviewQuery.data?.data as RelationRecord[] | undefined) ?? [];
+  const loading = reviewQuery.isPending || reviewQuery.isFetching;
+  const error = reviewQuery.isError
+    ? reviewQuery.error instanceof Error
+      ? reviewQuery.error.message
+      : "Failed to load review queue."
+    : null;
+
+  const handleDone = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingRelationReviews() });
   };
-
-  useEffect(() => { load(); }, []);
 
   return (
     <div className="px-4 py-6 xl:px-8">
@@ -246,7 +252,7 @@ export default function RelationReviewQueuePage() {
       {!loading && items.length > 0 && (
         <div className="space-y-3">
           {items.map((item) => (
-            <RelationCard key={item.relation_id} item={item} onDone={load} canApprove={isVpConversion} />
+            <RelationCard key={item.relation_id} item={item} onDone={handleDone} canApprove={isVpConversion} />
           ))}
         </div>
       )}

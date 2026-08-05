@@ -12,6 +12,7 @@ import {
   Download,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { useQueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -19,6 +20,7 @@ import {
   loadPersistedFilters,
   savePersistedFilters,
 } from "../utils/persistedFilters";
+import { invalidateOpportunity } from "../hooks/useOpportunity";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -392,6 +394,7 @@ const COL_HEADER = "px-3 py-2.5 font-semibold";
 
 export default function BudgetingPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
   const isPrivileged = ["vp_conversion", "purchasing_director"].includes(
@@ -672,6 +675,7 @@ export default function BudgetingPage() {
         real_start_date: value,
         changed_by: userEmail,
       });
+      invalidateOpportunity(queryClient, opportunityId);
       await load(fiscalYear);
       setRealStartEdits((p) => {
         const n = { ...p };

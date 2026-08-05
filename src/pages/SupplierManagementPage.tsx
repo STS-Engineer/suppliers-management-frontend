@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Building2,
@@ -33,6 +34,8 @@ import {
   loadPersistedFilters,
   savePersistedFilters,
 } from "../utils/persistedFilters";
+import { queryKeys } from "../lib/queryClient";
+import { invalidateSupplierGroups } from "../hooks/useSupplierGroups";
 import type { SupplierGroupSummary } from "../types/onboarding";
 
 const SB9_FILTERS_PAGE_KEY = "sb9-supplier-groups";
@@ -220,6 +223,7 @@ function GroupDrawer({
   onOpenWorkspace: () => void;
   onGroupUpdated: (g: SupplierGroupSummary) => void;
 }) {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -250,6 +254,7 @@ function GroupDrawer({
         supplier_owner: form.supplier_owner || undefined,
       });
       onGroupUpdated(res.data);
+      invalidateSupplierGroups(queryClient);
       setEditing(false);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save changes.");
@@ -267,6 +272,7 @@ function GroupDrawer({
         !isActive,
       );
       onGroupUpdated(res.data.group);
+      invalidateSupplierGroups(queryClient);
       setConfirmStatus(false);
     } catch (e) {
       setStatusError(
@@ -764,54 +770,43 @@ export const SupplierManagementPage = () => {
     SB9_FILTERS_DEFAULT,
   );
 
-  const [groups, setGroups] = useState<SupplierGroupSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(initialFilters.search);
   const [scopeFilter, setScopeFilter] = useState(initialFilters.scopeFilter);
   const [tab, setTab] = useState<"active" | "inactive">(initialFilters.tab);
   const [drawerGroup, setDrawerGroup] = useState<SupplierGroupSummary | null>(
     null,
   );
-  const [directGroup, setDirectGroup] = useState<SupplierGroupSummary | null>(
-    null,
-  );
-  const [reloadTick, setReloadTick] = useState(0);
   const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
+  // Real (reactive) TanStack Query subscription — fetches both active and
+  // inactive groups (the Active/Deactivated tab filters client-side, like the
+  // scope filter below, so a direct link to a deactivated group's workspace
+  // still resolves). A mutation here (GroupDrawer), in CarbonFootprintPage's
+  // reader, or in another browser tab via crossTabSync calls
+  // invalidateSupplierGroups(), which marks this query stale, and because
+  // it's mounted here (useQuery, not a one-off fetch) React Query refetches
+  // it automatically — no manual reload/refresh click needed.
+  const groupsQuery = useQuery({
+    queryKey: queryKeys.supplierGroups("all"),
+    queryFn: () => supplierAPI.listSupplierGroups(0, 1000, "all"),
+  });
+  const groups = useMemo<SupplierGroupSummary[]>(
+    () => groupsQuery.data?.data?.items ?? [],
+    [groupsQuery.data],
+  );
+  const loading = groupsQuery.isPending || groupsQuery.isFetching;
+  const error = groupsQuery.isError
+    ? groupsQuery.error instanceof Error
+      ? groupsQuery.error.message
+      : "Failed to load groups"
+    : null;
 
-    // Fetch both active and inactive groups — the Active/Deactivated tab
-    // filters client-side (like the scope filter below), so a direct link to
-    // a deactivated group's workspace still resolves.
-    supplierAPI
-      .listSupplierGroups(0, 1000, "all")
-      .then((res) => {
-        if (cancelled) return;
-        const items: SupplierGroupSummary[] = res.data?.items || [];
-        setGroups(items);
-        if (groupId) {
-          const matched = items.find(
-            (g) => g.id_group === Number.parseInt(groupId, 10),
-          );
-          setDirectGroup(matched ?? null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled)
-          setError(e instanceof Error ? e.message : "Failed to load groups");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [groupId, reloadTick]);
+  const directGroup = useMemo(() => {
+    if (!groupId) return null;
+    return (
+      groups.find((g) => g.id_group === Number.parseInt(groupId, 10)) ?? null
+    );
+  }, [groupId, groups]);
 
   // Reset page on filter/search/tab change
   useEffect(() => {
@@ -970,7 +965,7 @@ export const SupplierManagementPage = () => {
           action={
             <button
               type="button"
-              onClick={() => setReloadTick((v) => v + 1)}
+              onClick={() => groupsQuery.refetch()}
               className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
             >
               Retry
@@ -1082,9 +1077,9 @@ export const SupplierManagementPage = () => {
             navigate(`/suppliers/${drawerGroup.id_group}/manage`)
           }
           onGroupUpdated={(updated) => {
-            setGroups((prev) =>
-              prev.map((g) => (g.id_group === updated.id_group ? updated : g)),
-            );
+            // Immediate feedback for the open drawer; the underlying grid
+            // list refreshes itself via invalidateSupplierGroups (called by
+            // GroupDrawer right after this), no local list mutation needed.
             setDrawerGroup(updated);
           }}
         />

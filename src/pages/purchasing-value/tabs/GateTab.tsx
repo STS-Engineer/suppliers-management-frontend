@@ -11,8 +11,10 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import supplierAPI from "../../../services/supplierOnboardingAPI";
 import { useAuth } from "../../../context/AuthContext";
+import { invalidateOpportunity } from "../../../hooks/useOpportunity";
 import { MemberDirectoryPicker } from "../../../components/common/MemberDirectoryPicker";
 import {
   ALL_ROLES,
@@ -39,6 +41,7 @@ export function GateTab({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   // The per-reviewer approval/validation links (and the "Send Approval Links"
   // action) are only exposed to the Purchasing Director and the Conversion
@@ -189,35 +192,43 @@ export function GateTab({
   // While the opportunity is awaiting a gate decision, approvers vote on the
   // external /approve link pages — poll so the app reflects new votes live and
   // shows the AUTOMATIC phase transition (once everyone approves) without a
-  // manual refresh. Stops as soon as the status/phase changes.
+  // manual refresh. Stops as soon as the status/phase changes (refetchInterval
+  // re-evaluates the condition below on every tick, same "stop as soon as it's
+  // no longer awaiting" behaviour as the old setInterval effect).
+  const awaitingGateDecision =
+    opp.status === "Awaiting Validation" ||
+    opp.status === "Under Committee Review";
+  const gatePollQuery = useQuery({
+    queryKey: ["gateApprovalStatus", opp.opportunity_id],
+    queryFn: () => supplierAPI.getGateApprovalStatus(opp.opportunity_id),
+    enabled: awaitingGateDecision,
+    refetchInterval: awaitingGateDecision ? 15000 : false,
+    refetchIntervalInBackground: false,
+  });
   useEffect(() => {
-    const awaiting =
-      opp.status === "Awaiting Validation" ||
-      opp.status === "Under Committee Review";
-    if (!awaiting) return;
-    const timer = setInterval(async () => {
-      try {
-        const st = await supplierAPI.getGateApprovalStatus(opp.opportunity_id);
-        setApprovalRequests(st.data ?? []);
-        // A completed gate means consensus was applied (phase advanced, or sent
-        // back for rework / cancelled) — pull the fresh opportunity and update.
-        const anyCompleted = (st.data ?? []).some(
-          (r: { status: string | null }) => r.status === "Completed",
-        );
-        if (anyCompleted) {
-          const fresh = await supplierAPI.getOpportunity(opp.opportunity_id);
+    if (!gatePollQuery.data) return;
+    const requests = gatePollQuery.data.data ?? [];
+    setApprovalRequests(requests);
+    // A completed gate means consensus was applied (phase advanced, or sent
+    // back for rework / cancelled) — pull the fresh opportunity and update.
+    const anyCompleted = requests.some(
+      (r: { status: string | null }) => r.status === "Completed",
+    );
+    if (anyCompleted) {
+      supplierAPI
+        .getOpportunity(opp.opportunity_id)
+        .then((fresh) => {
           const f = fresh.data as Opp;
           if (f.status !== opp.status || f.phase_status !== opp.phase_status) {
             onRefresh(f);
           }
-        }
-      } catch {
-        /* transient network error — keep polling */
-      }
-    }, 15000);
-    return () => clearInterval(timer);
+        })
+        .catch(() => {
+          /* transient network error — next poll tick retries */
+        });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opp.opportunity_id, opp.status, opp.phase_status]);
+  }, [gatePollQuery.data]);
 
   async function submitApprovalRequest() {
     // Block submission if STP format is incomplete for Sourcing/Technical types
@@ -272,6 +283,7 @@ export function GateTab({
       // without this the badge stays stale until a manual page refresh.
       const freshOpp = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(freshOpp.data as Opp);
+      invalidateOpportunity(queryClient, opp.opportunity_id);
       const pmFromVotes = requests
         .flatMap(
           (r: {
@@ -358,6 +370,7 @@ export function GateTab({
       // without this the badge stays stale until a manual page refresh.
       const freshOpp = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(freshOpp.data as Opp);
+      invalidateOpportunity(queryClient, opp.opportunity_id);
       setShowApproval(false);
       setApproverEmails({});
       setNegotiationApproverEmail("");
@@ -713,6 +726,7 @@ export function GateTab({
                   userEmail,
                 );
                 onRefresh(res.data as Opp);
+                invalidateOpportunity(queryClient, opp.opportunity_id);
                 const updatedOpp = res.data as Opp;
                 onNavigate("edit");
               })
@@ -1469,6 +1483,7 @@ export function GateTab({
                     },
                   );
                   onRefresh(res.data as Opp);
+                  invalidateOpportunity(queryClient, opp.opportunity_id);
                   setComments("");
                   setPm("");
                   const updated = res.data as Opp;

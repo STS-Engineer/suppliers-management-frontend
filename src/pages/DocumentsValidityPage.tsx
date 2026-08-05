@@ -10,7 +10,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { queryKeys } from "../lib/queryClient";
+import { invalidateRelationWorkspace } from "../hooks/useRelationWorkspace";
 import {
   loadPersistedFilters,
   savePersistedFilters,
@@ -79,6 +82,15 @@ type GroupBy = "supplier" | "criterion";
 
 const CRITERIA_VALIDITY_FILTERS_PAGE_KEY = "criteria-validity";
 const CRITERIA_VALIDITY_RESULTS_PAGE_KEY = "criteria-validity-results";
+
+// This page has no server-side filters on the site panel fetch (it always
+// pulls every relation and filters/scans client-side), so one fixed query
+// key is enough -- still "sitePanel"-prefixed so a relation mutation
+// elsewhere (this page's own reset, or another page/tab) invalidates it.
+const SITE_PANEL_PARAMS_KEY = JSON.stringify({
+  page: "DocumentsValidityPage",
+  limit: 1000,
+});
 
 interface CriterionEntry {
   relId: number;
@@ -782,6 +794,7 @@ function ResultsPanel({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DocumentsValidityPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const userEmail = (user as { email?: string })?.email ?? "";
   const isPrivileged = ["vp_conversion", "purchasing_director"].includes(user?.access_profile ?? "");
@@ -839,9 +852,16 @@ export default function DocumentsValidityPage() {
     let cancelled = false;
     setLoading(true);
 
-    // Load panel metadata + bulk criteria data in parallel
+    // Load panel metadata + bulk criteria data in parallel. The site panel
+    // fetch is routed through the shared TanStack Query cache
+    // (queryClient.fetchQuery) so this page shares its data -- and
+    // invalidation -- with the other site-panel consumers
+    // (ActiveSuppliersPage, RelationEvaluationPage, SupplierDirectoryAdminPage).
     Promise.all([
-      supplierAPI.listSitePanel({ limit: 1000 }),
+      queryClient.fetchQuery({
+        queryKey: queryKeys.sitePanel(SITE_PANEL_PARAMS_KEY),
+        queryFn: () => supplierAPI.listSitePanel({ limit: 1000 }),
+      }),
       supplierAPI.listSites(),
       supplierAPI.getCriteriaValidityBulk(),
     ])
@@ -878,7 +898,7 @@ export default function DocumentsValidityPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [queryClient]);
 
   // ── Scan — single bulk request ─────────────────────────────────────────────
 
@@ -924,6 +944,10 @@ export default function DocumentsValidityPage() {
           for (const e of entries) payload[e.criterionKey] = null;
           try {
             await supplierAPI.updateRelationClassEvaluation(relId, payload);
+            // Refreshes this relation's workspace cache (Evaluation
+            // page/detail modal) plus every sitePanel entry, and syncs other
+            // open tabs.
+            invalidateRelationWorkspace(queryClient, relId);
             for (const e of entries) {
               log.push({
                 supplierName: e.supplierName,
@@ -948,6 +972,13 @@ export default function DocumentsValidityPage() {
     );
     setResetLog(log);
     setResetting(false);
+    // Each relation whose class evaluation just changed -- refresh its
+    // workspace cache (Evaluation page/detail modal) plus every sitePanel
+    // entry, and sync other open tabs. Done once per relation after the
+    // whole batch settles rather than mid-loop, to avoid redundant refetches.
+    for (const relId of relIds) {
+      invalidateRelationWorkspace(queryClient, relId);
+    }
     // Refresh bulk data to reflect the resets (keep log visible)
     await runScan(true);
   }

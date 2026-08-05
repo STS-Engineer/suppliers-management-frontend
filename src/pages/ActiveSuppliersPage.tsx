@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../lib/queryClient";
+import {
+  useRelationWorkspaceQuery,
+  invalidateRelationWorkspace,
+} from "../hooks/useRelationWorkspace";
 import {
   Archive,
   Building2,
@@ -1172,6 +1178,7 @@ const SB1_FILTERS_DEFAULT: Sb1Filters = {
 };
 
 export default function ActiveSuppliersPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const userEmail = user?.email ?? "";
   const isVpConversion = user?.access_profile === "vp_conversion";
@@ -1254,8 +1261,6 @@ export default function ActiveSuppliersPage() {
     filterOwner,
     activeTab,
   ]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   // Separate from `error` so a refused activate/deactivate isn't reported under
   // the "couldn't load the panel" heading.
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -1264,64 +1269,15 @@ export default function ActiveSuppliersPage() {
   const [confirmToggleRow, setConfirmToggleRow] = useState<RelationRow | null>(
     null,
   );
-  const selectedRowRequestRef = useRef(0);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await supplierAPI.listSitePanel({
-          skip: 0,
-          limit: 1000,
-          // General keyword — matched server-side against plant, group, unit,
-          // alias, family and product line (NOT site_name, which would drop
-          // whole plant bundles when the keyword is a supplier or alias).
-          search: search || undefined,
-          class_grade: filterGrade || undefined,
-          status: filterStatus || undefined,
-          scope: filterScope || undefined,
-          family: filterFamily || undefined,
-          sub_family: filterSubFamily || undefined,
-          product_line: filterProductLine || undefined,
-          alias: filterAlias || undefined,
-          group_name: filterGroupName || undefined,
-          unit_name: filterUnitName || undefined,
-          // Load every relation regardless of active status — the tabs below
-          // filter client-side, and deactivated relations (including ones
-          // cascade-deactivated from a group/unit) must stay visible here so
-          // they can be reactivated. Without this the backend excludes them
-          // by default and a deactivated relation would vanish entirely.
-          include_inactive: true,
-        });
-
-        if (cancelled) return;
-
-        const items = response.data?.items || [];
-        const activeSites = items.filter(
-          (bundle) => bundle.site.active !== false,
-        );
-
-        setSiteBundles(activeSites);
-        if (page !== 1) setPage(1);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load sites");
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
+  // Serialized snapshot of every filter (+ activeTab, + the manual-refresh
+  // reloadTick) that drives the site panel list — mirrors the old effect's
+  // dependency array 1:1, so this query key changes exactly when the old
+  // effect would have refetched. Kept as one shared cache entry
+  // (queryKeys.sitePanel) so a relation mutation elsewhere (this page's own
+  // toggle/override actions, or ActiveSuppliersPage/RelationEvaluationPage in
+  // another tab, via crossTabSync) can invalidate and refresh this list.
+  const sitePanelParamsKey = JSON.stringify({
     search,
     filterGrade,
     filterStatus,
@@ -1334,6 +1290,66 @@ export default function ActiveSuppliersPage() {
     filterUnitName,
     activeTab,
     reloadTick,
+  });
+
+  const sitePanelQuery = useQuery({
+    queryKey: queryKeys.sitePanel(sitePanelParamsKey),
+    queryFn: () =>
+      supplierAPI.listSitePanel({
+        skip: 0,
+        limit: 1000,
+        // General keyword — matched server-side against plant, group, unit,
+        // alias, family and product line (NOT site_name, which would drop
+        // whole plant bundles when the keyword is a supplier or alias).
+        search: search || undefined,
+        class_grade: filterGrade || undefined,
+        status: filterStatus || undefined,
+        scope: filterScope || undefined,
+        family: filterFamily || undefined,
+        sub_family: filterSubFamily || undefined,
+        product_line: filterProductLine || undefined,
+        alias: filterAlias || undefined,
+        group_name: filterGroupName || undefined,
+        unit_name: filterUnitName || undefined,
+        // Load every relation regardless of active status — the tabs below
+        // filter client-side, and deactivated relations (including ones
+        // cascade-deactivated from a group/unit) must stay visible here so
+        // they can be reactivated. Without this the backend excludes them
+        // by default and a deactivated relation would vanish entirely.
+        include_inactive: true,
+      }),
+  });
+  const isLoading = sitePanelQuery.isLoading;
+  const error = sitePanelQuery.error
+    ? sitePanelQuery.error instanceof Error
+      ? sitePanelQuery.error.message
+      : "Failed to load sites"
+    : null;
+
+  useEffect(() => {
+    const items = sitePanelQuery.data?.data?.items || [];
+    const activeSites = items.filter((bundle) => bundle.site.active !== false);
+    setSiteBundles(activeSites);
+  }, [sitePanelQuery.data]);
+
+  // Reset to page 1 whenever the filters/tab actually change (not on every
+  // background refetch of the same filters, e.g. a window-focus refresh or a
+  // cross-tab invalidation — those shouldn't yank the user back to page 1).
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    search,
+    filterGrade,
+    filterStatus,
+    filterScope,
+    filterFamily,
+    filterSubFamily,
+    filterProductLine,
+    filterAlias,
+    filterGroupName,
+    filterUnitName,
+    activeTab,
   ]);
 
   const relationRows = useMemo(() => {
@@ -1534,6 +1550,7 @@ export default function ActiveSuppliersPage() {
       await supplierAPI.patchRelation(relationId, {
         is_active: !currentActive,
       });
+      invalidateRelationWorkspace(queryClient, relationId);
       setReloadTick((v) => v + 1);
     } catch (e) {
       // Surface the refusal — activating a relation whose unit or group is
@@ -1567,6 +1584,7 @@ export default function ActiveSuppliersPage() {
           changed_by: userEmail,
         },
       );
+      invalidateRelationWorkspace(queryClient, overrideRow.relation.id_relation);
       setOverrideRow(null);
       setReloadTick((v) => v + 1);
     } catch (e) {
@@ -1582,24 +1600,25 @@ export default function ActiveSuppliersPage() {
     setCommitteeRow(row);
   };
 
-  const openModal = async (row: RelationRow) => {
-    const requestId = selectedRowRequestRef.current + 1;
-    selectedRowRequestRef.current = requestId;
+  const openModal = (row: RelationRow) => {
     setModalRow(row);
-
-    try {
-      const response = await supplierAPI.getRelationEvaluationWorkspace(
-        row.relation.id_relation,
-      );
-      if (selectedRowRequestRef.current !== requestId) return;
-      setModalRow({
-        ...row,
-        workspace: response.data as RelationEvaluationWorkspace,
-      });
-    } catch {
-      // modal stays open with partial data
-    }
   };
+
+  // Detail modal's workspace payload, sourced from the same shared cache
+  // entry RelationEvaluationPage reads (see src/hooks/useRelationWorkspace.ts)
+  // -- so a save made on the full Evaluation page (this tab or another one)
+  // refreshes what the modal shows, instead of only a manual reload doing so.
+  const modalWorkspaceQuery = useRelationWorkspaceQuery(
+    modalRow?.relation.id_relation ?? null,
+  );
+  const modalRecord: RelationRow | null = modalRow
+    ? {
+        ...modalRow,
+        workspace:
+          (modalWorkspaceQuery.data?.data as RelationEvaluationWorkspace | undefined) ??
+          modalRow.workspace,
+      }
+    : null;
 
   return (
     <div className="flex min-h-[calc(100vh-160px)] flex-col gap-6">
@@ -2421,12 +2440,12 @@ export default function ActiveSuppliersPage() {
       )}
 
       {/* ── Detail drawer ── */}
-      {modalRow && (
+      {modalRecord && (
         <RelationDetailModal
-          record={modalRow}
+          record={modalRecord}
           onClose={() => setModalRow(null)}
           isAdmin={isAdmin}
-          onToggleActive={() => setConfirmToggleRow(modalRow)}
+          onToggleActive={() => setConfirmToggleRow(modalRecord)}
           togglingUnit={togglingUnit}
         />
       )}

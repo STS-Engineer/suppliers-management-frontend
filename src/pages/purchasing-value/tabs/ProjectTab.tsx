@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import supplierAPI from "../../../services/supplierOnboardingAPI";
 import type { Opp } from "../types";
 import { PHASE_GUIDE, PHASE_OUTPUT_DEF } from "../constants";
+import { invalidateOpportunity } from "../../../hooks/useOpportunity";
 
 export function ProjectTab({
   opp,
@@ -13,6 +15,7 @@ export function ProjectTab({
   userEmail: string;
   onRefresh: (o: Opp) => void;
 }) {
+  const queryClient = useQueryClient();
   const phaseDef = PHASE_OUTPUT_DEF[opp.phase_status ?? ""];
   const guide = PHASE_GUIDE[opp.phase_status ?? ""];
   const [loading, setLoading] = useState(false);
@@ -55,6 +58,7 @@ export function ProjectTab({
       await supplierAPI.updateProject(proj.project_id, payload);
       const res = await supplierAPI.getOpportunity(opp.opportunity_id);
       onRefresh(res.data as Opp);
+      invalidateOpportunity(queryClient, opp.opportunity_id);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2500);
     } catch (err: unknown) {

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../lib/queryClient";
 import {
   AlertTriangle,
   Ban,
@@ -197,10 +199,6 @@ const worstSeverity = (gaps: string[]): Severity => {
 };
 
 export default function SupplierMonitoringPage() {
-  const [data, setData] = useState<MonitoringOverview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Server-side filters
   const [country, setCountry] = useState("");
   const [commodity, setCommodity] = useState("");
@@ -211,28 +209,36 @@ export default function SupplierMonitoringPage() {
   const [search, setSearch] = useState("");
   const [activeChecks, setActiveChecks] = useState<Set<string>>(new Set());
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.getSupplierMonitoringOverview({
+  // Real (reactive) TanStack Query subscription, keyed by the current
+  // server-side filter combination so each distinct combination gets its own
+  // cache entry (mirrors the old callback's dependency array). This
+  // dashboard's underlying data (certifications, relations, sites) is
+  // mutated from other pages already migrated to their own query keys
+  // (sitePanel/relationWorkspace/...); rather than wiring a precise
+  // cross-resource invalidation here, refetchOnWindowFocus (a global default,
+  // see queryClient.ts) at least catches changes made elsewhere when the
+  // user comes back to this tab.
+  const paramsKey = useMemo(
+    () => JSON.stringify({ country, commodity, groupId }),
+    [country, commodity, groupId],
+  );
+  const monitoringQuery = useQuery({
+    queryKey: queryKeys.monitoringOverview(paramsKey),
+    queryFn: () =>
+      supplierAPI.getSupplierMonitoringOverview({
         country: country || undefined,
         commodity: commodity || undefined,
         groupId: groupId === "" ? undefined : groupId,
-      });
-      setData(res.data as MonitoringOverview);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load supplier monitoring.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [country, commodity, groupId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      }),
+  });
+  const data = (monitoringQuery.data?.data as MonitoringOverview | undefined) ?? null;
+  const loading = monitoringQuery.isPending || monitoringQuery.isFetching;
+  const error = monitoringQuery.isError
+    ? monitoringQuery.error instanceof Error
+      ? monitoringQuery.error.message
+      : "Failed to load supplier monitoring."
+    : null;
+  const load = () => monitoringQuery.refetch();
 
   const toggleCheck = (key: string) =>
     setActiveChecks((prev) => {

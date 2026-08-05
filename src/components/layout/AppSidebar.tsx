@@ -17,7 +17,7 @@ import {
 import { useSidebar } from "../../context/SidebarContext";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
-import supplierAPI from "../../services/supplierOnboardingAPI";
+import { usePendingAccountRequestCount } from "../../hooks/useAccountRequests";
 import { ThemeToggleButton } from "../common/ThemeToggleButton";
 import UserDropdown from "../header/UserDropdown";
 import logoAvocarbonWide from "../../assets/logo/logo-avocarbon.png";
@@ -216,26 +216,7 @@ export default function AppSidebar() {
   const { user } = useAuth();
   useNotifications();
   const isApprover = APPROVER_ROLES.includes(user?.access_profile ?? "");
-  const [pendingRequestCount, setPendingRequestCount] = useState(0);
-
-  useEffect(() => {
-    if (!isApprover) return;
-    let cancelled = false;
-    const fetch = () =>
-      supplierAPI
-        .listAccountRequests("pending")
-        .then((res) => {
-          if (!cancelled)
-            setPendingRequestCount(res.data.count ?? res.data.items.length);
-        })
-        .catch(() => {});
-    fetch();
-    const id = setInterval(fetch, 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [isApprover]);
+  const pendingRequestCount = usePendingAccountRequestCount(isApprover);
 
   const open = isExpanded || isHovered || isMobileOpen;
   const accentColor = "#93c5fd";

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
   ChevronLeft,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { InlineAlert, PageIntro } from "../components/UI";
 import supplierAPI from "../services/supplierOnboardingAPI";
+import { queryKeys } from "../lib/queryClient";
 import type { CarbonFootprintRecord } from "../types/onboarding";
 
 const PAGE_SIZE = 50;
@@ -257,8 +259,6 @@ export default function CarbonFootprintPage() {
 
   // Unit selection state for the add drawer
   const [groupSearch, setGroupSearch] = useState("");
-  const [groups, setGroups] = useState<{ id_group: number; nom: string }[]>([]);
-  const [groupsLoading, setGroupsLoading] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<{
     id_group: number;
     nom: string;
@@ -288,23 +288,29 @@ export default function CarbonFootprintPage() {
     setAddDraft((prev) => applyFormulas({ ...prev, ...patch }));
   }
 
-  async function loadGroups(query: string) {
-    setGroupsLoading(true);
-    try {
-      const res = await supplierAPI.listSupplierGroups(0, 200);
-      const all = res?.data?.items ?? [];
-      const q = query.trim().toLowerCase();
-      setGroups(
-        q
-          ? all.filter((g: { nom: string }) => g.nom.toLowerCase().includes(q))
-          : all,
-      );
-    } catch {
-      setGroups([]);
-    } finally {
-      setGroupsLoading(false);
-    }
-  }
+  // Real (reactive) TanStack Query subscription — used only to populate the
+  // add-drawer's group selector, no mutation on groups happens in this page.
+  // Fetched once (React Query caches it), then filtered client-side by
+  // groupSearch below — the API call never depended on the search text
+  // anyway (it always requested the same 0..200 page). Shares its
+  // "supplierGroups" prefix with SupplierManagementPage, so an
+  // updateSupplierGroup/setGroupActiveStatus mutation there refreshes this
+  // selector too, wherever it's currently mounted (including other tabs).
+  const groupsQuery = useQuery({
+    queryKey: queryKeys.supplierGroups("carbon-footprint-page"),
+    queryFn: () => supplierAPI.listSupplierGroups(0, 200),
+  });
+  const allGroups = useMemo<{ id_group: number; nom: string }[]>(
+    () => groupsQuery.data?.data?.items ?? [],
+    [groupsQuery.data],
+  );
+  const groups = useMemo(() => {
+    const q = groupSearch.trim().toLowerCase();
+    return q
+      ? allGroups.filter((g) => g.nom.toLowerCase().includes(q))
+      : allGroups;
+  }, [allGroups, groupSearch]);
+  const groupsLoading = groupsQuery.isPending || groupsQuery.isFetching;
 
   async function loadUnitsForGroup(groupId: number) {
     setUnitsLoading(true);
@@ -336,7 +342,6 @@ export default function CarbonFootprintPage() {
     setShowAdd(false);
     setAddDraft({ ...EMPTY_DRAFT });
     setGroupSearch("");
-    setGroups([]);
     setSelectedGroup(null);
     setShowGroupDropdown(false);
     setUnits([]);
@@ -1093,12 +1098,10 @@ export default function CarbonFootprintPage() {
                         }
                         setGroupSearch(e.target.value);
                         setShowGroupDropdown(true);
-                        loadGroups(e.target.value);
                       }}
                       onFocus={() => {
                         if (!selectedGroup) {
                           setShowGroupDropdown(true);
-                          loadGroups(groupSearch);
                         }
                       }}
                       placeholder="Type supplier name to search…"

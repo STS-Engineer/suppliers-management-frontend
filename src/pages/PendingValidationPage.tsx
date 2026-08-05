@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   CheckCircle,
   XCircle,
@@ -9,7 +9,9 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supplierAPI, type PendingValidationRecord } from "../services/supplierOnboardingAPI";
+import { queryKeys } from "../lib/queryClient";
 
 type ActionState = "idle" | "approving" | "rejecting";
 
@@ -217,24 +219,29 @@ function Detail({
 }
 
 export default function PendingValidationPage() {
-  const [items, setItems] = useState<PendingValidationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listPendingValidationSuppliers();
-      setItems(res.data);
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load pending suppliers.");
-    } finally {
-      setLoading(false);
-    }
+  // Real (reactive) TanStack Query subscription -- an approve/reject
+  // mutation below invalidates this query, and because it's mounted here
+  // (useQuery, not a one-off fetch) React Query refetches it automatically.
+  // refetchOnWindowFocus (a global default, see queryClient.ts) also catches
+  // items validated/rejected from elsewhere when the user comes back to
+  // this tab.
+  const pendingQuery = useQuery({
+    queryKey: queryKeys.pendingValidations(),
+    queryFn: () => supplierAPI.listPendingValidationSuppliers(),
+  });
+  const items = pendingQuery.data?.data ?? [];
+  const loading = pendingQuery.isPending || pendingQuery.isFetching;
+  const error = pendingQuery.isError
+    ? pendingQuery.error instanceof Error
+      ? pendingQuery.error.message
+      : "Failed to load pending suppliers."
+    : null;
+
+  const handleDone = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingValidations() });
   };
-
-  useEffect(() => { load(); }, []);
 
   return (
     <div className="mx-auto max-w-4xl px-2 py-6">
@@ -273,7 +280,7 @@ export default function PendingValidationPage() {
       {!loading && items.length > 0 && (
         <div className="space-y-3">
           {items.map((item) => (
-            <SupplierCard key={item.group_id} item={item} onDone={load} />
+            <SupplierCard key={item.group_id} item={item} onDone={handleDone} />
           ))}
         </div>
       )}

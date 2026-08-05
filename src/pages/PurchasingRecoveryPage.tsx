@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,6 +8,7 @@ import {
   Filter,
   ExternalLink,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +16,8 @@ import {
   loadPersistedFilters,
   savePersistedFilters,
 } from "../utils/persistedFilters";
+import { queryKeys } from "../lib/queryClient";
+import { invalidateRecoveryAndOpportunity } from "../hooks/useRecoveryPlans";
 
 const RECOVERY_FILTERS_PAGE_KEY = "purchasing-recovery";
 
@@ -114,6 +117,7 @@ function InlineEditForm({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -127,6 +131,10 @@ function InlineEditForm({
         recovery_amount: form.recovery_amount ? parseFloat(form.recovery_amount) : null,
         updated_by: userEmail,
       });
+      // Refreshes this list (every open tab/page), plus the shared
+      // opportunity/opportunities/purchasingKpis caches when we know which
+      // opportunity this financial line belongs to.
+      invalidateRecoveryAndOpportunity(queryClient, item.opportunity_id ?? undefined);
       onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update");
@@ -395,11 +403,6 @@ export default function PurchasingRecoveryPage() {
   const userEmail = user?.email ?? "";
   const isViewer = user?.access_profile === "viewer";
 
-  const [items, setItems] = useState<RecoveryItem[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Filters — restores whatever this user last had filtered, otherwise
   // leaving this page and coming back (or a reload) silently resets them.
   const initialFilters = loadPersistedFilters(
@@ -419,22 +422,34 @@ export default function PurchasingRecoveryPage() {
     });
   }, [userEmail, filterStatus, filterPlant, filterFollower]);
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.getRecoveryPlans();
-      const data = (res as { data: { items: RecoveryItem[]; summary: Summary } }).data;
-      setItems(data.items);
-      setSummary(data.summary);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Real (reactive) TanStack Query subscription -- this page shares its cache
+  // entry with nothing else today, but a mutation here, in MonthlyFollowUpPage,
+  // in FinancialTab, or in another browser tab via crossTabSync calls
+  // invalidateRecoveryAndOpportunity(), which marks this query stale, and
+  // because it's mounted here (useQuery, not a one-off fetchQuery) React
+  // Query refetches it automatically -- no manual reload/refresh click needed.
+  const recoveryQuery = useQuery({
+    queryKey: queryKeys.recoveryPlans("all"),
+    queryFn: () => supplierAPI.getRecoveryPlans(),
+  });
+  const items = useMemo<RecoveryItem[]>(
+    () => (recoveryQuery.data as { data: { items: RecoveryItem[] } } | undefined)?.data?.items ?? [],
+    [recoveryQuery.data],
+  );
+  const summary = useMemo<Summary | null>(
+    () => (recoveryQuery.data as { data: { summary: Summary } } | undefined)?.data?.summary ?? null,
+    [recoveryQuery.data],
+  );
+  const loading = recoveryQuery.isPending || recoveryQuery.isFetching;
+  const error = recoveryQuery.isError
+    ? recoveryQuery.error instanceof Error
+      ? recoveryQuery.error.message
+      : "Failed to load"
+    : null;
 
-  useEffect(() => { load(); }, []);
+  async function load() {
+    await recoveryQuery.refetch();
+  }
 
   // Derived filter options
   const plants = ["All", ...Array.from(new Set(items.map((i) => i.plant_name).filter(Boolean) as string[]))];

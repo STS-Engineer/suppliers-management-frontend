@@ -39,6 +39,7 @@ import PendingValidationPage from "./pages/PendingValidationPage";
 import RelationReviewQueuePage from "./pages/RelationReviewQueuePage";
 import UserGuidePage from "./pages/UserGuidePage";
 import ProcessReferencePage from "./pages/ProcessReferencePage";
+import { useCrossTabInvalidation } from "./lib/crossTabSync";
 
 // `roles` = allow-list (only these may enter). `block` = deny-list (everyone
 // except these). Provide exactly one.
@@ -191,5 +192,8 @@ const router = createBrowserRouter([
 ]);
 
 export default function App() {
+  // Keeps this tab's TanStack Query cache in sync with invalidations that
+  // happen in other tabs/windows of the app (see src/lib/crossTabSync.ts).
+  useCrossTabInvalidation();
   return <RouterProvider router={router} />;
 }

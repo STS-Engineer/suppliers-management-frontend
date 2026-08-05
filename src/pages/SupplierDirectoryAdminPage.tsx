@@ -1,5 +1,19 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { supplierAPI } from "../services/supplierOnboardingAPI";
+import { queryKeys } from "../lib/queryClient";
+import { broadcastInvalidate } from "../lib/crossTabSync";
+import { invalidateRelationWorkspace } from "../hooks/useRelationWorkspace";
+
+// This admin page has no user-facing filters (search is applied client-side
+// below), so the site panel it reads is always the same unfiltered snapshot
+// -- one fixed query key is enough. Still prefixed "sitePanel" so it's picked
+// up by invalidateRelationWorkspace's cross-page predicate.
+const SITE_PANEL_PARAMS_KEY = JSON.stringify({
+  page: "SupplierDirectoryAdminPage",
+  limit: 500,
+  include_inactive: true,
+});
 
 interface PlantRow {
   id_relation: number;
@@ -94,10 +108,20 @@ function PanelDecisionSelect({
   );
 }
 
-async function fetchAllUnits(_searchQ: string): Promise<UnitRow[]> {
+async function fetchAllUnits(
+  queryClient: QueryClient,
+  _searchQ: string,
+): Promise<UnitRow[]> {
   // Use the site panel (no filter) to get all units with their relation data.
   // The panel returns bundles of {site, relations:[{unit, group, relation}]}.
-  const panelRes: any = await supplierAPI.listSitePanel({ limit: 500, include_inactive: true });
+  // Routed through the shared TanStack Query cache (queryClient.fetchQuery)
+  // so this page shares its data -- and invalidation -- with the other
+  // site-panel consumers (ActiveSuppliersPage, RelationEvaluationPage).
+  const panelRes: any = await queryClient.fetchQuery({
+    queryKey: queryKeys.sitePanel(SITE_PANEL_PARAMS_KEY),
+    queryFn: () =>
+      supplierAPI.listSitePanel({ limit: 500, include_inactive: true }),
+  });
   const panelItems: any[] = panelRes?.data?.items ?? [];
 
   const unitMap = new Map<number, UnitRow>();
@@ -137,6 +161,7 @@ async function fetchAllUnits(_searchQ: string): Promise<UnitRow[]> {
 }
 
 export default function SupplierDirectoryAdminPage() {
+  const queryClient = useQueryClient();
   const [allUnits, setAllUnits] = useState<UnitRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
@@ -146,12 +171,12 @@ export default function SupplierDirectoryAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAllUnits("");
+      const data = await fetchAllUnits(queryClient, "");
       setAllUnits(data);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -181,6 +206,14 @@ export default function SupplierDirectoryAdminPage() {
           u.id_supplier_unit === unit.id_supplier_unit ? { ...u, is_active: value } : u
         )
       );
+      // Unit-level change, no single relation id to key off of -- invalidate
+      // every site panel entry (this page's own + ActiveSuppliersPage's) so
+      // the unit's active flag stays consistent everywhere, and broadcast to
+      // other open tabs.
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === "sitePanel",
+      });
+      broadcastInvalidate("sitePanel");
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }
@@ -202,6 +235,9 @@ export default function SupplierDirectoryAdminPage() {
           };
         })
       );
+      // Refreshes this relation's workspace cache (Evaluation page/detail
+      // modal) plus every sitePanel entry, and syncs other open tabs.
+      invalidateRelationWorkspace(queryClient, relationId);
     } finally {
       setSaving((s) => ({ ...s, [key]: false }));
     }

@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PlusCircle, RefreshCw, Trash2, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import supplierAPI from "../../../services/supplierOnboardingAPI";
 import type { ActionNode, ActionPlanRecord, Opp } from "../types";
 import { AP_ACTION_STATUSES, AP_PHASE_OPTIONS } from "../constants";
 import { autoTitle, emptyAction, emptyPlanForm, fullNameFromEmail } from "../utils";
+import { queryKeys } from "../../../lib/queryClient";
+import { invalidateActionPlans } from "../../../hooks/useActionPlans";
 
 export function ActionPlanTab({
   opp,
@@ -14,8 +17,7 @@ export function ActionPlanTab({
   userEmail: string;
   onRefresh: (o: Opp) => void;
 }) {
-  const [plans, setPlans] = useState<ActionPlanRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [syncing, setSyncing] = useState<number | null>(null);
@@ -25,22 +27,23 @@ export function ActionPlanTab({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyPlanForm());
 
-  async function loadPlans() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await supplierAPI.listActionPlans(opp.opportunity_id);
-      setPlans(res?.data ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load action plans.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Real (reactive) TanStack Query subscription instead of a one-off
+  // fetchQuery -- keyed by opportunity id so it shares its cache entry with
+  // any other mount of this tab for the same opportunity. A mutation here,
+  // in PurchasingActionPlansPage's cross-opportunity view, or another browser
+  // tab (via crossTabSync) calls invalidateActionPlans(), which marks this
+  // query stale and — because it's mounted via useQuery, not an isolated
+  // fetch — React Query refetches it automatically.
+  const plansQuery = useQuery({
+    queryKey: queryKeys.actionPlans(opp.opportunity_id),
+    queryFn: () => supplierAPI.listActionPlans(opp.opportunity_id),
+  });
+  const plans: ActionPlanRecord[] = plansQuery.data?.data ?? [];
+  const loading = plansQuery.isPending;
 
-  useEffect(() => {
-    loadPlans();
-  }, [opp.opportunity_id]);
+  function refresh() {
+    invalidateActionPlans(queryClient, opp.opportunity_id);
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -121,7 +124,7 @@ export function ActionPlanTab({
         await supplierAPI.createActionPlan(opp.opportunity_id, payload);
         setSuccess("Action plan created.");
       }
-      await loadPlans();
+      refresh();
       setShowForm(false);
       setEditingId(null);
     } catch (e: any) {
@@ -136,7 +139,18 @@ export function ActionPlanTab({
     setDeleting(planId);
     try {
       await supplierAPI.deleteActionPlan(opp.opportunity_id, planId);
-      setPlans((prev) => prev.filter((p) => p.action_plan_id !== planId));
+      // Optimistic local update -- remove the deleted plan from the cache
+      // immediately (don't wait on the refetch this triggers) -- then
+      // invalidate for real sync with the server and any other open
+      // view/tab.
+      queryClient.setQueryData(
+        queryKeys.actionPlans(opp.opportunity_id),
+        (old: { data: ActionPlanRecord[] } | undefined) =>
+          old
+            ? { ...old, data: old.data.filter((p) => p.action_plan_id !== planId) }
+            : old,
+      );
+      refresh();
     } catch (e: any) {
       setError(e?.message ?? "Failed to delete action plan.");
     } finally {
@@ -150,10 +164,10 @@ export function ActionPlanTab({
     try {
       await supplierAPI.syncActionPlan(planId, opp.opportunity_id);
       setSuccess("Action plan synced.");
-      await loadPlans();
+      refresh();
     } catch (e: any) {
       setError(e?.message ?? "Failed to sync action plan.");
-      await loadPlans(); // refresh external_push_status/error even on failure
+      refresh(); // refresh external_push_status/error even on failure
     } finally {
       setSyncing(null);
     }
