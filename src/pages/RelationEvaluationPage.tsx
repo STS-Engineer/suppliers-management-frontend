@@ -259,6 +259,7 @@ interface CriterionDetail {
   signature_date?: string;
   evidence_file_name?: string;
   auto_validity_end_date?: boolean;
+  not_applicable?: boolean;
   amount_value?: string;
   amount_currency?: string;
   approver_email?: string;
@@ -372,28 +373,79 @@ const PANEL_DECISION_OPTIONS = [
   { value: "panel_reject", label: "Supplier cannot be added to the Panel" },
 ];
 
+// Mirrors CRITERIA_VALUE_NORMALIZATION in
+// suppliers-management-backend/app/features/supplier_relations/service.py
+// EXACTLY (same source values -> same canonical target per criterion). This
+// used to be its own smaller, independently-drifted table — it normalized
+// sqma and family_coverage in the OPPOSITE direction from the backend, so
+// the live preview's scoreLookup() could never match the live
+// pld_scoring_rules-backed options for those criteria (silently falling
+// back to the static PLD_SCORES table instead). Keep this in sync with the
+// backend table by hand — there's no shared source between the two repos.
 const UI_CRITERIA_VALUE_NORMALIZATION: Record<
   string,
   Record<string, string>
 > = {
   top: {
-    "60 days eom or +": "60 days end of month or +",
+    "60 days end of month or +": "60 days end of month",
+    "60 days eom or +": "60 days end of month",
+    "60 days eom or+": "60 days end of month",
+    "30 days end of month or +": "30 days end of month",
+    "45 days end of month or +": "45 days end of month",
+    "Cash in Advance": "Cash in advance",
+  },
+  lta: {
+    "3 years /+": "3 years/+",
+    None: "None/Invalid",
+  },
+  competitiveness: {
+    "Less Avg (Not Comp.)": "Less Avg",
+    "Not Competitive": "Not Comp.",
   },
   sqma: {
-    "Signed M.Res/not sent": "Signed M/Res/not sent",
+    "Signed M/Res/not sent": "Signed M.Res/not sent",
+    "signed m/res/not sent": "Signed M.Res/not sent",
   },
   family_coverage: {
-    "100% Cov.": "Supplier can make all the family requirements",
-    "Main sub-Fam Cov.": "Supplier can make the main family requirements",
-    "1 sub-F or refs Cov.": "Supplier can make only of few family requirements",
-    "1 ref": "Supplier can make 1 family requirements",
+    "Supplier can make all the family requirements": "100% Cov.",
+    "Supplier can make the main family requirements": "Main sub-Fam Cov.",
+    "Supplier can make only of few family requirements": "1 sub-F or refs Cov.",
+    "Supplier can make 1 family requirements": "1 ref",
+    "100% cov.": "100% Cov.",
+    "Main Fam.": "Main sub-Fam Cov.",
+    "main fam.": "Main sub-Fam Cov.",
+    "1 Family": "1 ref",
+    "1 family": "1 ref",
+    "Few Fam.": "1 sub-F or refs Cov.",
+    "few fam.": "1 sub-F or refs Cov.",
+  },
+  geo_coverage: {
+    "100% Cov.": "Main plants covered",
+    "50% or +": "More than 50% plants are covered",
+    "1 plant cov.": "1 plant is covered",
+    None: "None",
   },
   cons_or_wd: {
-    "Cons. or WD": "Cons. Or Daily Deliveries",
+    "Cons. Or Daily Deliveries": "Cons. or WD",
+    "Cons. or daily deliveries": "Cons. or WD",
+    "cons. or wd": "Cons. or WD",
+    "Biweekly del.": "Biweekly Del.",
+    "biweekly del.": "Biweekly Del.",
   },
   quality_certification: {
+    "IATF 16949:2016": "IATF / ISO9001 (cat BCD)",
+    "ISO 9001 (cat BCD)": "IATF / ISO9001 (cat BCD)",
     "ISO9001 (cat BCD)": "IATF / ISO9001 (cat BCD)",
-    "IS09001 (cat BCD)": "IATF / ISO9001 (cat BCD)",
+    "IS09001 (cat BCD)": "IATF / ISO9001 (cat BCD)", // legacy: digit-zero typo
+    "ISO 9001": "ISO9001",
+    "ISO 13485": "ISO9001",
+    Distributor: "None",
+  },
+  prod_lia_ins: {
+    "2M€ or +": "1,5M€ or more",
+    "1M€ or +": "1M€ or less",
+    "2M$ or +": "1,5M€ or more",
+    "1M$ or +": "1M€ or less",
   },
 };
 
@@ -419,22 +471,47 @@ function classScore(
     pldKey,
     value,
   ) => (value ? PLD_SCORES[pldKey]?.[value] : undefined),
+  criteriaDetails: Record<string, CriterionDetail> = {},
 ): {
   scores: number[];
   avg: number | null;
   classValue: number | null;
 } {
   const scores: number[] = [];
+  let anyFilled = false;
   for (const { key, pldKey } of CLASS_CRITERIA) {
+    if (criteriaDetails[pldKey]?.not_applicable) continue; // excluded entirely
     const val = form[key] as string | undefined;
-    if (!val) continue;
-    const s = scoreLookup(pldKey, val);
-    if (s !== undefined) scores.push(s);
+    if (val) anyFilled = true;
+    const s = val ? scoreLookup(pldKey, val) : undefined;
+    scores.push(s !== undefined ? s : 0); // unfilled/unrecognized counts as 0, stays in denominator
   }
-  if (scores.length === 0) return { scores: [], avg: null, classValue: null };
+  // Mirror the backend's _try_calculate_class_score: an evaluation where
+  // nothing has been filled in yet (or everything applicable is N/A) has no
+  // score at all, rather than a real 0 — avoids showing a misleading "Grade
+  // D" the moment the form loads, before the user has entered anything.
+  if (scores.length === 0 || !anyFilled)
+    return { scores: [], avg: null, classValue: null };
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  const classValue = avg >= 90 ? 1 : avg >= 75 ? 2 : avg >= 60 ? 3 : 4;
+  // Official Monday.com reference table (confirmed by the business):
+  //   score <= 50        -> 4
+  //   50 < score <= 60    -> 3
+  //   60 < score <= 80    -> 2
+  //   score > 80          -> 1
+  // Mirror _derive_class_value_from_score() in the backend exactly — these
+  // thresholds must stay identical, or the live preview shows a different
+  // class than what gets persisted on save.
+  const classValue = avg > 80 ? 1 : avg > 60 ? 2 : avg > 50 ? 3 : 4;
   return { scores, avg, classValue };
+}
+
+function getMissingClassCriteria(
+  form: EvaluationDetailsFormData,
+  criteriaDetails: Record<string, CriterionDetail>,
+): string[] {
+  return CLASS_CRITERIA.filter(
+    ({ key, pldKey }) => !criteriaDetails[pldKey]?.not_applicable && !form[key],
+  ).map(({ label }) => label);
 }
 
 function operationalAvg(form: EvaluationDetailsFormData): number | null {
@@ -447,6 +524,14 @@ function operationalAvg(form: EvaluationDetailsFormData): number | null {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
+// Confirmed against the official Monday.com reference table:
+//   D32 (average of operational values) >= 80%        -> A
+//   60% <= D32 < 80%                                    -> B
+//   50% <= D32 < 60%                                    -> C
+//   D32 < 50%                                            -> D
+// Matches _derive_operational_grade() in the backend exactly — verified,
+// not just internally consistent (see the class-value threshold bug this
+// caught).
 function operationalGrade(avg: number | null): string | null {
   if (avg === null) return null;
   if (avg >= 80) return "A";
@@ -464,6 +549,24 @@ function impactScore(form: EvaluationDetailsFormData): number {
     form.impact_question_5,
     form.impact_question_6,
   ].reduce((sum, v) => sum + (IMPACT_SCORES[v as string] ?? 0), 0);
+}
+
+// Backend's _calculate_impact_score() returns None (not 0) when none of the
+// 6 impact questions have been answered yet, to distinguish "not evaluated"
+// from "evaluated as neutral". Use this at save time so we persist the same
+// null the backend would compute, rather than a misleading 0 — impactScore()
+// itself keeps returning a plain number for the always-on live displays.
+function impactScoreForSave(form: EvaluationDetailsFormData): number | null {
+  const answers = [
+    form.impact_question_1,
+    form.impact_question_2,
+    form.impact_question_3,
+    form.impact_question_4,
+    form.impact_question_5,
+    form.impact_question_6,
+  ];
+  const anyAnswered = answers.some((v) => v !== undefined && v !== null && v !== "");
+  return anyAnswered ? impactScore(form) : null;
 }
 
 function finalGrade(opGrade: string | null, cls: number | null): string | null {
@@ -486,13 +589,20 @@ const STATUS_FROM_GRADE: Record<string, { label: string; color: string }> = {
   },
 };
 
+// Mirrors _derive_supplier_status() in the backend exactly, including its
+// explicit 16-combination table (rather than a catch-all default) — an
+// unrecognized/corrupted grade returns null on both sides now, instead of
+// the frontend silently showing "New business on Hold" for data that isn't
+// actually one of the valid grades.
 function deriveStatus(fg: string | null): string | null {
   if (!fg) return null;
-  const n = fg.toUpperCase();
+  const n = fg.trim().toUpperCase();
   if (["A1", "B1", "A2", "B2"].includes(n)) return "Can Quote and Be Awarded";
   if (["A3", "B3", "C1", "C2", "C3"].includes(n))
     return "Can Quote but Not be Awarded";
-  return "New business on Hold";
+  if (["D1", "D2", "D3", "D4", "A4", "B4", "C4"].includes(n))
+    return "New business on Hold";
+  return null;
 }
 
 const GRADE_CLR: Record<string, string> = {
@@ -1057,7 +1167,7 @@ export default function RelationEvaluationPage() {
   const setCriterionDetail = (
     pldKey: string,
     field: keyof CriterionDetail,
-    value: string,
+    value: string | boolean,
   ) => {
     dirtyRef.current = true;
     setCriteriaDetails((prev) => {
@@ -1065,7 +1175,7 @@ export default function RelationEvaluationPage() {
       const updated: CriterionDetail = { ...existing, [field]: value };
 
       // Auto-calculate end date when start date changes and auto flag is set
-      if (field === "validity_start_date" && value) {
+      if (field === "validity_start_date" && typeof value === "string" && value) {
         const criterionKey = CLASS_CRITERIA.find(
           (c) => c.pldKey === pldKey,
         )?.key;
@@ -1112,7 +1222,7 @@ export default function RelationEvaluationPage() {
     setSaving("class");
     setError(null);
     try {
-      const computed = classScore(form, getPldScore);
+      const computed = classScore(form, getPldScore, criteriaDetails);
       const smValue = Array.from(strategicMentions).join(",") || "none";
       const classCycleType =
         extra.reevaluation_type === "initial"
@@ -1221,13 +1331,13 @@ export default function RelationEvaluationPage() {
 
   // Validate completeness before locking the baseline
   const validateInitialSelfAssessment = (): string | null => {
-    const cs2 = classScore(form, getPldScore);
+    const missingClassCriteria = getMissingClassCriteria(form, criteriaDetails);
     const opVals = OPERATIONAL_CRITERIA.map(
       ({ key }) => form[key] as number | undefined,
     ).filter((v) => v !== undefined && v !== null);
     const missing: string[] = [];
-    if (cs2.scores.length === 0)
-      missing.push("Class Evaluation (fill at least one criterion)");
+    if (missingClassCriteria.length > 0)
+      missing.push(`Class Evaluation: missing ${missingClassCriteria.join(", ")}`);
     if (opVals.length < OPERATIONAL_CRITERIA.length)
       missing.push(`Operational (${opVals.length}/8 scores filled)`);
     if (!form.panel_decision)
@@ -1255,7 +1365,7 @@ export default function RelationEvaluationPage() {
     setError(null);
     try {
       const smValue = Array.from(strategicMentions).join(",") || "none";
-      const computed = classScore(form, getPldScore);
+      const computed = classScore(form, getPldScore, criteriaDetails);
       const cycleType =
         extra.reevaluation_type === "initial"
           ? "Initial Re-evaluation"
@@ -1283,7 +1393,7 @@ export default function RelationEvaluationPage() {
         class_value: computed.classValue,
         strategic_mention: smValue,
         panel_decision: form.panel_decision,
-        impact_score: impactScore(form),
+        impact_score: impactScoreForSave(form),
         impact_question_1: form.impact_question_1,
         impact_question_2: form.impact_question_2,
         impact_question_3: form.impact_question_3,
@@ -1341,7 +1451,7 @@ export default function RelationEvaluationPage() {
     setSaving("decision");
     setError(null);
     try {
-      const computed = impactScore(form);
+      const computed = impactScoreForSave(form);
       await supplierAPI.updateRelationClassEvaluation(relId, {
         cycle_type: "Decision & Impact Update",
         strategic_mention: form.strategic_mention,
@@ -1365,12 +1475,18 @@ export default function RelationEvaluationPage() {
   };
 
   // Computed live values
-  const cs = classScore(form, getPldScore);
+  const cs = classScore(form, getPldScore, criteriaDetails);
   const opAvg = operationalAvg(form);
   const opGrade = operationalGrade(opAvg);
   const impact = impactScore(form);
+  // Prefer the LIVE recomputed value on both sides — mixing a live classValue
+  // with a stale stored operational_grade (or vice versa) produces a
+  // final grade/status that matches neither what's on screen nor what a
+  // save would actually persist. Only fall back to the last stored value
+  // when nothing live is available yet (e.g. this section hasn't been
+  // touched in this session).
   const fg = finalGrade(
-    relation?.operational_grade || opGrade,
+    opGrade || relation?.operational_grade || null,
     cs.classValue || relation?.class_value || null,
   );
   const status = deriveStatus(fg);
@@ -2005,7 +2121,7 @@ function InitialSelfAssessmentView({
   onDetailChange: (
     pldKey: string,
     field: keyof CriterionDetail,
-    value: string,
+    value: string | boolean,
   ) => void;
   relationId: number;
   getOptions: (pldKey: string, currentValue?: string) => { value: string; label: string }[];
@@ -2035,7 +2151,8 @@ function InitialSelfAssessmentView({
   const toggle = (k: string) => setOpenSection((p) => ({ ...p, [k]: !p[k] }));
 
   // Completion checks
-  const classOk = cs.scores.length >= 1;
+  const missingClassCriteria = getMissingClassCriteria(form, criteriaDetails);
+  const classOk = missingClassCriteria.length === 0;
   const opVals = OPERATIONAL_CRITERIA.map(
     ({ key }) => form[key] as number | undefined,
   ).filter((v) => v !== undefined && v !== null);
@@ -2147,7 +2264,7 @@ function InitialSelfAssessmentView({
             key: "class",
             label: "Class Evaluation",
             ok: classOk,
-            detail: `${cs.scores.length}/11 criteria`,
+            detail: `${CLASS_CRITERIA.length - missingClassCriteria.length}/${CLASS_CRITERIA.length} criteria`,
           },
           {
             key: "operational",
@@ -2234,8 +2351,9 @@ function InitialSelfAssessmentView({
                 1. Class Evaluation
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                {cs.scores.length}/11 criteria filled · Class{" "}
-                {cs.classValue ?? "—"} · Score {safeToFixed(cs.avg)}
+                {CLASS_CRITERIA.length - missingClassCriteria.length}/11 criteria
+                filled or N/A · Class {cs.classValue ?? "—"} · Score{" "}
+                {safeToFixed(cs.avg)}
               </p>
             </div>
             {cs.classValue && (
@@ -2404,7 +2522,9 @@ function InitialSelfAssessmentView({
                   : "This will send the evaluation to VP Conversion for review and approval."
                 : !fileOk && classOk && opOk && decisionOk
                   ? "Upload the completed Excel scorecard above before submitting."
-                  : "Fill Class Evaluation, Operational, and Decision & Impact — then upload the evaluation file."}
+                  : !classOk
+                    ? `Class Evaluation: fill or mark N/A — missing ${missingClassCriteria.join(", ")}.`
+                    : "Fill Class Evaluation, Operational, and Decision & Impact — then upload the evaluation file."}
             </p>
           </div>
 
@@ -2491,7 +2611,7 @@ function ClassCriteriaBody({
   onDetailChange: (
     pldKey: string,
     field: keyof CriterionDetail,
-    value: string,
+    value: string | boolean,
   ) => void;
   relationId: number;
   getOptions: (pldKey: string, currentValue?: string) => { value: string; label: string }[];
@@ -2516,6 +2636,7 @@ function ClassCriteriaBody({
         const isExpanded = expanded.has(pldKey);
         const detail = criteriaDetails[pldKey] ?? {};
         const isQualCert = pldKey === "quality_certification";
+        const isNA = !!detail.not_applicable;
         return (
           <div key={key}>
             <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors dark:hover:bg-white/[0.03]">
@@ -2558,7 +2679,7 @@ function ClassCriteriaBody({
                 {isQualCert ? (
                   <div
                     title="Determined automatically from the unit's certifications — edit certifications in the Certification Tracker to change this."
-                    className={`${inputCls} flex items-center justify-between gap-2 text-xs cursor-not-allowed bg-slate-50 text-slate-600`}
+                    className={`${inputCls} flex items-center justify-between gap-2 text-xs cursor-not-allowed bg-slate-50 text-slate-600 ${isNA ? "opacity-50" : ""}`}
                   >
                     <span className="truncate">{val || "— None —"}</span>
                     <svg
@@ -2602,8 +2723,8 @@ function ClassCriteriaBody({
                           );
                       }
                     }}
-                    disabled={readOnly}
-                    className={`${inputCls} text-xs ${readOnly ? "cursor-not-allowed bg-slate-50 text-slate-500" : ""}`}
+                    disabled={readOnly || isNA}
+                    className={`${inputCls} text-xs ${readOnly || isNA ? "cursor-not-allowed bg-slate-50 text-slate-500 opacity-50" : ""}`}
                   >
                     <option value="">— Select —</option>
                     {getOptions(pldKey, val).map((opt) => (
@@ -2614,8 +2735,25 @@ function ClassCriteriaBody({
                   </select>
                 )}
               </div>
+              <label
+                className={`flex shrink-0 items-center gap-1.5 text-xs font-semibold ${readOnly ? "text-slate-300" : "text-slate-500"}`}
+                title="Exclude this criterion entirely from the class score (both numerator and denominator)."
+              >
+                <input
+                  type="checkbox"
+                  checked={isNA}
+                  disabled={readOnly}
+                  onChange={(e) => onDetailChange(pldKey, "not_applicable", e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 disabled:cursor-not-allowed"
+                />
+                N/A
+              </label>
               <div className="w-14 shrink-0 text-center">
-                {score !== null ? (
+                {isNA ? (
+                  <span className="inline-block rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                    N/A
+                  </span>
+                ) : score !== null ? (
                   <span
                     className={`inline-block rounded-lg px-2 py-1 text-xs font-bold ${
                       score === 100
@@ -2633,7 +2771,7 @@ function ClassCriteriaBody({
               </div>
               <div className="w-20 shrink-0">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  {score !== null && (
+                  {!isNA && score !== null && (
                     <div
                       className={`h-full rounded-full transition-all ${score === 100 ? "bg-emerald-500" : score >= 50 ? "bg-amber-400" : "bg-red-400"}`}
                       style={{ width: `${score}%` }}
@@ -2929,7 +3067,7 @@ function ClassTab({
   onDetailChange: (
     pldKey: string,
     field: keyof CriterionDetail,
-    value: string,
+    value: string | boolean,
   ) => void;
   relationId: number;
   readOnly?: boolean;
@@ -2940,6 +3078,7 @@ function ClassTab({
   getScore: (pldKey: string, value?: string) => number | undefined;
 }) {
   const qualCerts = extra.unit_certifications ?? [];
+  const missingClassCriteria = getMissingClassCriteria(form, criteriaDetails);
 
   return (
     <div className="space-y-5">
@@ -2960,7 +3099,8 @@ function ClassTab({
             />
           </div>
           <p className="mt-1.5 text-[11px] text-blue-200/70">
-            {cs.scores.length} / {CLASS_CRITERIA.length} criteria filled
+            {CLASS_CRITERIA.length - missingClassCriteria.length} /{" "}
+            {CLASS_CRITERIA.length} criteria filled or N/A
           </p>
           {/* decorative circle */}
           <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/5" />
@@ -3093,9 +3233,9 @@ function ClassTab({
           <div className="flex items-center justify-between border-t border-slate-100 bg-gradient-to-r from-[#062B49]/5 to-transparent px-5 py-4 dark:border-white/[0.06] dark:bg-transparent dark:from-white/[0.04]">
             <p className="text-xs text-slate-500 dark:text-slate-400">
               <span className="font-semibold text-[#062B49] dark:text-blue-300">
-                {cs.scores.length}
+                {CLASS_CRITERIA.length - missingClassCriteria.length}
               </span>{" "}
-              of 11 criteria filled
+              of 11 criteria filled or N/A
               {cs.avg !== null && (
                 <>
                   {" "}
