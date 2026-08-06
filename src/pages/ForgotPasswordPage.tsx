@@ -1,9 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import supplierAPI, { SupplierApiError } from "../services/supplierOnboardingAPI";
 
 type Step = "email" | "otp" | "password" | "success";
+
+// Must match settings.OTP_RESEND_COOLDOWN_SECONDS in the backend
+// (app/core/config.py) -- purely cosmetic here (the server enforces the
+// real cooldown), just so the button shows an honest wait time instead of
+// looking clickable while a resend would be a no-op.
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 const INPUT_CLS =
   "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100";
@@ -24,17 +30,48 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otpLocked, setOtpLocked] = useState(false);
+  // Epoch ms of when a resend becomes available again, or null when none is
+  // pending. Lives at this level (not inside EmailStep) because the user can
+  // navigate away from the email step (into the OTP step) and back to it
+  // ("Change email" / "Request a new code") without losing the wait timer.
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(
+    null,
+  );
+  const [secondsUntilResend, setSecondsUntilResend] = useState(0);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Ticks the visible countdown once a second while a resend is on cooldown.
+  // Purely cosmetic (the backend enforces the real cooldown) -- this just
+  // gives the "Send reset code" button an honest disabled state + wait time
+  // instead of looking clickable while a click would previously have been a
+  // silent no-op (see the 429-lockout-then-immediate-resend bug).
+  useEffect(() => {
+    if (resendAvailableAt === null) return;
+    const tick = () => {
+      const remaining = Math.ceil((resendAvailableAt - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setSecondsUntilResend(0);
+        setResendAvailableAt(null);
+      } else {
+        setSecondsUntilResend(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [resendAvailableAt]);
 
   // Step 1 — send OTP
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (secondsUntilResend > 0) return;
     setError(null);
     setIsSubmitting(true);
     try {
       await supplierAPI.forgotPassword(email.trim().toLowerCase());
       setOtp(["", "", "", "", "", ""]);
       setOtpLocked(false);
+      setResendAvailableAt(Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000);
       setStep("otp");
     } catch (err) {
       setError(
@@ -66,9 +103,15 @@ export default function ForgotPasswordPage() {
       if (err instanceof SupplierApiError) {
         setError(err.message);
         // 429 = the code has been locked out after too many wrong guesses;
-        // the user must go back and request a fresh one.
+        // the user must go back and request a fresh one. The backend treats
+        // a locked-out token as "no live code to protect" and bypasses its
+        // resend cooldown in that case (see _otp_resend_on_cooldown) -- clear
+        // the cosmetic countdown here too so "Send reset code" isn't shown as
+        // disabled/waiting once the user gets back to that screen.
         if (err.statusCode === 429) {
           setOtpLocked(true);
+          setResendAvailableAt(null);
+          setSecondsUntilResend(0);
         }
       } else {
         setError("OTP verification failed. Please try again.");
@@ -137,6 +180,7 @@ export default function ForgotPasswordPage() {
               setEmail={setEmail}
               error={error}
               isSubmitting={isSubmitting}
+              secondsUntilResend={secondsUntilResend}
               onSubmit={handleEmailSubmit}
             />
           )}
@@ -190,12 +234,14 @@ function EmailStep({
   setEmail,
   error,
   isSubmitting,
+  secondsUntilResend,
   onSubmit,
 }: {
   email: string;
   setEmail: (v: string) => void;
   error: string | null;
   isSubmitting: boolean;
+  secondsUntilResend: number;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   return (
@@ -235,8 +281,16 @@ function EmailStep({
           </div>
         )}
 
-        <button type="submit" disabled={isSubmitting} className={BTN_CLS}>
-          {isSubmitting ? "Sending code…" : "Send reset code"}
+        <button
+          type="submit"
+          disabled={isSubmitting || secondsUntilResend > 0}
+          className={BTN_CLS}
+        >
+          {isSubmitting
+            ? "Sending code…"
+            : secondsUntilResend > 0
+              ? `Resend available in ${secondsUntilResend}s`
+              : "Send reset code"}
         </button>
       </form>
 
