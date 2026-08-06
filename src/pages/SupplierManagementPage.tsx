@@ -250,6 +250,7 @@ function GroupDrawer({
     setSaveError(null);
     try {
       const res = await supplierAPI.updateSupplierGroup(group.id_group, {
+        nom: form.nom.trim() || undefined,
         supplier_scope: form.supplier_scope || undefined,
         supplier_owner: form.supplier_owner || undefined,
       });
@@ -378,6 +379,20 @@ function GroupDrawer({
 
           {editing ? (
             <div className="space-y-4 px-6 py-5">
+              {/* Group name */}
+              <div>
+                <label className={lbl}>
+                  Group name
+                  <span className="ml-1 text-red-500">*</span>
+                </label>
+                <input
+                  className={inp}
+                  value={form.nom}
+                  onChange={(e) => set("nom", e.target.value)}
+                  placeholder="Supplier group name"
+                />
+              </div>
+
               {/* Scope */}
               <div>
                 <label className={lbl}>Scope</label>
@@ -422,6 +437,7 @@ function GroupDrawer({
                   onClick={handleSave}
                   disabled={
                     saving ||
+                    !form.nom.trim() ||
                     (form.supplier_scope === "global" &&
                       !form.supplier_owner.trim())
                   }

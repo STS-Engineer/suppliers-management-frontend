@@ -4,6 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AvocarbonSite,
   DevelopmentPlanRegisterRow,
@@ -15,6 +16,7 @@ import {
   SupplierUnitResponse,
 } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { broadcastInvalidate } from "../../lib/crossTabSync";
 import {
   SharedMarkReceivedModal,
   SharedRequestRevisionModal,
@@ -24,6 +26,7 @@ import {
   SharedViewDetailsModal,
 } from "../development-plans/SendRequestModal";
 import { RelationDetailsModal } from "./RelationDetailsModal";
+import { EditUnitDetailsModal } from "./EditUnitDetailsModal";
 import { FlowB } from "./flows/FlowB";
 import { FlowC } from "./flows/FlowC";
 import { UnitSiteRelationsPanel } from "./UnitSiteRelationsPanel";
@@ -177,9 +180,11 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const didAutoSelectUnit = React.useRef(false);
   const didAutoOpenRelation = React.useRef(false);
   const [activeFlow, setActiveFlow] = useState<ActiveFlow>(null);
+  const [editUnitModalOpen, setEditUnitModalOpen] = useState(false);
   const [overrideModalRelation, setOverrideModalRelation] =
     useState<SupplierSiteRelation | null>(null);
   const [overrideWorkspace, setOverrideWorkspace] =
@@ -1114,9 +1119,26 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
             }}
             activeDevelopmentPlanRelationId={autoPlanRelationId}
             activeDetailsRelationId={activeDetailsRelationId}
+            onOpenEditDetails={() => setEditUnitModalOpen(true)}
           />
         </div>
       </div>
+
+      {editUnitModalOpen && shared.selectedUnit && (
+        <EditUnitDetailsModal
+          unit={shared.selectedUnit}
+          onClose={() => setEditUnitModalOpen(false)}
+          onUnitUpdated={(updated: SupplierUnitResponse) =>
+            setShared((prev) => ({
+              ...prev,
+              selectedUnit: updated,
+              units: prev.units.map((u) =>
+                u.id_supplier_unit === updated.id_supplier_unit ? updated : u,
+              ),
+            }))
+          }
+        />
+      )}
 
       {overrideModalRelation && (
         <StatusOverrideModal

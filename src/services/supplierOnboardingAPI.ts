@@ -1119,6 +1119,18 @@ class SupplierOnboardingAPI {
     );
   }
 
+  async updateContact(contactId: number, data: Record<string, unknown>) {
+    return this.request(
+      `${this.baseUrl}/suppliers/contacts/${contactId}`,
+      {
+        method: "PUT",
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(data),
+      },
+      "Failed to update contact.",
+    );
+  }
+
   async getSupplierById(supplierId: string) {
     return this.request(
       `${this.baseUrl}/suppliers/${supplierId}`,

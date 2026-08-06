@@ -42,6 +42,8 @@ interface Props {
   onAssignToPlant?: () => void;
   /** Whether the assign flow is currently active (to toggle button label) */
   assignActive?: boolean;
+  /** Open the unified "Edit unit details" modal (unit fields + contacts). */
+  onOpenEditDetails?: () => void;
 }
 
 const SCOPE_STYLE: Record<string, { bg: string; text: string; dot: string }> = {
@@ -75,6 +77,7 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
   assignActive,
   onRelationActiveToggled,
   groupIsActive = true,
+  onOpenEditDetails,
 }) => {
   // Most-recent spend per relation: relationId → latest SpendEntry
   const [latestSpend, setLatestSpend] = useState<Record<number, SpendEntry | null>>({});
@@ -136,9 +139,24 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
               Plant Assignments
             </p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">
-              {selectedUnit.supplier_name}
-            </h2>
+            <div className="mt-1 flex items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900">
+                {selectedUnit.supplier_name}
+              </h2>
+              {onOpenEditDetails && (
+                <button
+                  type="button"
+                  title="Edit unit details and contacts"
+                  onClick={onOpenEditDetails}
+                  className="shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span className="text-xs font-semibold">Edit details</span>
+                </button>
+              )}
+            </div>
             <p className="mt-0.5 text-xs text-slate-500">
               {[selectedUnit.city, selectedUnit.country].filter(Boolean).join(", ")}
             </p>

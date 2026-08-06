@@ -1,13 +1,15 @@
 /**
  * PurchaserOwnerField — searchable purchaser picker for the supplier owner field.
  *
- * Fetches site-specific local purchasers + group-level purchasers from the API,
- * presents them as a selectable list, and falls back to a free-text input for
- * emails not in the directory.
+ * Fetches all active local purchasers (across every plant) + group-level
+ * purchasers from the API, presents them as a selectable list, and falls back
+ * to an AVO Carbon directory search (via MemberDirectoryPicker) for emails not
+ * in that list.
  */
 
 import React, { useEffect, useState } from "react";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
 
 export interface PurchaserOption {
   id_identity: number;
@@ -33,43 +35,39 @@ export const PurchaserOwnerField: React.FC<Props> = ({
   siteId,
   value,
   onChange,
-  siteName,
 }) => {
-  const [sitePurchasers, setSitePurchasers] = useState<PurchaserOption[]>([]);
+  const [localPurchasers, setLocalPurchasers] = useState<PurchaserOption[]>([]);
   const [groupPurchasers, setGroupPurchasers] = useState<PurchaserOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [manualMode, setManualMode] = useState(false);
-  const [manualEmail, setManualEmail] = useState("");
 
   useEffect(() => {
     setLoading(true);
-    setSitePurchasers([]);
+    setLocalPurchasers([]);
     setGroupPurchasers([]);
     supplierAPI
       .getSitePurchasers(siteId)
       .then((res: any) => {
-        const site: PurchaserOption[] = res.data?.site_purchasers ?? [];
+        const local: PurchaserOption[] = res.data?.local_purchasers ?? [];
         const group: PurchaserOption[] = res.data?.group_purchasers ?? [];
-        setSitePurchasers(site);
+        setLocalPurchasers(local);
         setGroupPurchasers(group);
-        // If current value isn't in the directory, open manual mode
-        const known = [...site, ...group].some((p) => p.email === value);
+        // If current value isn't in the directory, open manual (directory search) mode
+        const known = [...local, ...group].some((p) => p.email === value);
         if (value && !known) {
           setManualMode(true);
-          setManualEmail(value);
         }
       })
       .catch(() => {
-        // Non-fatal: show manual entry if fetch fails
+        // Non-fatal: show directory search if fetch fails
         setManualMode(true);
-        if (value) setManualEmail(value);
       })
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId]);
 
-  const allPurchasers = [...sitePurchasers, ...groupPurchasers];
+  const allPurchasers = [...localPurchasers, ...groupPurchasers];
   const q = search.toLowerCase();
   const filtered = q
     ? allPurchasers.filter(
@@ -79,21 +77,16 @@ export const PurchaserOwnerField: React.FC<Props> = ({
       )
     : allPurchasers;
 
-  const filteredSite = filtered.filter((p) =>
-    sitePurchasers.some((s) => s.email === p.email),
+  const filteredLocal = filtered.filter((p) =>
+    localPurchasers.some((s) => s.email === p.email),
   );
   const filteredGroup = filtered.filter((p) =>
     groupPurchasers.some((g) => g.email === p.email),
   );
 
-  const handleManualConfirm = () => {
-    onChange(manualEmail.trim());
-  };
-
   const handleSelectCard = (email: string) => {
     onChange(email);
     setManualMode(false);
-    setManualEmail("");
     setSearch("");
   };
 
@@ -143,12 +136,12 @@ export const PurchaserOwnerField: React.FC<Props> = ({
             </p>
           ) : (
             <>
-              {filteredSite.length > 0 && (
+              {filteredLocal.length > 0 && (
                 <div>
                   <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {siteName ? `Responsible for ${siteName}` : "Site purchaser"}
+                    Local purchasers
                   </p>
-                  {filteredSite.map((p) => (
+                  {filteredLocal.map((p) => (
                     <PurchaserRow
                       key={p.email}
                       purchaser={p}
@@ -162,7 +155,7 @@ export const PurchaserOwnerField: React.FC<Props> = ({
                 <div>
                   <p
                     className={`border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 ${
-                      filteredSite.length > 0 ? "border-t" : ""
+                      filteredLocal.length > 0 ? "border-t" : ""
                     }`}
                   >
                     Group purchasers
@@ -182,14 +175,11 @@ export const PurchaserOwnerField: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Manual entry toggle / input */}
+      {/* Manual entry toggle / AVO Carbon directory search */}
       {!manualMode ? (
         <button
           type="button"
-          onClick={() => {
-            setManualMode(true);
-            setManualEmail(value);
-          }}
+          onClick={() => setManualMode(true)}
           className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-200 py-2 text-xs font-medium text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,34 +189,21 @@ export const PurchaserOwnerField: React.FC<Props> = ({
         </button>
       ) : (
         <div className="space-y-2">
-          <div className="flex gap-2">
-            <input
-              type="email"
-              autoFocus
-              placeholder="name@avocarbon.com"
-              value={manualEmail}
-              onChange={(e) => setManualEmail(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleManualConfirm();
-                if (e.key === "Escape" && allPurchasers.length > 0) setManualMode(false);
-              }}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#0f2744]/40 focus:ring-4 focus:ring-[#0f2744]/8"
-            />
-            <button
-              type="button"
-              onClick={handleManualConfirm}
-              disabled={!manualEmail.trim()}
-              className="shrink-0 rounded-xl bg-[#0f2744] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2744]/90 disabled:opacity-40"
-            >
-              Use
-            </button>
-          </div>
+          <MemberDirectoryPicker
+            fetchDirectory={() => supplierAPI.getPmDirectoryAuthenticated()}
+            value={value}
+            onChange={(email) => {
+              onChange(email);
+              setManualMode(false);
+            }}
+            placeholder="Rechercher dans l'annuaire AVO Carbon…"
+            fetchKey="purchaser-manual-entry"
+          />
           {allPurchasers.length > 0 && (
             <button
               type="button"
               onClick={() => {
                 setManualMode(false);
-                setManualEmail("");
                 if (!allPurchasers.some((p) => p.email === value)) onChange("");
               }}
               className="text-xs font-medium text-slate-400 underline hover:text-slate-600"

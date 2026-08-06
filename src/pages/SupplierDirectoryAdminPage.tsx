@@ -166,6 +166,8 @@ export default function SupplierDirectoryAdminPage() {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [editingUnitId, setEditingUnitId] = useState<number | null>(null);
+  const [unitNameInput, setUnitNameInput] = useState("");
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
   const load = useCallback(async () => {
@@ -210,6 +212,35 @@ export default function SupplierDirectoryAdminPage() {
       // every site panel entry (this page's own + ActiveSuppliersPage's) so
       // the unit's active flag stays consistent everywhere, and broadcast to
       // other open tabs.
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === "sitePanel",
+      });
+      broadcastInvalidate("sitePanel");
+    } finally {
+      setSaving((s) => ({ ...s, [key]: false }));
+    }
+  }
+
+  function startEditUnitName(unit: UnitRow) {
+    setUnitNameInput(unit.supplier_name ?? "");
+    setEditingUnitId(unit.id_supplier_unit);
+  }
+
+  async function saveUnitName(unit: UnitRow) {
+    const name = unitNameInput.trim();
+    if (!name) return;
+    const key = `unit-name-${unit.id_supplier_unit}`;
+    setSaving((s) => ({ ...s, [key]: true }));
+    try {
+      await supplierAPI.updateSupplierUnit(unit.id_supplier_unit, { supplier_name: name });
+      setAllUnits((prev) =>
+        prev.map((u) =>
+          u.id_supplier_unit === unit.id_supplier_unit ? { ...u, supplier_name: name } : u
+        )
+      );
+      setEditingUnitId(null);
+      // Same invalidation as toggleActive -- unit fields ripple into every
+      // sitePanel entry this unit appears in.
       queryClient.invalidateQueries({
         predicate: (query) => query.queryKey[0] === "sitePanel",
       });
@@ -335,6 +366,8 @@ export default function SupplierDirectoryAdminPage() {
             ) : (
               units.map((unit) => {
                 const unitSaving = saving[`unit-${unit.id_supplier_unit}`];
+                const unitNameSaving = saving[`unit-name-${unit.id_supplier_unit}`];
+                const isEditingName = editingUnitId === unit.id_supplier_unit;
                 return (
                   <tr
                     key={unit.id_supplier_unit}
@@ -344,10 +377,46 @@ export default function SupplierDirectoryAdminPage() {
                       <p className="font-semibold text-slate-800">
                         {unit.group_name ?? "—"}
                       </p>
-                      {unit.supplier_name && (
-                        <p className="font-mono text-[11px] text-slate-400">
-                          {unit.supplier_name}
-                        </p>
+                      {isEditingName ? (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={unitNameInput}
+                            onChange={(e) => setUnitNameInput(e.target.value)}
+                            autoFocus
+                            className="rounded-md border border-sky-300 px-1.5 py-0.5 font-mono text-[11px] text-slate-700 outline-none focus:ring-1 focus:ring-sky-300"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveUnitName(unit)}
+                            disabled={unitNameSaving || !unitNameInput.trim()}
+                            className="rounded-md bg-sky-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                          >
+                            {unitNameSaving ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingUnitId(null)}
+                            className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          {unit.supplier_name && (
+                            <p className="font-mono text-[11px] text-slate-400">
+                              {unit.supplier_name}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => startEditUnitName(unit)}
+                            className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-100"
+                          >
+                            Edit
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">

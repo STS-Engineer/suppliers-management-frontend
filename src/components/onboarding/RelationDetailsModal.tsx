@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   AvocarbonSite,
   RelationEvaluationWorkspace,
@@ -7,6 +8,7 @@ import type {
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
 import { useAuth } from "../../context/AuthContext";
 import { MemberDirectoryPicker } from "../common/MemberDirectoryPicker";
+import { invalidateRelationWorkspace } from "../../hooks/useRelationWorkspace";
 
 type TabKey = "overview" | "criteria" | "history" | "plans" | "spend";
 
@@ -132,6 +134,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   onUpdated,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const queryClient = useQueryClient();
 
   // Supplier owner inline editing (any non-viewer role).
   const { user } = useAuth();
@@ -141,6 +144,14 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   const [ownerInput, setOwnerInput] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
   const [ownerError, setOwnerError] = useState<string | null>(null);
+
+  // Plant alias inline editing (any non-viewer role).
+  const canEditAlias = user?.access_profile !== "viewer";
+  const [aliasOverride, setAliasOverride] = useState<string | null>(null);
+  const [editingAlias, setEditingAlias] = useState(false);
+  const [aliasInput, setAliasInput] = useState("");
+  const [savingAlias, setSavingAlias] = useState(false);
+  const [aliasError, setAliasError] = useState<string | null>(null);
 
   // Spend-by-year state
   const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
@@ -345,6 +356,81 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
     }
   };
 
+  const currentAlias = aliasOverride ?? relation?.alias_1 ?? null;
+
+  const startEditAlias = () => {
+    setAliasInput(currentAlias ?? "");
+    setAliasError(null);
+    setEditingAlias(true);
+  };
+
+  const saveAlias = async () => {
+    const alias = aliasInput.trim();
+    if (!relationId) return;
+    setSavingAlias(true);
+    setAliasError(null);
+    try {
+      const res = await supplierAPI.patchRelation(relationId, {
+        alias_1: alias || null,
+      });
+      setAliasOverride((res as any)?.data?.alias_1 ?? (alias || null));
+      setEditingAlias(false);
+      invalidateRelationWorkspace(queryClient, relationId);
+      onUpdated?.();
+    } catch (e: any) {
+      setAliasError(e?.message ?? "Failed to update plant alias.");
+    } finally {
+      setSavingAlias(false);
+    }
+  };
+
+  const aliasCell = editingAlias ? (
+    <div className="space-y-1.5">
+      <input
+        type="text"
+        value={aliasInput}
+        onChange={(e) => setAliasInput(e.target.value)}
+        placeholder="Plant alias"
+        autoFocus
+        className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm focus:border-[#062B49] focus:outline-none"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={saveAlias}
+          disabled={savingAlias}
+          className="rounded-lg bg-[#062B49] px-3 py-1 text-xs font-semibold text-white hover:bg-[#0C5381] disabled:opacity-50"
+        >
+          {savingAlias ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditingAlias(false);
+            setAliasError(null);
+          }}
+          className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+        >
+          Cancel
+        </button>
+      </div>
+      {aliasError && <p className="text-xs text-rose-500">{aliasError}</p>}
+    </div>
+  ) : (
+    <div className="flex items-center gap-2">
+      <span>{currentAlias || "—"}</span>
+      {canEditAlias && (
+        <button
+          type="button"
+          onClick={startEditAlias}
+          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 hover:border-amber-400"
+        >
+          Edit
+        </button>
+      )}
+    </div>
+  );
+
   const ownerCell = editingOwner ? (
     <div className="space-y-1.5">
       <MemberDirectoryPicker
@@ -510,7 +596,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                         label: "Relation Code",
                         value: relation?.relation_code || "—",
                       },
-                      { label: "Plant Alias", value: relation?.alias_1 || "—" },
+                      { label: "Plant Alias", value: aliasCell },
                       { label: "Group", value: groupName || "—" },
                       { label: "Site", value: site?.site_name || "—" },
                       {
