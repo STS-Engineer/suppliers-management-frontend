@@ -824,6 +824,12 @@ export default function RelationEvaluationPage() {
   // exactly what we want).
   const dirtyRef = useRef(false);
   const workspaceDataUpdatedAtRef = useRef<number | undefined>(undefined);
+  // Guards load() against a stale response: if the user navigates to a
+  // different relation before a slower in-flight fetch for the previous one
+  // resolves, we must not apply that response's data on top of the screen
+  // (and a Save click in that window would otherwise submit the WRONG
+  // relation's stale in-memory form data to the current relId).
+  const latestLoadRelIdRef = useRef<number | null>(null);
 
   const [tab, setTab] = useState<Tab>("class");
   const [form, setForm] = useState<EvaluationDetailsFormData>({
@@ -947,6 +953,7 @@ export default function RelationEvaluationPage() {
 
   const load = useCallback(async () => {
     if (!relId || isNaN(relId)) return;
+    latestLoadRelIdRef.current = relId;
     setLoading(true);
     setError(null);
     try {
@@ -963,6 +970,11 @@ export default function RelationEvaluationPage() {
         }),
         supplierAPI.listSites(),
       ]);
+      // A newer load() (for a different relation) has started since this
+      // fetch began -- discard this response instead of overwriting the
+      // screen (and the in-memory form) with data for a relation the user
+      // has already navigated away from.
+      if (latestLoadRelIdRef.current !== relId) return;
       const ws = wsRes.data as any;
       if (!ws?.relation) {
         setError("No relation data returned from server.");
@@ -1126,13 +1138,16 @@ export default function RelationEvaluationPage() {
         setStrategicMentions(new Set(draft.strategic_mentions));
       }
     } catch (err) {
+      if (latestLoadRelIdRef.current !== relId) return;
       setError(
         err instanceof Error
           ? err.message
           : "Failed to load evaluation workspace",
       );
     } finally {
-      setLoading(false);
+      // Don't clear the loading flag on behalf of a stale request -- a newer
+      // load() for a different relation may still be in flight and owns it.
+      if (latestLoadRelIdRef.current === relId) setLoading(false);
     }
   }, [relId]);
 
@@ -3777,23 +3792,21 @@ const OP_LABELS: Record<string, string> = {
   environment_ethic_rules: "Environment & Ethics",
 };
 
+// Both derive from deriveStatus() + STATUS_FROM_GRADE — the single source of
+// truth for the grade->status rule (mirrors the backend's
+// _derive_supplier_status exactly). These used to be a 3rd, independently
+// hand-maintained copy of that table whose fallback branch defaulted to
+// "New Business on Hold" for ANY unrecognized grade instead of returning
+// null like deriveStatus() does — showing a misleading status in the
+// History tab for corrupted/legacy grade data.
 function deriveStatusColor(fg: string | null): string | null {
-  if (!fg) return null;
-  const n = fg.toUpperCase();
-  if (["A1", "B1", "A2", "B2"].includes(n))
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  if (["A3", "B3", "C1", "C2", "C3"].includes(n))
-    return "bg-amber-50 text-amber-700 ring-amber-200";
-  return "bg-red-50 text-red-700 ring-red-200";
+  const status = deriveStatus(fg);
+  return status ? (STATUS_FROM_GRADE[status]?.color ?? null) : null;
 }
 
 function deriveStatusLabel(fg: string | null): string | null {
-  if (!fg) return null;
-  const n = fg.toUpperCase();
-  if (["A1", "B1", "A2", "B2"].includes(n)) return "Can Quote & Be Awarded";
-  if (["A3", "B3", "C1", "C2", "C3"].includes(n))
-    return "Can Quote / Not Awarded";
-  return "New Business on Hold";
+  const status = deriveStatus(fg);
+  return status ? (STATUS_FROM_GRADE[status]?.label ?? null) : null;
 }
 
 function CycleCard({

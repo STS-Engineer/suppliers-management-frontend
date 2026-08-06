@@ -41,6 +41,15 @@ export const PurchaserOwnerField: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [manualMode, setManualMode] = useState(false);
+  // Snapshot of the last confirmed/saved value (kept in sync whenever we're
+  // NOT in manual mode) -- used so "← Back to list" only clears a value the
+  // user was actively abandoning mid-edit, never a value that was already
+  // saved before this field was even opened (e.g. an external contractor's
+  // email that just happens not to be in the local/group directory).
+  const savedValueRef = React.useRef(value);
+  useEffect(() => {
+    if (!manualMode) savedValueRef.current = value;
+  }, [value, manualMode]);
 
   useEffect(() => {
     setLoading(true);
@@ -204,7 +213,14 @@ export const PurchaserOwnerField: React.FC<Props> = ({
               type="button"
               onClick={() => {
                 setManualMode(false);
-                if (!allPurchasers.some((p) => p.email === value)) onChange("");
+                // Only clear if the value is a fresh, unconfirmed edit the
+                // user is walking away from — not the value that was
+                // already saved when this field was opened.
+                if (
+                  value !== savedValueRef.current &&
+                  !allPurchasers.some((p) => p.email === value)
+                )
+                  onChange("");
               }}
               className="text-xs font-medium text-slate-400 underline hover:text-slate-600"
             >

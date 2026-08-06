@@ -348,6 +348,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
       const res = await supplierAPI.updateRelationOwner(relationId, email);
       setOwnerOverride(res?.data?.supplier_owner ?? email);
       setEditingOwner(false);
+      invalidateRelationWorkspace(queryClient, relationId);
       onUpdated?.();
     } catch (e: any) {
       setOwnerError(e?.message ?? "Failed to update supplier owner.");

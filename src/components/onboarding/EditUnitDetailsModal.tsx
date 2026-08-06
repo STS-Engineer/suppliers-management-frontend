@@ -321,6 +321,10 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
 
   const saveEditedContact = async () => {
     if (editingContactId === null) return;
+    if (!editContactForm.full_name.trim()) {
+      setContactsError("Full name is required.");
+      return;
+    }
     setSavingContactId(editingContactId);
     setContactsError(null);
     try {
