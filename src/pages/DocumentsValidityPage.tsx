@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { queryKeys } from "../lib/queryClient";
@@ -24,20 +25,21 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Download,
   ExternalLink,
   FileText,
+  Info,
   Loader2,
-  LayoutList,
   RotateCcw,
   ScanLine,
   Search,
   Shield,
-  Users,
   X,
   ZoomIn,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InlineAlert, PageIntro } from "../components/UI";
+import { StatusDistributionBar } from "../components/documents-validity/StatusDistributionBar";
 import supplierAPI from "../services/supplierOnboardingAPI";
 import type { SitePanelRelation } from "../types/onboarding";
 
@@ -59,6 +61,9 @@ const CLASS_CRITERIA: { key: string; label: string }[] = [
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i;
 
+const SELECT_CLS =
+  "h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs text-slate-600 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:focus:border-blue-500 dark:focus:ring-blue-500/20";
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface BulkCriteriaDetail {
@@ -68,6 +73,7 @@ interface BulkCriteriaDetail {
   evidence_file_name: string | null;
   document_url: string | null;
   document_name: string | null;
+  not_applicable?: boolean;
 }
 
 interface BulkItem {
@@ -77,8 +83,7 @@ interface BulkItem {
 }
 
 type ValidityStatus = "expired" | "expiring" | "valid" | "missing";
-type StatusFilter = "all" | "expired" | "expiring";
-type GroupBy = "supplier" | "criterion";
+type StatusFilter = "expired" | "expiring";
 
 const CRITERIA_VALIDITY_FILTERS_PAGE_KEY = "criteria-validity";
 const CRITERIA_VALIDITY_RESULTS_PAGE_KEY = "criteria-validity-results";
@@ -96,6 +101,7 @@ interface CriterionEntry {
   relId: number;
   supplierName: string;
   siteName: string;
+  owner: string;
   criterionKey: string;
   criterionLabel: string;
   value: string | null;
@@ -150,6 +156,47 @@ function getCriterionValue(item: BulkItem, key: string): string | null {
   return item.criteria_values?.[key] ?? null;
 }
 
+// Exports exactly what's currently on screen (the active status filter +
+// search already applied by the caller) — one row per criterion entry, so
+// the file matches what the user was looking at, not a separate "everything"
+// dump.
+function exportEntriesToExcel(entries: CriterionEntry[], statusFilter: string) {
+  const rows = entries.map((e) => ({
+    Supplier: e.supplierName,
+    "Avocarbon Site": e.siteName,
+    Owner: e.owner,
+    Criterion: e.criterionLabel,
+    Value: e.value ?? "",
+    "Valid From": fmtDate(e.startDate),
+    "Valid Until": fmtDate(e.endDate),
+    "Days Left":
+      e.days === null ? "" : e.days < 0 ? `${Math.abs(e.days)}d ago` : `${e.days}d`,
+    Status: STATUS_CFG[e.status].label,
+    Document: e.documentName ?? e.evidenceFile ?? "",
+  }));
+  const ws =
+    rows.length > 0
+      ? XLSX.utils.json_to_sheet(rows)
+      : XLSX.utils.aoa_to_sheet([
+          [
+            "Supplier",
+            "Avocarbon Site",
+            "Owner",
+            "Criterion",
+            "Value",
+            "Valid From",
+            "Valid Until",
+            "Days Left",
+            "Status",
+            "Document",
+          ],
+        ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Criteria Validity");
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `criteria-validity-${statusFilter}-${stamp}.xlsx`);
+}
+
 const STATUS_CFG: Record<
   ValidityStatus,
   { cls: string; dot: string; label: string }
@@ -170,11 +217,52 @@ const STATUS_CFG: Record<
     label: "Valid",
   },
   missing: {
-    cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
-    dot: "bg-gray-400",
+    cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+    dot: "bg-slate-400",
     label: "No date",
   },
 };
+
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+// Shown in place of the KPI row + results table on first load, so the page
+// never flashes empty before data arrives.
+
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-lg bg-slate-200/70 dark:bg-white/[0.06] ${className}`}
+    />
+  );
+}
+
+function DocumentsValiditySkeleton() {
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-[22px] border border-slate-200/80 bg-white/60 px-5 py-4 dark:border-white/10 dark:bg-slate-950/30"
+          >
+            <SkeletonBlock className="h-3 w-20" />
+            <SkeletonBlock className="mt-3 h-7 w-14" />
+          </div>
+        ))}
+      </div>
+      <SkeletonBlock className="h-24 rounded-2xl" />
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900">
+        <div className="border-b border-slate-100 p-4 dark:border-white/[0.06]">
+          <SkeletonBlock className="h-8 w-full max-w-md" />
+        </div>
+        <div className="space-y-3 p-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: ValidityStatus }) {
   const c = STATUS_CFG[status];
@@ -202,7 +290,7 @@ function DocCell({
   const [open, setOpen] = useState(false);
 
   if (!url && !evidenceFile)
-    return <span className="text-[11px] text-gray-400">No document</span>;
+    return <span className="text-[11px] text-slate-400">No document</span>;
 
   const label = name ?? evidenceFile ?? "View";
   const isImage = url ? IMAGE_EXTS.test(url) : false;
@@ -230,7 +318,7 @@ function DocCell({
           </a>
         )
       ) : (
-        <span className="flex items-center gap-1 text-gray-500 max-w-[140px]">
+        <span className="flex items-center gap-1 text-slate-500 max-w-[140px]">
           <FileText size={11} />
           <span className="truncate text-[12px]">{label}</span>
         </span>
@@ -247,7 +335,7 @@ function DocCell({
           >
             <button
               onClick={() => setOpen(false)}
-              className="absolute -right-3 -top-3 grid h-7 w-7 place-items-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100 z-10"
+              className="absolute -right-3 -top-3 grid h-7 w-7 place-items-center rounded-full bg-white text-slate-700 shadow-lg hover:bg-slate-100 z-10"
             >
               <X size={14} />
             </button>
@@ -326,13 +414,13 @@ function ResetLog({
                 key={i}
                 className="border-t border-emerald-100 dark:border-emerald-500/10"
               >
-                <td className="px-4 py-2 text-[12px] font-semibold text-gray-800 dark:text-gray-200">
+                <td className="px-4 py-2 text-[12px] font-semibold text-slate-800 dark:text-slate-200">
                   {entry.supplierName}
                 </td>
-                <td className="px-4 py-2 text-[12px] text-gray-500 dark:text-gray-400">
+                <td className="px-4 py-2 text-[12px] text-slate-500 dark:text-slate-400">
                   {entry.siteName}
                 </td>
-                <td className="px-4 py-2 text-[12px] font-medium text-gray-700 dark:text-gray-300">
+                <td className="px-4 py-2 text-[12px] font-medium text-slate-700 dark:text-slate-300">
                   {entry.criterionLabel}
                 </td>
                 <td className="px-4 py-2">
@@ -341,13 +429,13 @@ function ResetLog({
                       {entry.previousValue}
                     </span>
                   ) : (
-                    <span className="text-[11px] text-gray-400">—</span>
+                    <span className="text-[11px] text-slate-400">—</span>
                   )}
                 </td>
                 <td className="px-4 py-2 text-[12px] font-semibold text-red-600 dark:text-red-400">
                   {fmtDate(entry.endDate)}
                 </td>
-                <td className="px-4 py-2 text-[11px] italic text-gray-500 dark:text-gray-400">
+                <td className="px-4 py-2 text-[11px] italic text-slate-500 dark:text-slate-400">
                   {entry.reason}
                 </td>
               </tr>
@@ -385,19 +473,36 @@ function ResultsPanel({
   const initialResultsFilters = loadPersistedFilters(
     CRITERIA_VALIDITY_RESULTS_PAGE_KEY,
     userEmail,
-    { groupBy: "supplier" as GroupBy, search: "" },
+    { search: "", plant: "", owner: "", criterion: "" },
   );
-  const [groupBy, setGroupBy] = useState<GroupBy>(initialResultsFilters.groupBy);
   const [search, setSearch] = useState(initialResultsFilters.search);
+  const [plantFilter, setPlantFilter] = useState(initialResultsFilters.plant);
+  const [ownerFilter, setOwnerFilter] = useState(initialResultsFilters.owner);
+  const [criterionFilter, setCriterionFilter] = useState(
+    initialResultsFilters.criterion,
+  );
   const [confirmReset, setConfirmReset] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     savePersistedFilters(CRITERIA_VALIDITY_RESULTS_PAGE_KEY, userEmail, {
-      groupBy,
       search,
+      plant: plantFilter,
+      owner: ownerFilter,
+      criterion: criterionFilter,
     });
-  }, [userEmail, groupBy, search]);
+  }, [userEmail, search, plantFilter, ownerFilter, criterionFilter]);
+
+  // Distinct option lists, derived from the data itself so they never drift
+  // from what's actually on the page.
+  const plantOptions = useMemo(
+    () => Array.from(new Set(allEntries.map((e) => e.siteName))).sort(),
+    [allEntries],
+  );
+  const ownerOptions = useMemo(
+    () => Array.from(new Set(allEntries.map((e) => e.owner))).sort(),
+    [allEntries],
+  );
 
   function toggleGroup(key: string) {
     setCollapsed((prev) => {
@@ -415,59 +520,61 @@ function ResultsPanel({
       list = list.filter((e) => e.status === "expired");
     if (statusFilter === "expiring")
       list = list.filter((e) => e.status === "expiring");
+    if (plantFilter) list = list.filter((e) => e.siteName === plantFilter);
+    if (ownerFilter) list = list.filter((e) => e.owner === ownerFilter);
+    if (criterionFilter)
+      list = list.filter((e) => e.criterionKey === criterionFilter);
     if (search.trim()) {
       const kw = search.toLowerCase();
       list = list.filter(
         (e) =>
           e.supplierName.toLowerCase().includes(kw) ||
           e.siteName.toLowerCase().includes(kw) ||
+          e.owner.toLowerCase().includes(kw) ||
           e.criterionLabel.toLowerCase().includes(kw) ||
           (e.value ?? "").toLowerCase().includes(kw),
       );
     }
     return list;
-  }, [allEntries, statusFilter, search]);
+  }, [
+    allEntries,
+    statusFilter,
+    plantFilter,
+    ownerFilter,
+    criterionFilter,
+    search,
+  ]);
 
+  // Always grouped by criterion (max 11 groups) rather than by supplier
+  // (up to 534 groups, most holding a single row once a status filter is
+  // active) -- criterion grouping is what lets you act on every instance of
+  // one expiring criterion type in one visual chunk, which is the actual
+  // workflow this page supports ("Reset all expired").
   const groups = useMemo(() => {
-    if (groupBy === "supplier") {
-      const map = new Map<
-        string,
-        { label: string; sub: string; entries: CriterionEntry[] }
-      >();
-      for (const e of filtered) {
-        const key = `${e.relId}`;
-        if (!map.has(key))
-          map.set(key, { label: e.supplierName, sub: e.siteName, entries: [] });
-        map.get(key)!.entries.push(e);
-      }
-      return Array.from(map.entries());
-    } else {
-      const map = new Map<
-        string,
-        { label: string; sub: string; entries: CriterionEntry[] }
-      >();
-      for (const c of CLASS_CRITERIA)
-        map.set(c.key, { label: c.label, sub: "", entries: [] });
-      for (const e of filtered) {
-        if (map.has(e.criterionKey)) map.get(e.criterionKey)!.entries.push(e);
-      }
-      return Array.from(map.entries()).filter(([, g]) => g.entries.length > 0);
+    const map = new Map<
+      string,
+      { label: string; sub: string; entries: CriterionEntry[] }
+    >();
+    for (const c of CLASS_CRITERIA)
+      map.set(c.key, { label: c.label, sub: "", entries: [] });
+    for (const e of filtered) {
+      if (map.has(e.criterionKey)) map.get(e.criterionKey)!.entries.push(e);
     }
-  }, [filtered, groupBy]);
+    return Array.from(map.entries()).filter(([, g]) => g.entries.length > 0);
+  }, [filtered]);
 
   const counts = {
     expired: allEntries.filter((e) => e.status === "expired").length,
     expiring: allEntries.filter((e) => e.status === "expiring").length,
-    all: allEntries.length,
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-gray-900">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-5 py-3.5 dark:border-white/[0.06]">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
+      {/* Toolbar — filters row, then a results/actions row */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-100 px-5 py-3.5 dark:border-white/[0.06]">
         {/* Status chips */}
         <div className="flex items-center gap-1.5">
-          {(["expired", "expiring", "all"] as const).map((s) => {
+          {(["expired", "expiring"] as const).map((s) => {
             const count = counts[s];
             const active = statusFilter === s;
             const color =
@@ -475,22 +582,18 @@ function ResultsPanel({
                 ? active
                   ? "bg-red-600 text-white border-red-600"
                   : "border-red-200 text-red-600 hover:bg-red-50"
-                : s === "expiring"
-                  ? active
-                    ? "bg-amber-500 text-white border-amber-500"
-                    : "border-amber-200 text-amber-600 hover:bg-amber-50"
-                  : active
-                    ? "bg-gray-600 text-white border-gray-600"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50";
+                : active
+                  ? "bg-amber-500 text-white border-amber-500"
+                  : "border-amber-200 text-amber-600 hover:bg-amber-50";
             return (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
                 className={`flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold capitalize transition ${color} dark:border-white/10`}
               >
-                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                {s.charAt(0).toUpperCase() + s.slice(1)}
                 <span
-                  className={`rounded-full px-1.5 text-[9px] font-bold ${active ? "bg-white/25" : "bg-gray-100 dark:bg-white/10"}`}
+                  className={`rounded-full px-1.5 text-[9px] font-bold ${active ? "bg-white/25" : "bg-slate-100 dark:bg-white/10"}`}
                 >
                   {count}
                 </span>
@@ -499,55 +602,105 @@ function ResultsPanel({
           })}
         </div>
 
-        {/* Group by toggle */}
-        <div className="flex items-center overflow-hidden rounded-xl border border-gray-200 dark:border-white/10">
-          <button
-            onClick={() => setGroupBy("supplier")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition ${groupBy === "supplier" ? "bg-[#062B49] text-white dark:bg-blue-600" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5"}`}
-          >
-            <Users size={12} /> Supplier
-          </button>
-          <button
-            onClick={() => setGroupBy("criterion")}
-            className={`flex items-center gap-1.5 border-l border-gray-200 px-3 py-1.5 text-[11px] font-semibold transition dark:border-white/10 ${groupBy === "criterion" ? "bg-[#062B49] text-white dark:bg-blue-600" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5"}`}
-          >
-            <LayoutList size={12} /> Criterion
-          </button>
-        </div>
+        <div className="h-5 w-px bg-slate-200 dark:bg-white/10" />
+
+        {/* Plant / Owner / Criterion filters */}
+        <select
+          value={plantFilter}
+          onChange={(e) => setPlantFilter(e.target.value)}
+          className={SELECT_CLS}
+        >
+          <option value="">All plants</option>
+          {plantOptions.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <select
+          value={ownerFilter}
+          onChange={(e) => setOwnerFilter(e.target.value)}
+          className={SELECT_CLS}
+        >
+          <option value="">All owners</option>
+          {ownerOptions.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <select
+          value={criterionFilter}
+          onChange={(e) => setCriterionFilter(e.target.value)}
+          className={SELECT_CLS}
+        >
+          <option value="">All criteria</option>
+          {CLASS_CRITERIA.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.label}
+            </option>
+          ))}
+        </select>
 
         {/* Search */}
         <div className="relative">
           <Search
-            size={12}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            size={13}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
           />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="h-8 w-44 rounded-xl border border-gray-200 bg-gray-50 pl-7 pr-3 text-xs dark:border-white/10 dark:bg-gray-800 dark:text-white"
+            placeholder="Search supplier, owner, criterion…"
+            className="h-8 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-7 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/10 dark:bg-slate-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-500/20"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
               <X size={11} />
             </button>
           )}
         </div>
 
-        <span className="text-[11px] text-gray-400">
+        {(plantFilter || ownerFilter || criterionFilter || search) && (
+          <button
+            onClick={() => {
+              setPlantFilter("");
+              setOwnerFilter("");
+              setCriterionFilter("");
+              setSearch("");
+            }}
+            className="text-[11px] font-medium text-slate-400 underline hover:text-slate-600 dark:hover:text-slate-300"
+          >
+            Clear filters
+          </button>
+        )}
+
+        <span className="text-[11px] text-slate-400">
           {filtered.length} entries
         </span>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Export — exactly what's on screen: the active status filter +
+              search already applied. */}
+          <button
+            onClick={() => exportEntriesToExcel(filtered, statusFilter)}
+            disabled={filtered.length === 0}
+            title="Export the current view to Excel"
+            className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 hover:shadow disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
+          >
+            <Download size={12} />
+            Export
+          </button>
+
           {/* Refresh */}
           <button
             onClick={onRefresh}
             disabled={refreshing}
             title="Refresh data"
-            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
+            className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-sm transition hover:bg-violet-100 hover:shadow disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
           >
             {refreshing ? (
               <Loader2 size={12} className="animate-spin" />
@@ -581,7 +734,7 @@ function ResultsPanel({
                 </button>
                 <button
                   onClick={() => setConfirmReset(false)}
-                  className="text-xs text-gray-500 hover:text-gray-700"
+                  className="text-xs text-slate-500 hover:text-slate-700"
                 >
                   Cancel
                 </button>
@@ -603,8 +756,8 @@ function ResultsPanel({
       {groups.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <CheckCircle2 size={32} className="mb-3 text-emerald-400" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No {statusFilter === "all" ? "" : statusFilter} criteria found.
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            No {statusFilter} criteria found.
           </p>
         </div>
       ) : (
@@ -622,21 +775,21 @@ function ResultsPanel({
               <div key={groupKey}>
                 <button
                   onClick={() => toggleGroup(groupKey)}
-                  className="flex w-full items-center gap-3 border-t border-gray-100 bg-gray-50/80 px-5 py-2.5 text-left transition hover:bg-gray-100/80 dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]"
+                  className="flex w-full items-center gap-3 border-t border-slate-100 bg-slate-50/80 px-5 py-2.5 text-left transition hover:bg-slate-100/80 dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]"
                 >
                   {isCollapsed ? (
                     <ChevronRight
                       size={13}
-                      className="shrink-0 text-gray-400"
+                      className="shrink-0 text-slate-400"
                     />
                   ) : (
-                    <ChevronDown size={13} className="shrink-0 text-gray-400" />
+                    <ChevronDown size={13} className="shrink-0 text-slate-400" />
                   )}
-                  <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
                     {group.label}
                   </span>
                   {group.sub && (
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       · {group.sub}
                     </span>
                   )}
@@ -652,7 +805,7 @@ function ResultsPanel({
                       </span>
                     )}
                   </div>
-                  <span className="ml-auto text-[11px] text-gray-400">
+                  <span className="ml-auto text-[11px] text-slate-400">
                     {group.entries.length} entries
                   </span>
                 </button>
@@ -660,33 +813,21 @@ function ResultsPanel({
                 {!isCollapsed && (
                   <table className="w-full min-w-[900px] text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 dark:border-white/[0.04]">
-                        {(groupBy === "supplier"
-                          ? [
-                              "Criterion",
-                              "Value",
-                              "Valid From",
-                              "Valid Until",
-                              "Days Left",
-                              "Status",
-                              "Document",
-                              "",
-                            ]
-                          : [
-                              "Supplier",
-                              "Avocarbon Site",
-                              "Value",
-                              "Valid From",
-                              "Valid Until",
-                              "Days Left",
-                              "Status",
-                              "Document",
-                              "",
-                            ]
-                        ).map((h) => (
+                      <tr className="sticky top-0 z-10 border-b border-slate-100 bg-white dark:border-white/[0.04] dark:bg-slate-900">
+                        {[
+                          "Supplier",
+                          "Avocarbon Site",
+                          "Value",
+                          "Valid From",
+                          "Valid Until",
+                          "Days Left",
+                          "Status",
+                          "Document",
+                          "",
+                        ].map((h) => (
                           <th
                             key={h}
-                            className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
+                            className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500"
                           >
                             {h}
                           </th>
@@ -695,51 +836,47 @@ function ResultsPanel({
                     </thead>
                     <tbody>
                       {group.entries.map((entry, idx) => {
+                        // Status tinting takes priority; otherwise a faint
+                        // zebra stripe keeps long groups scannable.
                         const rowBg =
                           entry.status === "expired"
                             ? "bg-red-50/60 dark:bg-red-900/10"
                             : entry.status === "expiring"
                               ? "bg-amber-50/50 dark:bg-amber-900/10"
-                              : "";
+                              : idx % 2 === 1
+                                ? "bg-slate-50/60 dark:bg-white/[0.02]"
+                                : "";
                         return (
                           <tr
                             key={idx}
-                            className={`border-t border-gray-100 dark:border-white/[0.04] ${rowBg}`}
+                            className={`border-t border-slate-100 transition-colors hover:bg-blue-50/40 dark:border-white/[0.04] dark:hover:bg-white/[0.04] ${rowBg}`}
                           >
-                            {groupBy === "supplier" ? (
-                              <td className="px-4 py-2.5 text-[12px] font-semibold text-gray-700 dark:text-gray-300">
-                                {entry.criterionLabel}
-                              </td>
-                            ) : (
-                              <>
-                                <td className="px-4 py-2.5 text-[12px] font-semibold text-gray-800 dark:text-gray-100">
-                                  {entry.supplierName}
-                                </td>
-                                <td className="px-4 py-2.5 text-[12px] text-gray-500 dark:text-gray-400">
-                                  {entry.siteName}
-                                </td>
-                              </>
-                            )}
+                            <td className="px-4 py-2.5 text-[12px] font-semibold text-slate-800 dark:text-slate-100">
+                              {entry.supplierName}
+                            </td>
+                            <td className="px-4 py-2.5 text-[12px] text-slate-500 dark:text-slate-400">
+                              {entry.siteName}
+                            </td>
                             <td className="px-4 py-2.5">
                               {entry.value ? (
                                 <span className="inline-block max-w-[160px] truncate rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
                                   {entry.value}
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-gray-400">
+                                <span className="text-[11px] text-slate-400">
                                   —
                                 </span>
                               )}
                             </td>
-                            <td className="px-4 py-2.5 text-[12px] text-gray-500">
+                            <td className="px-4 py-2.5 text-[12px] text-slate-500">
                               {fmtDate(entry.startDate)}
                             </td>
-                            <td className="px-4 py-2.5 text-[12px] font-medium text-gray-700 dark:text-gray-300">
+                            <td className="px-4 py-2.5 text-[12px] font-medium text-slate-700 dark:text-slate-300">
                               {fmtDate(entry.endDate)}
                             </td>
                             <td className="px-4 py-2.5 text-[12px] tabular-nums">
                               {entry.days === null ? (
-                                <span className="text-gray-400">—</span>
+                                <span className="text-slate-400">—</span>
                               ) : entry.days < 0 ? (
                                 <span className="font-bold text-red-600 dark:text-red-400">
                                   {Math.abs(entry.days)}d ago
@@ -830,9 +967,15 @@ export default function DocumentsValidityPage() {
 
   // relId → { supplierName, siteName } built once from the panel response
   const relMeta = useMemo<
-    Record<number, { supplierName: string; siteName: string }>
+    Record<
+      number,
+      { supplierName: string; siteName: string; owner: string }
+    >
   >(() => {
-    const map: Record<number, { supplierName: string; siteName: string }> = {};
+    const map: Record<
+      number,
+      { supplierName: string; siteName: string; owner: string }
+    > = {};
     for (const item of relations) {
       const relId = item.relation.id_relation;
       map[relId] = {
@@ -843,6 +986,7 @@ export default function DocumentsValidityPage() {
           `Supplier #${relId}`,
         siteName:
           sites[item.relation.id_site!] ?? `Site #${item.relation.id_site}`,
+        owner: item.relation?.supplier_owner || "Unassigned",
       };
     }
     return map;
@@ -991,14 +1135,22 @@ export default function DocumentsValidityPage() {
       const meta = relMeta[item.rel_id];
       const supplierName = meta?.supplierName ?? `Supplier #${item.rel_id}`;
       const siteName = meta?.siteName ?? `Relation #${item.rel_id}`;
+      const owner = meta?.owner ?? "Unassigned";
       const details = item.class_criteria_details ?? {};
 
       for (const c of CLASS_CRITERIA) {
         const detail = details[c.key];
+        // A criterion an evaluator explicitly marked Not Applicable isn't
+        // "missing" -- it just doesn't apply to this relation. Excluding it
+        // entirely (rather than counting it as missing) keeps the
+        // documentation-coverage figure honest instead of inflating "No
+        // data" with criteria nobody was ever supposed to fill in.
+        if (detail?.not_applicable) continue;
         entries.push({
           relId: item.rel_id,
           supplierName,
           siteName,
+          owner,
           criterionKey: c.key,
           criterionLabel: c.label,
           value: getCriterionValue(item, c.key),
@@ -1030,38 +1182,36 @@ export default function DocumentsValidityPage() {
   const totalExpiring = allEntries.filter(
     (e) => e.status === "expiring",
   ).length;
+  const totalMissing = allEntries.filter((e) => e.status === "missing").length;
+  const totalValid = allEntries.filter((e) => e.status === "valid").length;
 
   // KPI card config — expired/expiring cards set the filter when clicked
   const kpiCards = [
     {
       label: "Active relations",
       value: total,
-      cls: "text-blue-600",
-      bg: "bg-blue-50 dark:bg-blue-900/20",
+      accent: "text-blue-600 dark:text-blue-400",
       icon: <Shield size={16} />,
       filter: null as StatusFilter | null,
     },
     {
       label: "Relations scanned",
       value: scannedCount,
-      cls: "text-violet-600",
-      bg: "bg-violet-50 dark:bg-violet-900/20",
+      accent: "text-violet-600 dark:text-violet-400",
       icon: <ScanLine size={16} />,
       filter: null as StatusFilter | null,
     },
     {
       label: "Expired criteria",
       value: scanDone ? totalExpired : "—",
-      cls: "text-red-600",
-      bg: "bg-red-50 dark:bg-red-900/20",
+      accent: "text-rose-600 dark:text-rose-400",
       icon: <AlertCircle size={16} />,
       filter: "expired" as StatusFilter,
     },
     {
       label: "Expiring ≤ 90 days",
       value: scanDone ? totalExpiring : "—",
-      cls: "text-amber-600",
-      bg: "bg-amber-50 dark:bg-amber-900/20",
+      accent: "text-amber-600 dark:text-amber-400",
       icon: <AlertTriangle size={16} />,
       filter: "expiring" as StatusFilter,
     },
@@ -1072,78 +1222,106 @@ export default function DocumentsValidityPage() {
       <PageIntro
         eyebrow="Validity Tracker"
         title="Criteria Validity Tracker"
-        description="Scan all supplier relations at once, then pivot by supplier or criterion. Click an expired/expiring KPI card to filter instantly. Reset all expired criteria in one action — changes are applied to the backend and logged."
+        description="Scan all supplier relations at once, grouped by criterion. Click an expired/expiring KPI card to filter instantly. Reset all expired criteria in one action — changes are applied to the backend and logged."
       />
 
       <div className="flex flex-col gap-5 mx-auto w-full max-w-[1600px]">
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {kpiCards.map((c) => {
-            const clickable = !!c.filter && scanDone;
-            const active =
-              c.filter !== null && statusFilter === c.filter && scanDone;
-            return (
-              <div
-                key={c.label}
-                onClick={() => {
-                  if (clickable) setStatusFilter(c.filter!);
-                }}
-                className={[
-                  "flex items-center gap-3 rounded-2xl border bg-white p-4 shadow-sm transition dark:bg-gray-900",
-                  active
-                    ? "border-blue-400 ring-2 ring-blue-200 dark:border-blue-500 dark:ring-blue-800"
-                    : "border-gray-200 dark:border-white/10",
-                  clickable ? "cursor-pointer hover:shadow-md" : "",
-                ].join(" ")}
-              >
-                <div
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${c.bg} ${c.cls}`}
-                >
-                  {c.icon}
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-gray-800 dark:text-white">
-                    {c.value}
-                  </p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {c.label}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {error && (
-          <InlineAlert
-            title="Failed to load relations"
-            message={error}
-            tone="danger"
-          />
-        )}
-
-        {/* Reset log */}
-        {resetLog && (
-          <ResetLog log={resetLog} onClose={() => setResetLog(null)} />
-        )}
-
-        {/* Results — always shown; spinner while initial load, table once data arrives */}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500">
-            <Loader2 size={16} className="animate-spin text-blue-500" /> Loading
-            criteria data…
-          </div>
+          <DocumentsValiditySkeleton />
         ) : (
-          <ResultsPanel
-            allEntries={allEntries}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            onReset={handleResetAllExpired}
-            resetting={resetting}
-            onRefresh={() => runScan()}
-            refreshing={scanning}
-            canReset={isPrivileged}
-          />
+          <>
+            {/* KPI cards — glass style, matching MetricCard's visual language
+                elsewhere in the app, extended with click-to-filter + an active
+                ring since these ones double as filter toggles. */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {kpiCards.map((c) => {
+                const clickable = !!c.filter && scanDone;
+                const active =
+                  c.filter !== null && statusFilter === c.filter && scanDone;
+                return (
+                  <div
+                    key={c.label}
+                    onClick={() => {
+                      if (clickable) setStatusFilter(c.filter!);
+                    }}
+                    className={[
+                      "rounded-[22px] border border-slate-200/80 bg-white/88 px-5 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur transition dark:border-white/10 dark:bg-slate-950/40",
+                      active ? "ring-2 ring-blue-300 dark:ring-blue-500/60" : "",
+                      clickable
+                        ? "cursor-pointer hover:shadow-[0_16px_36px_rgba(15,23,42,0.09)]"
+                        : "",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={c.accent}>{c.icon}</span>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                        {c.label}
+                      </p>
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#10233f] dark:text-white">
+                      {c.value}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Status distribution — visual overview of every scanned entry
+                (missing/expired/expiring/valid), clicking expired/expiring
+                applies the same filter as the KPI cards above. */}
+            {scanDone && (
+              <StatusDistributionBar
+                counts={{
+                  missing: totalMissing,
+                  expired: totalExpired,
+                  expiring: totalExpiring,
+                  valid: totalValid,
+                }}
+                onSegmentClick={setStatusFilter}
+              />
+            )}
+
+            {/* Explains the gap between "Active relations" and "Relations
+                scanned" -- the scan only covers relations that are on the active
+                panel AND already have at least one class evaluation on record;
+                without this note the two KPI numbers just above look like a
+                discrepancy/bug rather than an intentional scope. */}
+            {scanDone && total > scannedCount && (
+              <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-2.5 text-xs text-blue-800 dark:border-blue-500/20 dark:bg-blue-900/10 dark:text-blue-300">
+                <Info size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {total - scannedCount} active relation
+                  {total - scannedCount !== 1 ? "s" : ""} not shown here — not yet
+                  on the active panel and/or never evaluated (no class evaluation
+                  on record yet), so there's nothing to scan for validity.
+                </span>
+              </div>
+            )}
+
+            {error && (
+              <InlineAlert
+                title="Failed to load relations"
+                message={error}
+                tone="danger"
+              />
+            )}
+
+            {/* Reset log */}
+            {resetLog && (
+              <ResetLog log={resetLog} onClose={() => setResetLog(null)} />
+            )}
+
+            <ResultsPanel
+              allEntries={allEntries}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              onReset={handleResetAllExpired}
+              resetting={resetting}
+              onRefresh={() => runScan()}
+              refreshing={scanning}
+              canReset={isPrivileged}
+            />
+          </>
         )}
       </div>
     </div>
