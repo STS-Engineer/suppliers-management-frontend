@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import type { ContactResponse, SupplierUnitResponse } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { useAuth } from "../../context/AuthContext";
 import { broadcastInvalidate } from "../../lib/crossTabSync";
 import { SectionCard } from "../UI";
 import {
@@ -186,6 +187,15 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
 }) => {
   const queryClient = useQueryClient();
 
+  // Editing a unit's own details (name, address, city, commodity, etc.) is
+  // restricted to purchasing_director/vp_conversion — mirrors PRIVILEGED in
+  // the backend suppliers router. Everyone else can still view every field,
+  // they just can't submit changes.
+  const { user } = useAuth();
+  const canEditUnitDetails = ["purchasing_director", "vp_conversion"].includes(
+    user?.access_profile ?? "",
+  );
+
   // ── Unit details section ──────────────────────────────────────────────
   const [unitForm, setUnitForm] = useState<UnitFormState>(() => toFormState(unit));
   const [savingUnit, setSavingUnit] = useState(false);
@@ -242,6 +252,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
   };
 
   const saveUnit = async () => {
+    if (!canEditUnitDetails) return;
     setSavingUnit(true);
     setUnitError(null);
     setUnitSaved(false);
@@ -320,6 +331,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
   };
 
   const saveEditedContact = async () => {
+    if (!canEditUnitDetails) return;
     if (editingContactId === null) return;
     if (!editContactForm.full_name.trim()) {
       setContactsError("Full name is required.");
@@ -347,6 +359,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
   const [savingNewContact, setSavingNewContact] = useState(false);
 
   const saveNewContact = async () => {
+    if (!canEditUnitDetails) return;
     if (!newContactForm.full_name.trim()) {
       setContactsError("Full name is required to add a contact.");
       return;
@@ -459,15 +472,21 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                       {unitError}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={saveUnit}
-                    disabled={savingUnit}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#0f2744] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#0f2744]/90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    {savingUnit ? "Saving…" : "Save unit details"}
-                  </button>
+                  {canEditUnitDetails ? (
+                    <button
+                      type="button"
+                      onClick={saveUnit}
+                      disabled={savingUnit}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#0f2744] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#0f2744]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {savingUnit ? "Saving…" : "Save unit details"}
+                    </button>
+                  ) : (
+                    <span className="text-xs font-medium text-slate-400">
+                      Read-only — only Purchasing Director / VP Conversion can edit.
+                    </span>
+                  )}
                 </div>
               }
             >
@@ -479,6 +498,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                     value={unitForm.supplier_name}
                     onChange={(e) => updateUnitField("supplier_name", e.target.value)}
                     required
+                    disabled={!canEditUnitDetails}
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -487,6 +507,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                     name="address_line"
                     value={unitForm.address_line}
                     onChange={(e) => updateUnitField("address_line", e.target.value)}
+                    disabled={!canEditUnitDetails}
                   />
                 </div>
                 <FormInput
@@ -494,6 +515,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                   name="city"
                   value={unitForm.city}
                   onChange={(e) => updateUnitField("city", e.target.value)}
+                  disabled={!canEditUnitDetails}
                 />
                 <FormSelect
                   label="Country"
@@ -502,18 +524,21 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                   onChange={(e) => updateUnitField("country", e.target.value)}
                   options={COUNTRIES.map((c) => ({ value: c, label: c }))}
                   placeholder="Select country"
+                  disabled={!canEditUnitDetails}
                 />
                 <FormInput
                   label="Continent"
                   name="continent"
                   value={unitForm.continent}
                   onChange={(e) => updateUnitField("continent", e.target.value)}
+                  disabled={!canEditUnitDetails}
                 />
                 <FormInput
                   label="Area / region"
                   name="area"
                   value={unitForm.area}
                   onChange={(e) => updateUnitField("area", e.target.value)}
+                  disabled={!canEditUnitDetails}
                 />
                 <div className="sm:col-span-2">
                   <FormInput
@@ -523,6 +548,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                     value={unitForm.website}
                     onChange={(e) => updateUnitField("website", e.target.value)}
                     placeholder="https://supplier.com"
+                    disabled={!canEditUnitDetails}
                   />
                 </div>
 
@@ -544,8 +570,9 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                         <button
                           key={option}
                           type="button"
-                          onClick={() => toggleCommodity(option)}
-                          className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
+                          onClick={() => canEditUnitDetails && toggleCommodity(option)}
+                          disabled={!canEditUnitDetails}
+                          className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                             selected
                               ? "border-[#0f2744] bg-[#0f2744] text-white shadow-sm"
                               : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
@@ -577,6 +604,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                         ? `${availableFamilies.length} families for selected commodities`
                         : "Product family (multiple allowed)"
                     }
+                    disabled={!canEditUnitDetails}
                   />
                 </div>
 
@@ -589,7 +617,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                     storageKey="unit_sub_family"
                     availableOptions={availableSubFamilies}
                     displayLabel={toDisplayLabel}
-                    disabled={unitForm.family.length === 0}
+                    disabled={!canEditUnitDetails || unitForm.family.length === 0}
                     placeholder={
                       unitForm.family.length === 0
                         ? "Select a family first…"
@@ -613,6 +641,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                     defaultOptions={DEFAULT_PRODUCT_LINES}
                     placeholder="e.g., Assembly, Brush, Seals…"
                     helperText="Specific product lines or application areas"
+                    disabled={!canEditUnitDetails}
                   />
                 </div>
 
@@ -632,6 +661,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                   onChange={(e) => updateUnitField("carbon_footprint", e.target.value)}
                   placeholder="e.g., 12 500"
                   suffix="tCO₂e"
+                  disabled={!canEditUnitDetails}
                 />
                 <FormInput
                   label="Green electricity"
@@ -644,6 +674,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                   min={0}
                   max={100}
                   suffix="%"
+                  disabled={!canEditUnitDetails}
                 />
               </div>
             </SectionCard>
@@ -653,7 +684,7 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
               title="Contacts"
               subtitle="Who to reach at the supplier for this unit — not the Avocarbon side."
               action={
-                !addingContact && (
+                canEditUnitDetails && !addingContact && (
                   <button
                     type="button"
                     onClick={() => setAddingContact(true)}
@@ -689,12 +720,18 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                 </div>
               ) : sortedContacts.length === 0 && !addingContact ? (
                 <div
-                  onClick={() => setAddingContact(true)}
-                  className="cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-8 text-center transition hover:border-slate-400 hover:bg-white"
+                  onClick={() => canEditUnitDetails && setAddingContact(true)}
+                  className={`rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-8 text-center transition ${
+                    canEditUnitDetails
+                      ? "cursor-pointer hover:border-slate-400 hover:bg-white"
+                      : ""
+                  }`}
                 >
                   <Users className="mx-auto mb-1.5 h-5 w-5 text-slate-400" />
                   <p className="text-xs font-medium text-slate-500">
-                    No contacts recorded for this unit yet — click to add one
+                    {canEditUnitDetails
+                      ? "No contacts recorded for this unit yet — click to add one"
+                      : "No contacts recorded for this unit yet."}
                   </p>
                 </div>
               ) : (
@@ -760,14 +797,16 @@ export const EditUnitDetailsModal: React.FC<Props> = ({
                               </p>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => startEditContact(contact)}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            Edit
-                          </button>
+                          {canEditUnitDetails && (
+                            <button
+                              type="button"
+                              onClick={() => startEditContact(contact)}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

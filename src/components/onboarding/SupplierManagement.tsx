@@ -16,6 +16,7 @@ import {
   SupplierUnitResponse,
 } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { useAuth } from "../../context/AuthContext";
 import { broadcastInvalidate } from "../../lib/crossTabSync";
 import {
   SharedMarkReceivedModal,
@@ -181,6 +182,12 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Activating/deactivating a unit is restricted to purchasing_director/vp_conversion
+  // — mirrors the backend PATCH /units/{unit_id}/status gate.
+  const { user } = useAuth();
+  const canEditUnitDetails = ["purchasing_director", "vp_conversion"].includes(
+    user?.access_profile ?? "",
+  );
   const didAutoSelectUnit = React.useRef(false);
   const didAutoOpenRelation = React.useRef(false);
   const [activeFlow, setActiveFlow] = useState<ActiveFlow>(null);
@@ -384,6 +391,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   );
 
   const handleToggleUnitStatus = async () => {
+    if (!canEditUnitDetails) return;
     if (!confirmUnitStatus) return;
     const nextActive = !(confirmUnitStatus.is_active ?? true);
     setUnitStatusSaving(true);
@@ -840,6 +848,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   };
 
   const saveOverride = async () => {
+    if (user?.access_profile !== "vp_conversion") return;
     if (!overrideModalRelation) return;
     if (!overrideStatus.trim() || !overrideReason.trim()) {
       setError("Override status and reason are required.");
@@ -1062,7 +1071,8 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                     summary={shared.evaluationSummaryByUnit[unit.id_supplier_unit]}
                     isSelected={shared.selectedUnit?.id_supplier_unit === unit.id_supplier_unit}
                     onClick={() => selectUnit(unit)}
-                    onToggleStatus={() => setConfirmUnitStatus(unit)} />
+                    onToggleStatus={() => setConfirmUnitStatus(unit)}
+                    canEditUnitDetails={canEditUnitDetails} />
                 ))
               )}
             </div>
@@ -2145,7 +2155,8 @@ const UnitCard: React.FC<{
   isSelected: boolean;
   onClick: () => void;
   onToggleStatus: () => void;
-}> = ({ unit, summary, isSelected, onClick, onToggleStatus }) => {
+  canEditUnitDetails: boolean;
+}> = ({ unit, summary, isSelected, onClick, onToggleStatus, canEditUnitDetails }) => {
   const isActive = unit.is_active ?? true;
   return (
     <div
@@ -2202,20 +2213,22 @@ const UnitCard: React.FC<{
         </div>
       </button>
 
-      <button
-        type="button"
-        title={isActive ? "Deactivate unit" : "Activate unit"}
-        onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
-        className={`absolute right-3 top-4 flex h-7 w-7 items-center justify-center rounded-full transition ${
-          isActive
-            ? "text-slate-300 hover:bg-rose-50 hover:text-rose-600"
-            : "text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
-        }`}
-      >
-        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v9m6.364-6.364a9 9 0 11-12.728 0" />
-        </svg>
-      </button>
+      {canEditUnitDetails && (
+        <button
+          type="button"
+          title={isActive ? "Deactivate unit" : "Activate unit"}
+          onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
+          className={`absolute right-3 top-4 flex h-7 w-7 items-center justify-center rounded-full transition ${
+            isActive
+              ? "text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+              : "text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+          }`}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v9m6.364-6.364a9 9 0 11-12.728 0" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 };

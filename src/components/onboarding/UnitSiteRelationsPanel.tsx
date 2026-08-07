@@ -12,6 +12,7 @@ import {
   UnitEvaluationSummary,
 } from "../../types/onboarding";
 import { supplierAPI } from "../../services/supplierOnboardingAPI";
+import { useAuth } from "../../context/AuthContext";
 
 interface SpendEntry {
   fiscal_year: number;
@@ -79,6 +80,17 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
   groupIsActive = true,
   onOpenEditDetails,
 }) => {
+  // Activating/deactivating a relation is restricted to purchasing_director/
+  // vp_conversion — mirrors the backend PATCH /supplier-relations/{id} gate.
+  const { user } = useAuth();
+  const canToggleRelationActive = ["purchasing_director", "vp_conversion"].includes(
+    user?.access_profile ?? "",
+  );
+  // Overriding the effective supplier status is vp_conversion-only — mirrors
+  // the backend POST /{relation_id}/status-override gate (stricter than the
+  // usual PRIVILEGED pair; purchasing_director is NOT included here).
+  const canOverrideStatus = user?.access_profile === "vp_conversion";
+
   // Most-recent spend per relation: relationId → latest SpendEntry
   const [latestSpend, setLatestSpend] = useState<Record<number, SpendEntry | null>>({});
 
@@ -242,6 +254,8 @@ export const UnitSiteRelationsPanel: React.FC<Props> = ({
                   onActiveToggled={onRelationActiveToggled}
                   groupIsActive={groupIsActive}
                   unitIsActive={selectedUnit.is_active ?? true}
+                  canToggleActive={canToggleRelationActive}
+                  canOverrideStatus={canOverrideStatus}
                   isSendingDevelopmentPlan={
                     activeDevelopmentPlanRelationId === rel.id_relation
                   }
@@ -278,6 +292,8 @@ interface RelCardProps {
   unitIsActive?: boolean;
   isSendingDevelopmentPlan?: boolean;
   isLoadingDetails?: boolean;
+  canToggleActive?: boolean;
+  canOverrideStatus?: boolean;
 }
 
 const RelationCard: React.FC<RelCardProps> = ({
@@ -285,6 +301,7 @@ const RelationCard: React.FC<RelCardProps> = ({
   onEvaluate, onDevelopmentPlan, onViewDetails, onOverride, onActiveToggled,
   groupIsActive = true, unitIsActive = true,
   isSendingDevelopmentPlan = false, isLoadingDetails = false,
+  canToggleActive = false, canOverrideStatus = false,
 }) => {
   const isActive = relation.is_active ?? true;
   const [confirming, setConfirming] = useState(false);
@@ -304,6 +321,7 @@ const RelationCard: React.FC<RelCardProps> = ({
         : null;
 
   const doToggle = async () => {
+    if (!canToggleActive) return;
     setBusy(true);
     setToggleError(null);
     try {
@@ -406,49 +424,53 @@ const RelationCard: React.FC<RelCardProps> = ({
         className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
         {isLoadingDetails ? "Loading Details..." : "Relation Details"}
       </button>
-      <button onClick={onOverride}
-        className="rounded-lg border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] transition hover:bg-[#062B49]/5">
-        Override Status
-      </button>
-
-      {/* Activate / Deactivate relation */}
-      {!confirming ? (
-        <button
-          onClick={() => { setConfirming(true); setToggleError(null); }}
-          disabled={!!blockedReason}
-          title={blockedReason ?? undefined}
-          className={`ml-auto rounded-lg border px-4 py-2 text-xs font-semibold transition ${
-            blockedReason
-              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-              : isActive
-                ? "border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-                : "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
-          }`}
-        >
-          {isActive ? "Deactivate Relation" : "Activate Relation"}
+      {canOverrideStatus && (
+        <button onClick={onOverride}
+          className="rounded-lg border border-[#062B49]/30 bg-white px-4 py-2 text-xs font-semibold text-[#062B49] transition hover:bg-[#062B49]/5">
+          Override Status
         </button>
-      ) : (
-        <span className="ml-auto inline-flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-600">
-            {isActive ? "Deactivate this relation?" : "Activate this relation?"}
-          </span>
+      )}
+
+      {/* Activate / Deactivate relation — purchasing_director/vp_conversion only */}
+      {canToggleActive && (
+        !confirming ? (
           <button
-            onClick={doToggle}
-            disabled={busy}
-            className={`rounded-lg px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60 ${
-              isActive ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
+            onClick={() => { setConfirming(true); setToggleError(null); }}
+            disabled={!!blockedReason}
+            title={blockedReason ?? undefined}
+            className={`ml-auto rounded-lg border px-4 py-2 text-xs font-semibold transition ${
+              blockedReason
+                ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                : isActive
+                  ? "border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
+                  : "border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
           >
-            {busy ? "Saving…" : isActive ? "Yes, deactivate" : "Yes, activate"}
+            {isActive ? "Deactivate Relation" : "Activate Relation"}
           </button>
-          <button
-            onClick={() => setConfirming(false)}
-            disabled={busy}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-        </span>
+        ) : (
+          <span className="ml-auto inline-flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-600">
+              {isActive ? "Deactivate this relation?" : "Activate this relation?"}
+            </span>
+            <button
+              onClick={doToggle}
+              disabled={busy}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60 ${
+                isActive ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
+            >
+              {busy ? "Saving…" : isActive ? "Yes, deactivate" : "Yes, activate"}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </span>
+        )
       )}
     </div>
 

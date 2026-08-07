@@ -422,6 +422,10 @@ export interface SupplierUnitResponse {
   inactivated_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  updated_by?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 }
 
 export interface SiteRelationData {
@@ -486,6 +490,7 @@ export interface SupplierSiteRelation {
   inactivated_at?: string;
   last_status_change?: string;
   evaluation_comments?: string;
+  evaluation_suggestion?: string | null;
   // Supplier Panel (SB1) fields
   last_eval_score?: number | null;
   is_active?: boolean;

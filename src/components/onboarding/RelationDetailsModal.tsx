@@ -66,6 +66,9 @@ const formatMoney = (value?: number | null) => {
 const labelize = (value: string) =>
   value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
+const formatBool = (value?: boolean | null) =>
+  value === null || value === undefined ? "—" : value ? "Yes" : "No";
+
 const panelCls = "rounded-2xl border border-slate-200 bg-white shadow-sm";
 const tableHeaderCls =
   "px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500";
@@ -124,6 +127,10 @@ const EmptyState = ({ label }: { label: string }) => (
 
 const CURRENCIES = ["EUR", "USD", "GBP", "JPY", "CNY", "MAD"];
 
+// Editing relation-level fields (owner, plant alias, annual spend) is restricted
+// to these roles; mirrors PRIVILEGED in the backend supplier_relations router.
+const PRIVILEGED_ROLES = ["purchasing_director", "vp_conversion"];
+
 export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   workspace,
   site,
@@ -136,22 +143,25 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const queryClient = useQueryClient();
 
-  // Supplier owner inline editing (any non-viewer role).
+  // Supplier owner inline editing — restricted to purchasing_director/vp_conversion.
   const { user } = useAuth();
-  const canEditOwner = user?.access_profile !== "viewer";
+  const canEditOwner = PRIVILEGED_ROLES.includes(user?.access_profile ?? "");
   const [ownerOverride, setOwnerOverride] = useState<string | null>(null);
   const [editingOwner, setEditingOwner] = useState(false);
   const [ownerInput, setOwnerInput] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
   const [ownerError, setOwnerError] = useState<string | null>(null);
 
-  // Plant alias inline editing (any non-viewer role).
-  const canEditAlias = user?.access_profile !== "viewer";
+  // Plant alias inline editing — restricted to purchasing_director/vp_conversion.
+  const canEditAlias = PRIVILEGED_ROLES.includes(user?.access_profile ?? "");
   const [aliasOverride, setAliasOverride] = useState<string | null>(null);
   const [editingAlias, setEditingAlias] = useState(false);
   const [aliasInput, setAliasInput] = useState("");
   const [savingAlias, setSavingAlias] = useState(false);
   const [aliasError, setAliasError] = useState<string | null>(null);
+
+  // Annual spend editing — restricted to purchasing_director/vp_conversion.
+  const canEditSpend = PRIVILEGED_ROLES.includes(user?.access_profile ?? "");
 
   // Spend-by-year state
   const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
@@ -647,6 +657,114 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
               <section className={panelCls}>
                 <div className="border-b border-slate-100 px-5 py-4">
                   <h3 className="text-sm font-bold text-slate-900">
+                    Supplier Unit Information
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Read-only — edit from the unit's "Edit details" panel.
+                  </p>
+                </div>
+                <div className="px-5 py-5">
+                  <DetailGrid
+                    items={[
+                      { label: "Unit Code", value: unit?.unit_code || "—" },
+                      {
+                        label: "Unit Name",
+                        value: unit?.supplier_name || "—",
+                      },
+                      { label: "Address", value: unit?.address_line || "—" },
+                      { label: "City", value: unit?.city || "—" },
+                      { label: "Country", value: unit?.country || "—" },
+                      { label: "Continent", value: unit?.continent || "—" },
+                      { label: "Area", value: unit?.area || "—" },
+                      {
+                        label: "Website",
+                        value: unit?.website ? (
+                          <a
+                            href={
+                              unit.website.startsWith("http")
+                                ? unit.website
+                                : `https://${unit.website}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#0C5381] underline"
+                          >
+                            {unit.website}
+                          </a>
+                        ) : (
+                          "—"
+                        ),
+                      },
+                      { label: "Commodity", value: unit?.commodity || "—" },
+                      { label: "Family", value: unit?.family || "—" },
+                      {
+                        label: "Sub-Family",
+                        value: unit?.sub_family || "—",
+                      },
+                      {
+                        label: "Product Line",
+                        value: unit?.product_line || "—",
+                      },
+                      {
+                        label: "Carbon Footprint",
+                        value: unit?.carbon_footprint || "—",
+                      },
+                      {
+                        label: "Green Electricity %",
+                        value: unit?.green_electricity_pct || "—",
+                      },
+                      {
+                        label: "Strategic Unit",
+                        value: formatBool(unit?.strategique),
+                      },
+                      {
+                        label: "Monopolistic",
+                        value: formatBool(unit?.monopolistique),
+                      },
+                      {
+                        label: "Directed",
+                        value: formatBool(unit?.directed),
+                      },
+                      {
+                        label: "Unit Active",
+                        value: formatBool(unit?.is_active),
+                      },
+                      {
+                        label: "Unit Created",
+                        value: formatDate(unit?.created_at),
+                      },
+                      {
+                        label: "Unit Inactivated",
+                        value: formatDate(unit?.inactivated_at),
+                      },
+                      {
+                        label: "Last Modified",
+                        value: formatDate(unit?.updated_at),
+                      },
+                      {
+                        label: "Modified By",
+                        value: unit?.updated_by || "—",
+                      },
+                      {
+                        label: "Deleted",
+                        value: formatBool(unit?.is_deleted),
+                      },
+                      {
+                        label: "Deleted At",
+                        value: formatDate(unit?.deleted_at),
+                      },
+                      {
+                        label: "Deleted By",
+                        value: unit?.deleted_by || "—",
+                      },
+                    ]}
+                  />
+                </div>
+              </section>
+
+              <section className={panelCls}>
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Evaluation Snapshot
                   </h3>
                 </div>
@@ -672,6 +790,14 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                       {
                         label: "Operational Score",
                         value: formatNumber(workspace.operational_score),
+                      },
+                      {
+                        label: "Last Eval Score",
+                        value: formatNumber(relation?.last_eval_score),
+                      },
+                      {
+                        label: "Final Grade",
+                        value: relation?.final_grade || "—",
                       },
                       {
                         label: "Strategic Mention",
@@ -719,6 +845,12 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                         relation?.evaluation_comments ||
                         "No evaluation comments yet."}
                     </div>
+                    {relation?.evaluation_suggestion && (
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                        <p className="font-semibold">Evaluation suggestion</p>
+                        <p className="mt-1">{relation.evaluation_suggestion}</p>
+                      </div>
+                    )}
                     {workspace.status_override?.reason && (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                         <p className="font-semibold">Override reason</p>
@@ -1031,84 +1163,90 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                 </div>
               )}
 
-              {/* Add / edit form */}
-              <section className={panelCls}>
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Add / Update Entry
-                  </h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Saving an existing year overwrites it (upsert).
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-end gap-3 px-5 py-5">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      Fiscal Year
-                    </label>
-                    <input
-                      type="number"
-                      min={2000}
-                      max={2100}
-                      placeholder={String(new Date().getFullYear())}
-                      value={spendForm.fiscal_year}
-                      onChange={(e) =>
-                        setSpendForm((f) => ({
-                          ...f,
-                          fiscal_year: e.target.value,
-                        }))
-                      }
-                      className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
-                    />
+              {/* Add / edit form — purchasing_director/vp_conversion only */}
+              {canEditSpend ? (
+                <section className={panelCls}>
+                  <div className="border-b border-slate-100 px-5 py-4">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Add / Update Entry
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Saving an existing year overwrites it (upsert).
+                    </p>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      Amount
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={spendAmountDisplay}
-                      onChange={(e) => handleSpendAmountChange(e.target.value)}
-                      className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      Currency
-                    </label>
-                    <select
-                      value={spendForm.spend_currency}
-                      onChange={(e) =>
-                        setSpendForm((f) => ({
-                          ...f,
-                          spend_currency: e.target.value,
-                        }))
+                  <div className="flex flex-wrap items-end gap-3 px-5 py-5">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        Fiscal Year
+                      </label>
+                      <input
+                        type="number"
+                        min={2000}
+                        max={2100}
+                        placeholder={String(new Date().getFullYear())}
+                        value={spendForm.fiscal_year}
+                        onChange={(e) =>
+                          setSpendForm((f) => ({
+                            ...f,
+                            fiscal_year: e.target.value,
+                          }))
+                        }
+                        className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        Amount
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={spendAmountDisplay}
+                        onChange={(e) => handleSpendAmountChange(e.target.value)}
+                        className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        Currency
+                      </label>
+                      <select
+                        value={spendForm.spend_currency}
+                        onChange={(e) =>
+                          setSpendForm((f) => ({
+                            ...f,
+                            spend_currency: e.target.value,
+                          }))
+                        }
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                      >
+                        {CURRENCIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={
+                        spendSaving ||
+                        !spendForm.fiscal_year ||
+                        !spendForm.spend_value
                       }
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#062B49] focus:outline-none"
+                      onClick={handleSpendUpsert}
+                      className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {CURRENCIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                      {spendSaving ? "Saving…" : "Save"}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    disabled={
-                      spendSaving ||
-                      !spendForm.fiscal_year ||
-                      !spendForm.spend_value
-                    }
-                    onClick={handleSpendUpsert}
-                    className="rounded-xl bg-[#062B49] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0C5381] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {spendSaving ? "Saving…" : "Save"}
-                  </button>
+                </section>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                  Only Purchasing Director / VP Conversion can add or edit annual spend entries.
                 </div>
-              </section>
+              )}
 
               {/* History table */}
               <section className={panelCls}>
@@ -1136,7 +1274,7 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                           <th className={tableHeaderCls}>Currency</th>
                           <th className={tableHeaderCls}>Last Updated</th>
                           <th className={tableHeaderCls}>Updated By</th>
-                          <th className={tableHeaderCls}></th>
+                          {canEditSpend && <th className={tableHeaderCls}></th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -1163,20 +1301,22 @@ export const RelationDetailsModal: React.FC<RelationDetailsModalProps> = ({
                             <td className={tableCellCls}>
                               {entry.updated_by || "—"}
                             </td>
-                            <td className={tableCellCls}>
-                              <button
-                                type="button"
-                                disabled={deletingYear === entry.fiscal_year}
-                                onClick={() =>
-                                  handleSpendDelete(entry.fiscal_year)
-                                }
-                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {deletingYear === entry.fiscal_year
-                                  ? "Deleting…"
-                                  : "Delete"}
-                              </button>
-                            </td>
+                            {canEditSpend && (
+                              <td className={tableCellCls}>
+                                <button
+                                  type="button"
+                                  disabled={deletingYear === entry.fiscal_year}
+                                  onClick={() =>
+                                    handleSpendDelete(entry.fiscal_year)
+                                  }
+                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {deletingYear === entry.fiscal_year
+                                    ? "Deleting…"
+                                    : "Delete"}
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
