@@ -18,11 +18,23 @@ const BATCH_EVAL_FILTERS_PAGE_KEY = "batch-evaluation-dashboard";
 interface BatchEvalFilters {
   activeFilter: string;
   search: string;
+  plant: string;
+  grade: string;
+  cls: string;
+  finalGrade: string;
+  frequency: string;
+  supplyStatus: string;
 }
 
 const BATCH_EVAL_FILTERS_DEFAULT: BatchEvalFilters = {
   activeFilter: "ALL",
   search: "",
+  plant: "ALL",
+  grade: "ALL",
+  cls: "ALL",
+  finalGrade: "ALL",
+  frequency: "ALL",
+  supplyStatus: "ALL",
 };
 
 // ---------------------------------------------------------------------------
@@ -188,6 +200,12 @@ function EvaluationDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>(initialFilters.activeFilter);
   const [search, setSearch] = useState(initialFilters.search);
+  const [plantFilter, setPlantFilter] = useState(initialFilters.plant ?? "ALL");
+  const [gradeFilter, setGradeFilter] = useState(initialFilters.grade ?? "ALL");
+  const [classFilter, setClassFilter] = useState(initialFilters.cls ?? "ALL");
+  const [finalGradeFilter, setFinalGradeFilter] = useState(initialFilters.finalGrade ?? "ALL");
+  const [frequencyFilter, setFrequencyFilter] = useState(initialFilters.frequency ?? "ALL");
+  const [supplyStatusFilter, setSupplyStatusFilter] = useState(initialFilters.supplyStatus ?? "ALL");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [triggering, setTriggering] = useState(false);
@@ -197,8 +215,14 @@ function EvaluationDashboard() {
     savePersistedFilters(BATCH_EVAL_FILTERS_PAGE_KEY, userEmail, {
       activeFilter,
       search,
+      plant: plantFilter,
+      grade: gradeFilter,
+      cls: classFilter,
+      finalGrade: finalGradeFilter,
+      frequency: frequencyFilter,
+      supplyStatus: supplyStatusFilter,
     });
-  }, [userEmail, activeFilter, search]);
+  }, [userEmail, activeFilter, search, plantFilter, gradeFilter, classFilter, finalGradeFilter, frequencyFilter, supplyStatusFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -230,16 +254,46 @@ function EvaluationDashboard() {
   useEffect(() => { load(); }, [load]);
 
   // Reset to page 1 when filter/search changes
-  useEffect(() => { setPage(1); }, [activeFilter, search]);
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter, search, plantFilter, gradeFilter, classFilter, finalGradeFilter, frequencyFilter, supplyStatusFilter]);
+
+  // Distinct option lists, derived from whatever data is actually loaded —
+  // so the dropdowns only ever offer choices that can return results.
+  const plantOptions = Array.from(new Set(items.map((i) => i.plant_name).filter(Boolean))).sort();
+  const gradeOptions = Array.from(new Set(items.map((i) => i.current_grade).filter((v): v is string => !!v))).sort();
+  const classOptions = Array.from(new Set(items.map((i) => i.current_class).filter((v): v is number => v != null))).sort((a, b) => a - b);
+  const finalGradeOptions = Array.from(new Set(items.map((i) => i.final_grade).filter((v): v is string => !!v))).sort();
+  const frequencyOptions = Array.from(new Set(items.map((i) => i.evaluation_frequency).filter(Boolean))).sort();
+  const supplyStatusOptions = Array.from(new Set(items.map((i) => i.current_status).filter((v): v is string => !!v))).sort();
+
+  const hasActiveFilters =
+    plantFilter !== "ALL" || gradeFilter !== "ALL" || classFilter !== "ALL" ||
+    finalGradeFilter !== "ALL" || frequencyFilter !== "ALL" || supplyStatusFilter !== "ALL";
+
+  const clearFilters = () => {
+    setPlantFilter("ALL");
+    setGradeFilter("ALL");
+    setClassFilter("ALL");
+    setFinalGradeFilter("ALL");
+    setFrequencyFilter("ALL");
+    setSupplyStatusFilter("ALL");
+  };
 
   const filtered = items.filter((item) => {
     const matchFilter = activeFilter === "ALL" || item.eval_status === activeFilter;
     const q = search.toLowerCase();
-    return matchFilter && (
-      !q ||
+    const matchSearch = !q ||
       item.unit_name.toLowerCase().includes(q) ||
-      item.plant_name.toLowerCase().includes(q)
-    );
+      item.plant_name.toLowerCase().includes(q);
+    const matchPlant = plantFilter === "ALL" || item.plant_name === plantFilter;
+    const matchGrade = gradeFilter === "ALL" || item.current_grade === gradeFilter;
+    const matchClass = classFilter === "ALL" || String(item.current_class ?? "") === classFilter;
+    const matchFinalGrade = finalGradeFilter === "ALL" || item.final_grade === finalGradeFilter;
+    const matchFrequency = frequencyFilter === "ALL" || item.evaluation_frequency === frequencyFilter;
+    const matchSupplyStatus = supplyStatusFilter === "ALL" || item.current_status === supplyStatusFilter;
+    return matchFilter && matchSearch && matchPlant && matchGrade && matchClass &&
+      matchFinalGrade && matchFrequency && matchSupplyStatus;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -357,6 +411,54 @@ function EvaluationDashboard() {
         })()}
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <FilterSelect
+          label="Plant"
+          value={plantFilter}
+          onChange={setPlantFilter}
+          options={plantOptions.map((v) => ({ value: v, label: v }))}
+        />
+        <FilterSelect
+          label="Grade"
+          value={gradeFilter}
+          onChange={setGradeFilter}
+          options={gradeOptions.map((v) => ({ value: v, label: v }))}
+        />
+        <FilterSelect
+          label="Class"
+          value={classFilter}
+          onChange={setClassFilter}
+          options={classOptions.map((v) => ({ value: String(v), label: `Cls ${v}` }))}
+        />
+        <FilterSelect
+          label="Final Grade"
+          value={finalGradeFilter}
+          onChange={setFinalGradeFilter}
+          options={finalGradeOptions.map((v) => ({ value: v, label: v }))}
+        />
+        <FilterSelect
+          label="Frequency"
+          value={frequencyFilter}
+          onChange={setFrequencyFilter}
+          options={frequencyOptions.map((v) => ({ value: v, label: v }))}
+        />
+        <FilterSelect
+          label="Supply Status"
+          value={supplyStatusFilter}
+          onChange={setSupplyStatusFilter}
+          options={supplyStatusOptions.map((v) => ({ value: v, label: v }))}
+        />
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#062B49] underline hover:text-[#0C5381] dark:text-blue-300 dark:hover:text-blue-200"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {/* Trigger feedback */}
       {triggerMsg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${
@@ -374,7 +476,7 @@ function EvaluationDashboard() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : filtered.length === 0 ? (
-        <EmptyState message={search || activeFilter !== "ALL" ? "No suppliers match your filter." : "No active relations found."} />
+        <EmptyState message={search || activeFilter !== "ALL" || hasActiveFilters ? "No suppliers match your filter." : "No active relations found."} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">
           <div className="overflow-x-auto">
@@ -476,7 +578,7 @@ function EvaluationDashboard() {
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Showing <span className="font-semibold text-slate-700 dark:text-slate-200">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)}</span> of{" "}
               <span className="font-semibold text-slate-700 dark:text-slate-200">{filtered.length}</span> relations
-              {activeFilter !== "ALL" && (
+              {(activeFilter !== "ALL" || hasActiveFilters || search) && (
                 <> · filtered from <span className="font-semibold text-slate-700 dark:text-slate-200">{items.length}</span> total</>
               )}
             </p>
@@ -909,6 +1011,40 @@ const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void
     </button>
   </div>
 );
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const active = value !== "ALL";
+  return (
+    <div className="flex items-center gap-1.5">
+      <label className="text-xs font-medium text-slate-400 dark:text-slate-500">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={options.length === 0}
+        className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium shadow-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${
+          active
+            ? "border-[#062B49]/40 bg-[#062B49]/5 text-[#062B49] dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300"
+            : "border-slate-200 bg-white text-slate-600 dark:border-white/[0.08] dark:bg-[#0d1929] dark:text-slate-300"
+        }`}
+      >
+        <option value="ALL">All</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 const EmptyState = ({ message }: { message: string }) => (
   <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-20 text-sm text-slate-400 shadow-sm dark:border-white/[0.08] dark:bg-[#111e30]">

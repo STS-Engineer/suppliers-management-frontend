@@ -1347,7 +1347,7 @@ function ActionItemsTable({
                 <tr
                   className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/60 ${overdue ? "bg-rose-50/40" : ""}`}
                 >
-                  <td className="max-w-[160px] px-3 py-2 align-top">
+                  <td className="w-[160px] max-w-[160px] px-3 py-2 align-top">
                     {item.opportunity_id == null ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">
                         <FolderOpen size={9} /> General
@@ -1358,9 +1358,9 @@ function ActionItemsTable({
                           onClick={() =>
                             navigate(`/purchasing-value?opp=${item.opportunity_id}`)
                           }
-                          className="flex items-center gap-1 truncate font-semibold text-slate-800 hover:text-blue-600"
+                          className="flex w-full min-w-0 items-center gap-1 text-left font-semibold text-slate-800 hover:text-blue-600"
                         >
-                          <span className="truncate">{item.opportunity_name}</span>
+                          <span className="min-w-0 truncate">{item.opportunity_name}</span>
                           <ExternalLink size={9} className="shrink-0 text-slate-300" />
                         </button>
                         {item.opp_phase && (
@@ -1371,16 +1371,16 @@ function ActionItemsTable({
                       </>
                     )}
                   </td>
-                  <td className="max-w-[260px] px-3 py-2 align-top">
+                  <td className="w-[260px] max-w-[260px] px-3 py-2 align-top">
                     <button
                       onClick={() => setExpandedRow(isExpanded ? null : i)}
-                      className="flex items-start gap-1 text-left font-medium text-slate-700 hover:text-indigo-600"
+                      className="flex w-full min-w-0 items-start gap-1 text-left font-medium text-slate-700 hover:text-indigo-600"
                     >
                       <ChevronDown
                         size={11}
                         className={`mt-0.5 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                       />
-                      <span className="line-clamp-2">
+                      <span className="min-w-0 line-clamp-2 break-words">
                         {item.action_titre ?? "—"}
                       </span>
                     </button>
@@ -1854,52 +1854,108 @@ export default function PurchasingActionPlansPage() {
       </div>
 
       <div className="max-w-[2200px] mx-auto px-8 py-6 space-y-6">
-        {/* KPI strip */}
+        {/* KPI strip — click a card's number to filter the list by that status */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             {
               label: "Total",
               value: filtered.length,
+              filterValue: "",
+              icon: <FolderOpen size={13} />,
               color: "text-slate-900",
-              subColor: "bg-slate-100",
+              activeColor: "text-white",
+              idleCls: "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md",
+              activeCls: "border-slate-800 bg-slate-800 shadow-lg shadow-slate-300",
+              dot: "bg-slate-400",
             },
             {
               label: "Open",
               value: totalOpen,
+              filterValue: "open",
+              icon: <Clock size={13} />,
               color: "text-amber-600",
-              subColor: "bg-amber-50 border-amber-100",
+              activeColor: "text-white",
+              idleCls: "border-amber-100 bg-amber-50 hover:border-amber-200 hover:shadow-md",
+              activeCls: "border-amber-500 bg-amber-500 shadow-lg shadow-amber-200",
+              dot: "bg-amber-500",
             },
             {
               label: "Blocked",
               value: totalBlocked,
+              filterValue: "blocked",
+              icon: <XCircle size={13} />,
               color: "text-rose-600",
-              subColor: "bg-rose-50 border-rose-100",
+              activeColor: "text-white",
+              idleCls: "border-rose-100 bg-rose-50 hover:border-rose-200 hover:shadow-md",
+              activeCls: "border-rose-500 bg-rose-500 shadow-lg shadow-rose-200",
+              dot: "bg-rose-500",
             },
             {
               label: "Overdue",
               value: totalOverdue,
+              filterValue: "overdue",
+              icon: <AlertTriangle size={13} />,
               color: totalOverdue > 0 ? "text-rose-700" : "text-emerald-600",
-              subColor:
+              activeColor: "text-white",
+              idleCls:
                 totalOverdue > 0
-                  ? "bg-rose-50 border-rose-100"
-                  : "bg-emerald-50 border-emerald-100",
+                  ? "border-rose-100 bg-rose-50 hover:border-rose-200 hover:shadow-md"
+                  : "border-emerald-100 bg-emerald-50 hover:border-emerald-200 hover:shadow-md",
+              activeCls: "border-rose-600 bg-rose-600 shadow-lg shadow-rose-200",
+              dot: totalOverdue > 0 ? "bg-rose-600" : "bg-emerald-500",
             },
-          ].map((s) => (
-            <div
-              key={s.label}
-              className={`rounded-2xl border px-5 py-4 ${s.subColor}`}
-            >
-              <p className="text-[9.5px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {s.label}
-              </p>
-              <p className={`text-3xl font-black mt-1 ${s.color}`}>{s.value}</p>
-              {s.label === "Blocked" || s.label === "Open" ? (
-                <p className="text-[9px] text-slate-400 mt-0.5">
-                  {totalClosed} closed
+          ].map((s) => {
+            const active = filterStatus === s.filterValue && s.filterValue !== "";
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() =>
+                  setFilterStatus(active ? "" : s.filterValue)
+                }
+                className={`group relative overflow-hidden rounded-2xl border px-5 py-4 text-left transition-all ${
+                  active ? s.activeCls : s.idleCls
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-white/70" : s.dot}`} />
+                  <p
+                    className={`text-[9.5px] font-black uppercase tracking-[0.2em] ${
+                      active ? "text-white/70" : "text-slate-400"
+                    }`}
+                  >
+                    {s.label}
+                  </p>
+                </div>
+                <p
+                  className={`text-3xl font-black mt-1 ${
+                    active ? s.activeColor : s.color
+                  }`}
+                >
+                  {s.value}
                 </p>
-              ) : null}
-            </div>
-          ))}
+                {s.label === "Blocked" || s.label === "Open" ? (
+                  <p
+                    className={`text-[9px] mt-0.5 ${
+                      active ? "text-white/60" : "text-slate-400"
+                    }`}
+                  >
+                    {totalClosed} closed
+                  </p>
+                ) : null}
+                <span
+                  className={`absolute right-3 top-3 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold transition-opacity ${
+                    active
+                      ? "bg-white/20 text-white opacity-100"
+                      : "bg-slate-900/5 text-slate-400 opacity-0 group-hover:opacity-100"
+                  }`}
+                >
+                  {s.icon}
+                  {active ? "Filtered" : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters */}
